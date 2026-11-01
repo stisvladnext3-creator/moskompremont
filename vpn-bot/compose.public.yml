@@ -1,0 +1,18 @@
+# Optional: use on a controller host with free ports 80/443 and a real DNS name.
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      MONITOR_DOMAIN: ${MONITOR_DOMAIN:?Set MONITOR_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

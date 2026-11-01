@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+config.toml
+data
+bin
+certs
+.venv
+tests
+**/__pycache__
+**/*.egg-info
+.pytest_cache

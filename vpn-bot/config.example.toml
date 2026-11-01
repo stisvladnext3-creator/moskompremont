@@ -1,0 +1,77 @@
+[settings]
+database = "/data/bot.db"
+local_probe_id = "control"
+interval = 30
+timeout = 8
+stale_after = 120
+failures = 2
+recoveries = 2
+slow_ms = 1500
+pool_target = 15
+min_ru_successes = 1
+issue_cooldown = 60
+automatic_links = true
+panel_refresh = 300
+listen_host = "0.0.0.0"
+listen_port = 8080
+xray_binary = "xray"
+concurrency = 4
+controller_url = "https://monitor.example.com"
+
+[[probes]]
+id = "control"
+name = "Контроль вне РФ"
+region = "outside"
+
+[[probes]]
+id = "ru-1"
+name = "Россия — основной узел"
+region = "ru"
+token_env = "PROBE_RU_TOKEN"
+
+# You can connect additional Russian ISPs and increase min_ru_successes.
+# [[probes]]
+# id = "ru-2"
+# name = "Россия — второй провайдер"
+# region = "ru"
+# token_env = "PROBE_RU2_TOKEN"
+
+[[panels]]
+id = "nl"
+# Include 3x-ui webBasePath, but do not append /panel or /panel/api.
+base_url = "https://panel-nl.example.com/your-panel-path/"
+api_mode = "auto"
+token_env = "XUI_NL_TOKEN"
+# For a private CA: ca_file_env = "XUI_NL_CA_FILE" (path to a PEM inside the container).
+# 3x-ui 2.x: remove token_env and uncomment these instead:
+# api_mode = "legacy"
+# username_env = "XUI_NL_USERNAME"
+# password_env = "XUI_NL_PASSWORD"
+
+[[panels]]
+id = "de"
+base_url = "https://panel-de.example.com/your-panel-path/"
+api_mode = "auto"
+token_env = "XUI_DE_TOKEN"
+
+[[servers]]
+id = "nl-1"
+name = "Нидерланды"
+panel = "nl"
+inbound_id = 1
+# Public address used by VPN clients, not necessarily the panel address.
+host = "203.0.113.10"
+# TCP/raw + Vision: flow = "xtls-rprx-vision". gRPC/WS: flow = "".
+flow = "xtls-rprx-vision"
+check_url = "https://www.google.com/generate_204"
+expected_status = 204
+
+[[servers]]
+id = "de-1"
+name = "Германия"
+panel = "de"
+inbound_id = 1
+host = "203.0.113.20"
+flow = ""
+check_url = "https://cp.cloudflare.com/generate_204"
+expected_status = 204

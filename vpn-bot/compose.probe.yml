@@ -1,0 +1,18 @@
+# Run this file on the Russian host. It needs no Telegram or panel credentials.
+services:
+  probe:
+    build: .
+    image: moskompremont-vpn-bot:0.1.0
+    command: [probe, --id, ru-1]
+    restart: unless-stopped
+    env_file: .env.probe
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+    tmpfs:
+      - /tmp:mode=1777
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      disable: true
+    stop_grace_period: 20s
