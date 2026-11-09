@@ -1,0 +1,84 @@
+-- Дополнение к установленной версии. Пользователи, оплаты и настройки сохраняются.
+CREATE TABLE IF NOT EXISTS internet_subscriptions (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ name VARCHAR(100) NOT NULL UNIQUE,
+ url TEXT NOT NULL,
+ user_id BIGINT UNSIGNED NULL,
+ assigned_at TIMESTAMP NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES internet_users(id),
+ INDEX (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_order_subscriptions (
+ order_id CHAR(32) NOT NULL,
+ subscription_id BIGINT UNSIGNED NOT NULL,
+ issued_by BIGINT UNSIGNED NOT NULL,
+ issued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY(order_id,subscription_id),
+ FOREIGN KEY (order_id) REFERENCES internet_orders(id),
+ FOREIGN KEY (subscription_id) REFERENCES internet_subscriptions(id),
+ FOREIGN KEY (issued_by) REFERENCES internet_users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_subscription_claims (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT UNSIGNED NOT NULL,
+ name VARCHAR(100) NOT NULL,
+ status VARCHAR(20) NOT NULL DEFAULT 'pending',
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ reviewed_at TIMESTAMP NULL,
+ FOREIGN KEY (user_id) REFERENCES internet_users(id),
+ UNIQUE (user_id,name), INDEX(name,status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_tickets (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT UNSIGNED NOT NULL,
+ subject VARCHAR(160) NOT NULL,
+ status VARCHAR(20) NOT NULL DEFAULT 'open',
+ user_seen_message_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+ admin_seen_message_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES internet_users(id),
+ INDEX (user_id,updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_messages (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ ticket_id BIGINT UNSIGNED NOT NULL,
+ sender_id BIGINT UNSIGNED NOT NULL,
+ is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+ body TEXT NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (ticket_id) REFERENCES internet_tickets(id),
+ FOREIGN KEY (sender_id) REFERENCES internet_users(id),
+ INDEX (ticket_id,id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_admin_events (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ event_key VARCHAR(100) NOT NULL UNIQUE,
+ type VARCHAR(20) NOT NULL,
+ user_id BIGINT UNSIGNED NOT NULL,
+ order_id CHAR(32) NULL,
+ title VARCHAR(200) NOT NULL,
+ body TEXT NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ read_at TIMESTAMP NULL,
+ FOREIGN KEY (user_id) REFERENCES internet_users(id),
+ INDEX (type,read_at,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_mail_outbox (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ event_id BIGINT UNSIGNED NOT NULL UNIQUE,
+ recipient VARCHAR(254) NOT NULL,
+ subject VARCHAR(200) NOT NULL,
+ body TEXT NOT NULL,
+ status VARCHAR(20) NOT NULL DEFAULT 'pending',
+ attempts INT NOT NULL DEFAULT 0,
+ next_attempt_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ lease_until TIMESTAMP NULL,
+ last_error VARCHAR(200) NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ sent_at TIMESTAMP NULL,
+ FOREIGN KEY (event_id) REFERENCES internet_admin_events(id),
+ INDEX (status,next_attempt_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

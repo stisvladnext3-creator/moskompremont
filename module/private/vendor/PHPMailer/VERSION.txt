@@ -1,0 +1,3 @@
+PHPMailer 7.2.0
+https://github.com/PHPMailer/PHPMailer/releases/tag/v7.2.0
+License: LGPL 2.1

@@ -1,0 +1,199 @@
+<?php
+declare(strict_types=1);
+header('Content-Type: application/json; charset=utf-8');header('Cache-Control: no-store');header('X-Content-Type-Options: nosniff');
+function answer(array $body,int $status=200): never {http_response_code($status);echo json_encode($body,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);exit;}
+require_once dirname(__DIR__).'/private/runtime.php';
+$db=null;
+try {
+ $path=getenv('INTERNET_CONFIG') ?: dirname(__DIR__).'/private/config.php';if (!is_file($path))problem('Кабинет ещё не настроен. Обратитесь к владельцу сайта.',503);
+ $config=require $path;if (!is_array($config) || empty($config['origin']))problem('Не настроен адрес сайта.',503);
+ ini_set('session.use_strict_mode','1');ini_set('session.use_only_cookies','1');ini_set('session.gc_maxlifetime','7200');session_name('internet_account');
+ session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>$config['secure_cookies'] ?? true,'httponly'=>true,'samesite'=>'Lax']);session_start();
+ if (isset($_SESSION['last_seen']) && time()-$_SESSION['last_seen']>7200) {$_SESSION=[];session_regenerate_id(true);}
+ $_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
+ $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
+ $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry'];
+ if (in_array($action,$writes,true)) {
+  if ($method!=='POST')problem('Требуется POST.',405);
+  if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
+  if (!hash_equals($_SESSION['csrf'],$_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))problem('Обновите страницу и попробуйте снова.',403);
+  if (stripos($_SERVER['CONTENT_TYPE'] ?? '','application/json')!==0)problem('Требуется JSON.',415);
+  $max=$action==='import_subscriptions'?1500000:20000;
+  if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0)>$max)problem('Слишком большой запрос.',413);
+  $raw=file_get_contents('php://input',false,null,0,$max+1);if (strlen($raw)>$max)problem('Слишком большой запрос.',413);
+  try {$body=json_decode($raw,true,16,JSON_THROW_ON_ERROR);}catch(Throwable $e){problem('Некорректный JSON.');}
+  if (!is_array($body))problem('Некорректные данные.');
+ } else {if ($method!=='GET')problem('Метод не поддерживается.',405);$body=[];}
+ $db=new PDO($config['dsn'],$config['db_user'],$config['db_password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
+ query($db,"SET time_zone='+00:00'");
+ register_shutdown_function(static function()use($db,$config){
+  if (empty($GLOBALS['internet_mail_queued']) || $db->inTransaction())return;
+  if (session_status()===PHP_SESSION_ACTIVE)session_write_close();
+  if (function_exists('fastcgi_finish_request'))fastcgi_finish_request();
+  try {sendPendingMail($db,$config,1);}catch(Throwable $e){error_log('Internet mail: queue processing failed.');}
+ });
+ $user=isset($_SESSION['user_id'])?query($db,'SELECT id,first_name,last_name,telegram,email,created_at FROM internet_users WHERE id=?',[$_SESSION['user_id']])->fetch():null;
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>2]);
+ if ($action==='register') {
+  limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
+  if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
+  $email=strtolower(field($body,'email',254));if (!filter_var($email,FILTER_VALIDATE_EMAIL))problem('Укажите корректную почту.');
+  $telegram=field($body,'telegram',100);if (!preg_match('~^(?:https://t\.me/|@)([a-zA-Z][a-zA-Z0-9_]{4,31})/?$~',$telegram,$m))problem('Укажите Telegram: https://t.me/username или @username.');$telegram='https://t.me/'.$m[1];
+  $password=$body['password'] ?? null;if (!is_string($password) || preg_match_all('/./us',$password)<12 || strlen($password)>72)problem('Пароль: не менее 12 символов и не более 72 байт.');
+  $names=claimNames(field($body,'existing_subscriptions',2500,true));
+  if (!empty($body['has_existing_subscriptions']) && !$names)problem('Укажите названия имеющихся подписок.');
+  $hash=password_hash($password,PASSWORD_DEFAULT);$db->beginTransaction();
+  try {query($db,'INSERT INTO internet_users(first_name,last_name,telegram,email,password_hash) VALUES (?,?,?,?,?)',[$first,$last,$telegram,$email,$hash]);}
+  catch(PDOException $e){if ($e->getCode()==='23000')problem('Не удалось зарегистрироваться с этими данными. Попробуйте войти.',409);throw $e;}
+  $id=(int)$db->lastInsertId();$newUser=['id'=>$id,'first_name'=>$first,'last_name'=>$last,'telegram'=>$telegram,'email'=>$email];claimSubscriptions($db,$id,$names);
+  notifyAdmin($db,$config,'user:'.$id,'user',$id,'Новый клиент #'.$id,contactText($newUser)."\nИмеющиеся подписки: ".($names?implode(', ',$names):'не указаны'));
+  $db->commit();session_regenerate_id(true);$_SESSION['user_id']=$id;$_SESSION['csrf']=bin2hex(random_bytes(32));answer(['user'=>publicUser($newUser,$config),'csrf'=>$_SESSION['csrf']],201);
+ }
+ if ($action==='login') {
+  limitRate($db,'login',25);$email=strtolower(field($body,'email',254));$password=$body['password'] ?? '';
+  if (!is_string($password) || strlen($password)>72)problem('Неверная почта или пароль.',401);
+  $found=query($db,'SELECT * FROM internet_users WHERE email=?',[$email])->fetch();$dummy='$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi';$valid=password_verify($password,$found['password_hash'] ?? $dummy);
+  if (!$found || !$valid)problem('Неверная почта или пароль.',401);
+  if (password_needs_rehash($found['password_hash'],PASSWORD_DEFAULT))query($db,'UPDATE internet_users SET password_hash=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),$found['id']]);
+  session_regenerate_id(true);$_SESSION['user_id']=(int)$found['id'];$_SESSION['csrf']=bin2hex(random_bytes(32));answer(['user'=>publicUser($found,$config),'csrf'=>$_SESSION['csrf']]);
+ }
+ if ($action==='logout'){$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));answer(['ok'=>true,'csrf'=>$_SESSION['csrf']]);}
+ if (!$user)problem('Сначала войдите в кабинет.',401);$userId=(int)$user['id'];$admin=publicUser($user,$config)['is_admin'];
+ if (str_starts_with($action,'admin_') || in_array($action,['review_order','issue_subscription','import_subscriptions','resolve_claim','set_ticket_status','read_event','mail_test','mail_retry'],true)) {if (!$admin)problem('Нет доступа.',403);}
+ if ($action==='subscriptions') {
+  $items=query($db,'SELECT id,name,url,assigned_at FROM internet_subscriptions WHERE user_id=? ORDER BY assigned_at DESC,id DESC',[$userId])->fetchAll();
+  $claims=query($db,'SELECT id,name,status,created_at FROM internet_subscription_claims WHERE user_id=? ORDER BY id DESC',[$userId])->fetchAll();answer(['subscriptions'=>$items,'claims'=>$claims]);
+ }
+ if ($action==='claim_subscriptions') {
+  limitRate($db,'claims',20,$userId);$names=claimNames(field($body,'names',2500,true));if (!$names)problem('Укажите название подписки.');
+  $existing=(int)query($db,'SELECT COUNT(*) FROM internet_subscription_claims WHERE user_id=?',[$userId])->fetchColumn();if ($existing+count($names)>100)problem('Слишком много запросов. Напишите в поддержку.');
+  $db->beginTransaction();claimSubscriptions($db,$userId,$names);
+  notifyAdmin($db,$config,'claim:'.bin2hex(random_bytes(12)),'subscription',$userId,'Запрос подписок от клиента #'.$userId,contactText($user)."\nНазвания: ".implode(', ',$names));$db->commit();answer(['ok'=>true]);
+ }
+ if ($action==='orders') {
+  $rows=query($db,'SELECT * FROM internet_orders WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 100',[$userId])->fetchAll();answer(['orders'=>withOrderSubscriptions($db,$rows)]);
+ }
+ if ($action==='create_order') {
+  limitRate($db,'orders',30,$userId);if (!payment($config)['available'])problem('Владелец ещё не добавил реквизиты оплаты.',503);
+  $plan=field($body,'plan',20);$devices=$body['devices'] ?? null;if (!in_array($plan,['monthly','lifetime'],true) || !is_int($devices) || $devices<1 || $devices>20)problem('Выберите тариф и от 1 до 20 устройств.');
+  $rates=$plan==='monthly'?[1=>250,2=>225,3=>200,4=>175]:[1=>3000,2=>2500,3=>2000,4=>1650];$amount=$rates[min($devices,4)]*$devices;
+  $db->beginTransaction();query($db,'SELECT id FROM internet_users WHERE id=? FOR UPDATE',[$userId]);
+  if (query($db,"SELECT id FROM internet_orders WHERE user_id=? AND status IN ('created','submitted') LIMIT 1",[$userId])->fetch())problem('У вас уже есть незавершённая заявка. Откройте её в списке.',409);
+  $id=bin2hex(random_bytes(16));query($db,'INSERT INTO internet_orders(id,user_id,plan,devices,amount) VALUES (?,?,?,?,?)',[$id,$userId,$plan,$devices,$amount]);$db->commit();answer(['id'=>$id,'amount'=>$amount],201);
+ }
+ if ($action==='submit_payment') {
+  $id=field($body,'id',32);$reference=field($body,'reference',500);if (preg_match_all('/./us',$reference)<4)problem('Укажите время перевода или последние 4 цифры телефона.');
+  $db->beginTransaction();$order=query($db,'SELECT * FROM internet_orders WHERE id=? AND user_id=? FOR UPDATE',[$id,$userId])->fetch();if (!$order || $order['status']!=='created')problem('Заявка не найдена или уже отправлена.',409);
+  query($db,"UPDATE internet_orders SET status='submitted',payment_reference=?,submitted_at=CURRENT_TIMESTAMP WHERE id=?",[$reference,$id]);
+  notifyAdmin($db,$config,'payment:'.$id,'payment',$userId,'Клиент сообщил об оплате',contactText($user)."\nЗаявка: $id\nТариф: ".($order['plan']==='monthly'?'Ежемесячно':'Навсегда')."\nУстройств: ".$order['devices']."\nСумма: ".$order['amount']." ₽\nДанные перевода: ".$reference."\n\nПроверьте поступление в Озон Банке. Нажатие кнопки клиентом не подтверждает оплату.",$id);
+  $db->commit();answer(['ok'=>true]);
+ }
+ if ($action==='review_order') {
+  $id=field($body,'id',32);$status=field($body,'status',20);if (!in_array($status,['paid','rejected'],true))problem('Недопустимый статус.');
+  $db->beginTransaction();$order=query($db,'SELECT * FROM internet_orders WHERE id=? FOR UPDATE',[$id])->fetch();if (!$order || $order['status']!=='submitted')problem('Заявка уже обработана или не отправлена на проверку.',409);
+  query($db,'UPDATE internet_orders SET status=?,reviewed_at=CURRENT_TIMESTAMP,reviewed_by=? WHERE id=?',[$status,$userId,$id]);$db->commit();answer(['ok'=>true]);
+ }
+ if ($action==='issue_subscription') {
+  $id=field($body,'order_id',32);$name=subscriptionName(field($body,'name',100));$url=field($body,'url',8192);if ($url!=='')$url=subscriptionUrl($url);
+  $db->beginTransaction();$order=query($db,'SELECT * FROM internet_orders WHERE id=? FOR UPDATE',[$id])->fetch();if (!$order || $order['status']!=='paid')problem('Сначала подтвердите поступление оплаты.',409);
+  $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();
+  if ($sub && query($db,'SELECT order_id FROM internet_order_subscriptions WHERE order_id=? AND subscription_id=?',[$id,$sub['id']])->fetch())problem('Эта подписка уже выдана по данной заявке.',409);
+  if ($sub && $sub['user_id']!==null && (int)$sub['user_id']!==(int)$order['user_id'])problem('Эта подписка уже закреплена за другим клиентом.',409);
+  if (!$sub && $url==='')problem('Вставьте ссылку новой подписки или укажите название из базы.');
+  if ($sub) {
+   $subId=(int)$sub['id'];query($db,'UPDATE internet_subscriptions SET user_id=?,url=?,assigned_at=COALESCE(assigned_at,CURRENT_TIMESTAMP) WHERE id=?',[$order['user_id'],$url!==''?$url:$sub['url'],$subId]);
+  } else {query($db,'INSERT INTO internet_subscriptions(name,url,user_id,assigned_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',[$name,$url,$order['user_id']]);$subId=(int)$db->lastInsertId();}
+  query($db,'INSERT INTO internet_order_subscriptions(order_id,subscription_id,issued_by) VALUES (?,?,?)',[$id,$subId,$userId]);
+  query($db,"UPDATE internet_subscription_claims SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE user_id=? AND name=? AND status='pending'",[$order['user_id'],$name]);
+  $db->commit();answer(['ok'=>true]);
+ }
+ if ($action==='import_subscriptions') {
+  limitRate($db,'imports',20,$userId);$records=importCsv(field($body,'csv',1048576,true));$added=0;$updated=0;$assigned=0;$db->beginTransaction();
+  foreach ($records as $name=>$url) {
+   $existing=query($db,'SELECT id FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();
+   if ($existing) {query($db,'UPDATE internet_subscriptions SET url=? WHERE id=?',[$url,$existing['id']]);$updated++;}
+   else {query($db,'INSERT INTO internet_subscriptions(name,url) VALUES (?,?)',[$name,$url]);$added++;}
+   $assigned+=reconcileClaims($db,$name);
+  }
+  $db->commit();answer(['added'=>$added,'updated'=>$updated,'assigned'=>$assigned]);
+ }
+ if ($action==='resolve_claim') {
+  $id=(int)($body['id'] ?? 0);$status=field($body,'status',20);if (!in_array($status,['approved','rejected'],true))problem('Недопустимый статус.');
+  $db->beginTransaction();$claim=query($db,'SELECT * FROM internet_subscription_claims WHERE id=? FOR UPDATE',[$id])->fetch();if (!$claim || $claim['status']!=='pending')problem('Запрос уже обработан.',409);
+  if ($status==='approved') {
+   $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$claim['name']])->fetch();if (!$sub)problem('Сначала добавьте подписку в базу.',409);
+   if ($sub['user_id']!==null && (int)$sub['user_id']!==(int)$claim['user_id'])problem('Подписка уже закреплена за другим клиентом.',409);
+   query($db,'UPDATE internet_subscriptions SET user_id=?,assigned_at=COALESCE(assigned_at,CURRENT_TIMESTAMP) WHERE id=?',[$claim['user_id'],$sub['id']]);
+  }
+  query($db,'UPDATE internet_subscription_claims SET status=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?',[$status,$id]);$db->commit();answer(['ok'=>true]);
+ }
+ if ($action==='create_ticket') {
+  limitRate($db,'tickets',10,$userId);$subject=field($body,'subject',640);$text=field($body,'message',8000,true);if (!$subject || preg_match_all('/./us',$subject)>160 || preg_match_all('/./us',$text)<2 || preg_match_all('/./us',$text)>4000)problem('Укажите тему (до 160 символов) и сообщение (от 2 до 4000 символов).');
+  $db->beginTransaction();query($db,'SELECT id FROM internet_users WHERE id=? FOR UPDATE',[$userId]);if ((int)query($db,"SELECT COUNT(*) FROM internet_tickets WHERE user_id=? AND status='open'",[$userId])->fetchColumn()>=10)problem('У вас уже 10 открытых обращений. Дополните существующее.');
+  query($db,'INSERT INTO internet_tickets(user_id,subject) VALUES (?,?)',[$userId,$subject]);$id=(int)$db->lastInsertId();query($db,'INSERT INTO internet_messages(ticket_id,sender_id,is_admin,body) VALUES (?,?,0,?)',[$id,$userId,$text]);$messageId=(int)$db->lastInsertId();
+  notifyAdmin($db,$config,'message:'.$messageId,'support',$userId,'Новое обращение #'.$id,contactText($user)."\nТема: $subject\n\n$text");$db->commit();answer(['id'=>$id],201);
+ }
+ if ($action==='reply_ticket') {
+  limitRate($db,'messages',50,$userId);$id=(int)($body['id'] ?? 0);$text=field($body,'message',8000,true);if (preg_match_all('/./us',$text)<2 || preg_match_all('/./us',$text)>4000)problem('Сообщение: от 2 до 4000 символов.');
+  $db->beginTransaction();$ticket=query($db,'SELECT * FROM internet_tickets WHERE id=? FOR UPDATE',[$id])->fetch();if (!$ticket || (!$admin && (int)$ticket['user_id']!==$userId))problem('Обращение не найдено.',404);
+  $asAdmin=$admin && ((int)$ticket['user_id']!==$userId || !empty($body['as_admin']));
+  query($db,'INSERT INTO internet_messages(ticket_id,sender_id,is_admin,body) VALUES (?,?,?,?)',[$id,$userId,(int)$asAdmin,$text]);$messageId=(int)$db->lastInsertId();query($db,"UPDATE internet_tickets SET status='open',updated_at=CURRENT_TIMESTAMP WHERE id=?",[$id]);
+  if (!$asAdmin)notifyAdmin($db,$config,'message:'.$messageId,'support',$userId,'Сообщение в обращении #'.$id,contactText($user)."\nТема: ".$ticket['subject']."\n\n$text");
+  $db->commit();answer(['ok'=>true]);
+ }
+ if ($action==='read_ticket') {
+  $id=(int)($body['id'] ?? 0);$ticket=query($db,'SELECT * FROM internet_tickets WHERE id=?',[$id])->fetch();if (!$ticket || (!$admin && (int)$ticket['user_id']!==$userId))problem('Обращение не найдено.',404);
+  $asAdmin=$admin && ((int)$ticket['user_id']!==$userId || !empty($body['as_admin']));
+  $messages=query($db,'SELECT m.id,m.is_admin,m.body,m.created_at,u.first_name,u.last_name FROM internet_messages m JOIN internet_users u ON u.id=m.sender_id WHERE m.ticket_id=? ORDER BY m.id DESC LIMIT 200',[$id])->fetchAll();$last=$messages?(int)$messages[0]['id']:0;
+  if ($asAdmin)query($db,"UPDATE internet_admin_events e JOIN internet_messages m ON e.event_key=CONCAT('message:',m.id) SET e.read_at=COALESCE(e.read_at,CURRENT_TIMESTAMP) WHERE m.ticket_id=? AND e.type='support'",[$id]);
+  $column=$asAdmin?'admin_seen_message_id':'user_seen_message_id';query($db,"UPDATE internet_tickets SET $column=GREATEST($column,?) WHERE id=?",[$last,$id]);answer(['ticket'=>$ticket,'messages'=>array_reverse($messages)]);
+ }
+ if ($action==='set_ticket_status') {
+  $id=(int)($body['id'] ?? 0);$status=field($body,'status',20);if (!in_array($status,['open','closed'],true))problem('Недопустимый статус.');query($db,'UPDATE internet_tickets SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',[$status,$id]);answer(['ok'=>true]);
+ }
+ if ($action==='tickets' || $action==='admin_tickets') {
+  $asAdmin=$action==='admin_tickets';$column=$asAdmin?'admin_seen_message_id':'user_seen_message_id';$role=$asAdmin?0:1;$where=$asAdmin?'':' WHERE t.user_id=?';$args=$asAdmin?[]:[$userId];
+  $items=query($db,"SELECT t.*,u.first_name,u.last_name,u.email,u.telegram,(SELECT COUNT(*) FROM internet_messages m WHERE m.ticket_id=t.id AND m.is_admin=$role AND m.id>t.$column) AS unread FROM internet_tickets t JOIN internet_users u ON u.id=t.user_id $where ORDER BY t.updated_at DESC,t.id DESC LIMIT 100",$args)->fetchAll();answer(['tickets'=>$items]);
+ }
+ if ($action==='summary') {
+  $unread=(int)query($db,'SELECT COUNT(*) FROM internet_messages m JOIN internet_tickets t ON t.id=m.ticket_id WHERE t.user_id=? AND m.is_admin=1 AND m.id>t.user_seen_message_id',[$userId])->fetchColumn();
+  $issued=(int)query($db,'SELECT COUNT(*) FROM internet_subscriptions WHERE user_id=?',[$userId])->fetchColumn();answer(['unread_support'=>$unread,'subscriptions'=>$issued]);
+ }
+ if ($action==='admin_summary') {
+  $counts=['user'=>0,'payment'=>0,'support'=>0,'subscription'=>0];foreach(query($db,'SELECT type,COUNT(*) AS n FROM internet_admin_events WHERE read_at IS NULL GROUP BY type')->fetchAll() as $row)$counts[$row['type']]=(int)$row['n'];
+  $mail=query($db,"SELECT SUM(status IN ('pending','retry','sending')) AS pending,SUM(status='failed') AS failed,SUM(status='sent') AS sent FROM internet_mail_outbox")->fetch();
+  answer(['unread'=>$counts,'mail'=>['ready'=>mailReady($config),'recipient'=>$config['admin_email'] ?? 'sania.iwannikow@yandex.ru','pending'=>(int)$mail['pending'],'failed'=>(int)$mail['failed'],'sent'=>(int)$mail['sent']]]);
+ }
+ if ($action==='admin_events') {
+  $type=$_GET['type'] ?? '';if (!in_array($type,['user','payment','support','subscription','system'],true))problem('Неизвестный раздел.');$offset=max(0,min((int)($_GET['page'] ?? 0),10000))*100;
+  $items=query($db,"SELECT e.*,u.first_name,u.last_name,u.email,u.telegram FROM internet_admin_events e JOIN internet_users u ON u.id=e.user_id WHERE e.type=? ORDER BY e.id DESC LIMIT 100 OFFSET $offset",[$type])->fetchAll();answer(['events'=>$items]);
+ }
+ if ($action==='read_event') {query($db,'UPDATE internet_admin_events SET read_at=COALESCE(read_at,CURRENT_TIMESTAMP) WHERE id=?',[(int)($body['id'] ?? 0)]);answer(['ok'=>true]);}
+ if ($action==='admin_users') {
+  $offset=max(0,min((int)($_GET['page'] ?? 0),10000))*100;
+  $rows=query($db,"SELECT u.id,u.first_name,u.last_name,u.email,u.telegram,u.created_at,e.id AS event_id,e.read_at AS event_read_at FROM internet_users u LEFT JOIN internet_admin_events e ON e.event_key=CONCAT('user:',u.id) ORDER BY u.id DESC LIMIT 100 OFFSET $offset")->fetchAll();
+  foreach($rows as &$row){$row['claims']=query($db,'SELECT name,status FROM internet_subscription_claims WHERE user_id=? ORDER BY id',[$row['id']])->fetchAll();$row['subscriptions']=query($db,'SELECT name FROM internet_subscriptions WHERE user_id=? ORDER BY name',[$row['id']])->fetchAll();}unset($row);answer(['users'=>$rows]);
+ }
+ if ($action==='admin_orders') {
+  $offset=max(0,min((int)($_GET['page'] ?? 0),10000))*100;
+  $rows=query($db,"SELECT o.*,u.first_name,u.last_name,u.email,u.telegram,e.id AS event_id,e.read_at AS event_read_at FROM internet_orders o JOIN internet_users u ON u.id=o.user_id LEFT JOIN internet_admin_events e ON e.order_id=o.id AND e.type='payment' ORDER BY o.created_at DESC,o.id DESC LIMIT 100 OFFSET $offset")->fetchAll();answer(['orders'=>withOrderSubscriptions($db,$rows)]);
+ }
+ if ($action==='admin_subscriptions') {
+  $search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',100):'';$offset=max(0,min((int)($_GET['page'] ?? 0),10000))*100;
+  $where=$search!==''?' WHERE s.name LIKE ?':'';$args=$search!==''?['%'.$search.'%']:[];
+  $total=(int)query($db,'SELECT COUNT(*) FROM internet_subscriptions s'.$where,$args)->fetchColumn();
+  $rows=query($db,"SELECT s.*,u.first_name,u.last_name,u.email FROM internet_subscriptions s LEFT JOIN internet_users u ON u.id=s.user_id $where ORDER BY s.id DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();
+  $claims=query($db,"SELECT c.*,u.first_name,u.last_name,u.email,u.telegram FROM internet_subscription_claims c JOIN internet_users u ON u.id=c.user_id WHERE c.status='pending' ORDER BY c.id LIMIT 200")->fetchAll();answer(['subscriptions'=>$rows,'claims'=>$claims,'total'=>$total]);
+ }
+ if ($action==='mail_test') {
+  limitRate($db,'mailtest',3,$userId);$db->beginTransaction();notifyAdmin($db,$config,'mail-test:'.bin2hex(random_bytes(8)),'system',$userId,'Проверка почтовых уведомлений','Письма из кабинета МосКомпРемонт отправляются на этот адрес.');$db->commit();answer(['ok'=>true,'ready'=>mailReady($config)]);
+ }
+ if ($action==='mail_retry') {
+  limitRate($db,'mailretry',10,$userId);query($db,"UPDATE internet_mail_outbox SET status='retry',attempts=0,next_attempt_at=CURRENT_TIMESTAMP WHERE status='failed'");query($db,"UPDATE internet_mail_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE status='retry'");answer(sendPendingMail($db,$config,3));
+ }
+ problem('Действие не найдено.',404);
+} catch(AccountError $e) {if ($db instanceof PDO && $db->inTransaction())$db->rollBack();answer(['error'=>$e->getMessage()],$e->httpStatus);}
+catch(Throwable $e) {
+ if ($db instanceof PDO && $db->inTransaction())$db->rollBack();error_log('Internet account: '.$e->getMessage());
+ $missing=$e instanceof PDOException && $e->getCode()==='42S02';answer(['error'=>$missing?'Нужно обновить базу: импортируйте private/migrations/002-cabinet.sql через phpMyAdmin.':'Сервис временно недоступен. Попробуйте позже.'],503);
+}
