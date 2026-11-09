@@ -36,11 +36,16 @@ function claimNames(string $text): array {
 }
 function claimSubscriptions(PDO $db,int $userId,array $names): void {
  foreach ($names as $name) {
+  // Match import, issuance and unbinding: lock the subscription before its claims.
+  $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();
   query($db,'INSERT INTO internet_subscription_claims(user_id,name) VALUES (?,?) ON DUPLICATE KEY UPDATE name=VALUES(name)',[$userId,$name]);
   $claim=query($db,'SELECT * FROM internet_subscription_claims WHERE user_id=? AND name=? FOR UPDATE',[$userId,$name])->fetch();
+  if ($sub && query($db,'SELECT subscription_id FROM internet_subscription_revocations WHERE subscription_id=? AND user_id=?',[$sub['id'],$userId])->fetch()) {
+   if ($claim['status']==='revoked')query($db,"UPDATE internet_subscription_claims SET status='pending' WHERE id=?",[$claim['id']]);
+   continue;
+  }
   if ($claim['status']!=='pending') continue;
-  $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();
-  if ($sub && $sub['user_id']===null && (int)query($db,"SELECT COUNT(*) FROM internet_subscription_claims WHERE name=? AND status='pending'",[$name])->fetchColumn()>1)continue;
+  if ($sub && $sub['user_id']===null && (int)query($db,"SELECT COUNT(*) FROM internet_subscription_claims c WHERE c.name=? AND c.status='pending' AND NOT EXISTS (SELECT 1 FROM internet_subscription_revocations r WHERE r.subscription_id=? AND r.user_id=c.user_id)",[$name,$sub['id']])->fetchColumn()>1)continue;
   if ($sub && ($sub['user_id']===null || (int)$sub['user_id']===$userId)) {
    query($db,'UPDATE internet_subscriptions SET user_id=?,assigned_at=COALESCE(assigned_at,CURRENT_TIMESTAMP) WHERE id=?',[$userId,$sub['id']]);
    query($db,"UPDATE internet_subscription_claims SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE id=?",[$claim['id']]);
@@ -49,7 +54,7 @@ function claimSubscriptions(PDO $db,int $userId,array $names): void {
 }
 function reconcileClaims(PDO $db,string $name): int {
  $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();if (!$sub || $sub['user_id']!==null)return 0;
- $claims=query($db,"SELECT * FROM internet_subscription_claims WHERE name=? AND status='pending' ORDER BY id FOR UPDATE",[$name])->fetchAll();
+ $claims=query($db,"SELECT c.* FROM internet_subscription_claims c WHERE c.name=? AND c.status='pending' AND NOT EXISTS (SELECT 1 FROM internet_subscription_revocations r WHERE r.subscription_id=? AND r.user_id=c.user_id) ORDER BY c.id FOR UPDATE",[$name,$sub['id']])->fetchAll();
  // Several claimants need an administrator's choice; never award a contested name arbitrarily.
  if (count($claims)!==1)return 0;
  $claim=$claims[0];query($db,'UPDATE internet_subscriptions SET user_id=?,assigned_at=CURRENT_TIMESTAMP WHERE id=?',[$claim['user_id'],$sub['id']]);
@@ -74,7 +79,10 @@ function importCsv(string $csv): array {
 
 function withOrderSubscriptions(PDO $db,array $orders): array {
  foreach($orders as &$order) {
+  $order['revoked_subscriptions']=query($db,'SELECT s.name,r.revoked_at FROM internet_order_subscriptions os JOIN internet_subscriptions s ON s.id=os.subscription_id JOIN internet_subscription_revocations r ON r.subscription_id=s.id AND r.user_id=? WHERE os.order_id=? ORDER BY s.id',[$order['user_id'],$order['id']])->fetchAll();
   $order['subscriptions']=query($db,'SELECT s.id,s.name,s.url,os.issued_at FROM internet_order_subscriptions os JOIN internet_subscriptions s ON s.id=os.subscription_id WHERE os.order_id=? AND s.user_id=? ORDER BY os.issued_at,s.id',[$order['id'],$order['user_id']])->fetchAll();
  }
  unset($order);return $orders;
 }
+
+require_once __DIR__.'/support-photos.php';

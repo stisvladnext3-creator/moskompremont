@@ -6,16 +6,17 @@
   let clientTab = 'subscriptions', adminTab = 'support', conversation = null;
   const pages = { users: 0, payments: 0, subscriptions: 0 };
   const orderStatus = { created: 'Ожидает оплаты', submitted: 'На ручной проверке', paid: 'Оплата подтверждена', rejected: 'Оплата не подтверждена' };
-  const claimStatus = { pending: 'Ожидает ссылки или проверки', approved: 'Подписка добавлена', rejected: 'Запрос отклонён' };
+  const claimStatus = { pending: 'Ожидает ссылки или проверки', approved: 'Подписка добавлена', rejected: 'Запрос отклонён', revoked: 'Привязка снята администратором' };
   const money = n => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(n));
   const date = value => value ? new Date(value.replace(' ', 'T') + 'Z').toLocaleString('ru-RU') : '';
   const el = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined && text !== null) node.textContent = text; if (className) node.className = className; return node; };
   function message(text, error = false) { $('account-message').textContent = text; $('account-message').dataset.error = String(error); }
   function button(text, fn, className = 'account-secondary') { const b = el('button', text, className); b.type = 'button'; b.addEventListener('click', () => run(b, fn)); return b; }
-  async function run(b, fn) { if (b) b.disabled = true; try { await fn(); } catch (e) { message(e.message, true); $('account-message').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } finally { if (b && b.isConnected) b.disabled = false; } }
+  async function run(b, fn) { message(''); if (b) b.disabled = true; try { await fn(); } catch (e) { message(e.message, true); $('account-message').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } finally { if (b && b.isConnected) b.disabled = false; } }
   async function api(action, data, params = {}) {
-    const response = await fetch('api/account.php?' + new URLSearchParams({ action, ...params }), { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: data === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: data === undefined ? undefined : JSON.stringify(data) });
-    let result; try { result = await response.json(); } catch { throw Error('Не удалось связаться с сервером. Проверьте PHP и загрузку обновления.'); }
+    const multipart = data instanceof FormData;
+    const response = await fetch('api/account.php?' + new URLSearchParams({ action, ...params }), { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: data === undefined ? {} : { ...(multipart ? {} : { 'Content-Type': 'application/json' }), 'X-CSRF-Token': csrf }, body: data === undefined ? undefined : multipart ? data : JSON.stringify(data) });
+    let result; try { result = await response.json(); } catch { throw Error(user?.is_admin ? 'Сервер вернул некорректный ответ (HTTP ' + response.status + '). Проверьте журнал ошибок PHP на хостинге.' : 'Не удалось обработать ответ сервера. Обновите страницу или напишите в поддержку.'); }
     if (!response.ok) { if (response.status === 401 && user) signedOut(); const e = Error(result.error || 'Ошибка запроса'); e.status = response.status; throw e; }
     if (result.csrf) csrf = result.csrf; return result;
   }
@@ -79,20 +80,33 @@
         const submit = el('button', 'Я оплатил — отправить на проверку', 'account-primary'); submit.type = 'submit'; form.append(label, submit); form.onsubmit = e => { e.preventDefault(); run(submit, async () => { await api('submit_payment', { id: order.id, reference: input.value }); await loadOrders(); message('Вы сообщили об оплате. Администратору создано уведомление; после проверки он выдаст подписку.'); }); }; box.append(form);
       }
       if (order.status === 'submitted') box.append(el('p', 'Ожидайте проверки поступления. Повторно платить не нужно.', 'account-muted'));
-      if (order.status === 'paid' && !order.subscriptions.length) box.append(el('p', 'Оплата подтверждена. Ожидайте выдачи подписки администратором.', 'account-note'));
+      if (order.status === 'paid' && !order.subscriptions.length) box.append(el('p', order.revoked_subscriptions?.length ? 'Привязка подписки снята администратором. История оплаты сохранена.' : 'Оплата подтверждена. Ожидайте выдачи подписки администратором.', 'account-note'));
       for (const sub of order.subscriptions) box.append(subscriptionCard(sub));
       if (order.status === 'rejected') box.append(el('p', 'Свяжитесь с поддержкой для сверки перевода перед повторной оплатой.', 'account-muted'));
       $('orders-list').append(box);
     }
   }
   $('refresh-orders').onclick = e => run(e.target, loadOrders);
-  $('ticket-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const data = await api('create_ticket', Object.fromEntries(new FormData(e.target))); e.target.reset(); await loadTickets(false); await openConversation(data.id, false); message('Обращение отправлено. Администратору создано уведомление и поставлено письмо в очередь.'); }); };
+  $('ticket-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const data = await api('create_ticket', new FormData(e.target)); e.target.reset(); await loadTickets(false); await openConversation(data.id, false); message('Обращение отправлено. Администратору создано уведомление и поставлено письмо в очередь.'); }); };
   async function loadTickets(asAdmin) {
     const data = await api(asAdmin ? 'admin_tickets' : 'tickets'), target = $(asAdmin ? 'admin-tickets' : 'tickets-list'); target.replaceChildren();
     if (!data.tickets.length) target.append(el('p', 'Обращений пока нет.', 'account-muted'));
     for (const ticket of data.tickets) { const box = el('article', null, 'record' + (Number(ticket.unread) ? ' record-new' : '')); box.append(el('h3', '#' + ticket.id + ' · ' + ticket.subject), el('p', (ticket.status === 'closed' ? 'Решено' : 'Открыто') + ' · ' + date(ticket.updated_at), 'account-muted')); if (asAdmin) box.append(el('p', ticket.first_name + ' ' + ticket.last_name + ' · ' + ticket.email), el('p', ticket.telegram, 'account-muted')); if (Number(ticket.unread)) box.append(el('p', 'Новых сообщений: ' + ticket.unread, 'account-kicker')); box.append(button('Открыть переписку', () => openConversation(ticket.id, asAdmin))); target.append(box); }
   }
   $('refresh-tickets').onclick = e => run(e.target, () => loadTickets(false));
+  const photoPreviews = new WeakMap();
+  function showSelectedPhotos(form) {
+    const input = form.querySelector('input[name="photos[]"]'), target = form.querySelector('.selected-photos'); if (!input || !target) return;
+    for (const url of photoPreviews.get(form) || []) URL.revokeObjectURL(url); photoPreviews.set(form, []); target.replaceChildren(); input.setCustomValidity('');
+    const files = Array.from(input.files); form.elements.message.required = files.length === 0;
+    let error = files.length > 3 ? 'Можно прикрепить до 3 фотографий.' : '';
+    for (const file of files) { if (file.size > 5 * 1024 * 1024) error = 'Размер одного фото — до 5 МБ.'; if (file.type && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) error = 'Поддерживаются JPEG, PNG и WebP.'; }
+    if (error) { input.setCustomValidity(error); target.append(el('p', error, 'photo-error')); }
+    else for (const file of files) { const url = URL.createObjectURL(file); photoPreviews.get(form).push(url); const box = el('div', null, 'selected-photo'), image = el('img'); image.src = url; image.alt = 'Выбранное фото'; box.append(image, el('span', file.name)); target.append(box); }
+    if (files.length) target.append(button('Убрать выбранные фото', async () => { input.value = ''; showSelectedPhotos(form); }));
+  }
+  for (const form of [$('ticket-form'), $('reply-form')]) { form.querySelector('input[name="photos[]"]').addEventListener('change', () => showSelectedPhotos(form)); form.addEventListener('reset', () => queueMicrotask(() => showSelectedPhotos(form))); }
+
   function closeConversation() { conversation = null; $('conversation').hidden = true; $('conversation-messages').replaceChildren(); $('reply-form').reset(); }
   $('close-conversation').onclick = closeConversation;
   async function openConversation(id, asAdmin) { conversation = { id, asAdmin, lastId: null }; $('reply-form').reset(); await loadConversation(); $('conversation').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -100,10 +114,12 @@
     if (!conversation) return; const active = conversation, data = await api('read_ticket', { id: active.id, as_admin: active.asAdmin }); if (conversation !== active) return;
     $('conversation').hidden = false; $('conversation-title').textContent = '#' + data.ticket.id + ' · ' + data.ticket.subject; $('conversation-meta').textContent = (data.ticket.status === 'closed' ? 'Обращение решено' : 'Обращение открыто') + ' · последние 200 сообщений'; $('resolve-ticket').hidden = !active.asAdmin || data.ticket.status === 'closed';
     const last = data.messages.length ? data.messages[data.messages.length - 1].id : 0;
-    if (active.lastId !== last) { const target = $('conversation-messages'), atBottom = active.lastId === null || target.scrollTop + target.clientHeight >= target.scrollHeight - 80; target.replaceChildren(); for (const item of data.messages) { const staff = Number(item.is_admin) === 1, box = el('div', null, 'support-message' + (staff ? ' staff' : '')); box.append(el('div', (staff ? 'Поддержка' : item.first_name + ' ' + item.last_name) + ' · ' + date(item.created_at), 'message-author'), el('div', item.body)); target.append(box); } if (atBottom) target.scrollTop = target.scrollHeight; active.lastId = last; }
+    if (active.lastId !== last) { const target = $('conversation-messages'), atBottom = active.lastId === null || target.scrollTop + target.clientHeight >= target.scrollHeight - 80; target.replaceChildren(); for (const item of data.messages) { const staff = Number(item.is_admin) === 1, box = el('div', null, 'support-message' + (staff ? ' staff' : '')); box.append(el('div', (staff ? 'Поддержка' : item.first_name + ' ' + item.last_name) + ' · ' + date(item.created_at), 'message-author'), el('div', item.body));
+      if (item.photos?.length) { const gallery = el('div', null, 'support-photos'); for (const photo of item.photos) { const a = el('a', null, 'support-photo'); a.href = photo.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; const image = el('img'); image.src = photo.url; image.alt = 'Фото к сообщению: ' + photo.file_name; image.loading = 'lazy'; a.append(image, el('span', 'Открыть фото')); gallery.append(a); } box.append(gallery); }
+      target.append(box); } if (atBottom) target.scrollTop = target.scrollHeight; active.lastId = last; }
     await updateSummary();
   }
-  $('reply-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { if (!conversation) return; await api('reply_ticket', { id: conversation.id, message: e.target.elements.message.value, as_admin: conversation.asAdmin }); e.target.reset(); await loadConversation(); await loadTickets(conversation.asAdmin); message('Сообщение отправлено.'); }); };
+  $('reply-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const active = conversation; if (!active) return; const data = new FormData(e.target); data.set('id', active.id); data.set('as_admin', active.asAdmin ? '1' : '0'); await api('reply_ticket', data); e.target.reset(); if (conversation === active) await loadConversation(); await loadTickets(active.asAdmin); message('Сообщение отправлено.'); }); };
   $('resolve-ticket').onclick = e => run(e.target, async () => { if (!conversation) return; await api('set_ticket_status', { id: conversation.id, status: 'closed' }); await loadConversation(); await loadTickets(true); message('Обращение отмечено как решённое.'); });
   function badge(node, value) { if (!node) return; node.hidden = !Number(value); node.textContent = Number(value) > 99 ? '99+' : value; }
   async function updateSummary() {
@@ -140,9 +156,11 @@
   async function loadAdminSubscriptions() {
     const data = await api('admin_subscriptions', undefined, { page: pages.subscriptions, q: $('subscription-query').value }), target = $('admin-subscriptions'); target.replaceChildren();
     if (!data.subscriptions.length) target.append(el('p', 'Подписок пока нет. Загрузите CSV-файл выше.', 'account-muted'));
-    for (const sub of data.subscriptions) { const box = subscriptionCard(sub); box.append(el('p', sub.user_id ? 'Клиент: ' + sub.first_name + ' ' + sub.last_name + ' · ' + sub.email : 'Свободна — ещё не привязана к клиенту', 'account-muted')); target.append(box); }
+    for (const sub of data.subscriptions) { const box = subscriptionCard(sub); box.append(el('p', sub.user_id ? 'Клиент: ' + sub.first_name + ' ' + sub.last_name + ' · ' + sub.email : 'Свободна — ещё не привязана к клиенту', 'account-muted'));
+      if (sub.user_id) box.append(button('Снять привязку', async () => { if (!confirm('Снять привязку ' + sub.name + ' у клиента ' + sub.email + '? Ссылка исчезнет из его кабинета, подписка останется в базе, история оплат сохранится.')) return; await api('unassign_subscription', { id: Number(sub.id), user_id: Number(sub.user_id) }); await loadAdminSubscriptions(); message('Привязка снята. Подписка свободна, история оплат сохранена.'); }, 'account-secondary account-danger'));
+      target.append(box); }
     pager('subscriptions-pager', 'subscriptions', data.subscriptions.length, data.total); $('admin-claims').replaceChildren(); if (!data.claims.length) $('admin-claims').append(el('p', 'Нет запросов, ожидающих обработки.', 'account-muted'));
-    for (const claim of data.claims) { const box = el('article', null, 'record'); box.append(el('h3', claim.name), el('p', claim.first_name + ' ' + claim.last_name + ' · ' + claim.email), el('p', claim.telegram, 'account-muted')); const actions = el('div', null, 'order-buttons'); for (const [status, title] of [['approved', 'Привязать клиенту'], ['rejected', 'Отклонить']]) actions.append(button(title, async () => { await api('resolve_claim', { id: Number(claim.id), status }); await loadAdminSubscriptions(); message('Запрос обработан.'); })); box.append(actions); $('admin-claims').append(box); }
+    for (const claim of data.claims) { const box = el('article', null, 'record'); box.append(el('h3', claim.name), el('p', claimStatus[claim.status] || claim.status, 'account-muted'), el('p', claim.first_name + ' ' + claim.last_name + ' · ' + claim.email), el('p', claim.telegram, 'account-muted')); const actions = el('div', null, 'order-buttons'); for (const [status, title] of [['approved', 'Привязать клиенту'], ['rejected', 'Отклонить']]) actions.append(button(title, async () => { await api('resolve_claim', { id: Number(claim.id), status }); await loadAdminSubscriptions(); message('Запрос обработан.'); })); box.append(actions); $('admin-claims').append(box); }
   }
   $('mail-test').onclick = e => run(e.target, async () => { const data = await api('mail_test', {}); await updateSummary(); message(data.ready ? 'Тестовое письмо поставлено в очередь отправки.' : 'Письмо сохранено в очереди. Сначала настройте отправку в private/config.php.'); });
   $('mail-retry').onclick = e => run(e.target, async () => { const data = await api('mail_retry', {}); await updateSummary(); message(data.ready ? 'Почтовым сервером принято: ' + data.sent + '. Не удалось отправить: ' + data.failed + '.' : 'Сначала настройте отправку писем в private/config.php.'); });

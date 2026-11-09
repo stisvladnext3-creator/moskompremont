@@ -13,9 +13,10 @@ function mailReady(array $config): bool {
  if ($m['transport']==='mail') return function_exists('mail');
  return $m['transport']==='smtp' && is_string($m['smtp_host']) && $m['smtp_host']!=='' && (!$m['smtp_auth'] || ($m['smtp_user']!=='' && $m['smtp_password']!==''));
 }
-function notifyAdmin(PDO $db,array $config,string $key,string $type,int $userId,string $title,string $body,?string $orderId=null): void {
+function notifyAdmin(PDO $db,array $config,string $key,string $type,int $userId,string $title,string $body,?string $orderId=null,bool $email=true): void {
  $q=$db->prepare('INSERT INTO internet_admin_events(event_key,type,user_id,order_id,title,body) VALUES (?,?,?,?,?,?)');
  $q->execute([$key,$type,$userId,$orderId,$title,$body]);$eventId=(int)$db->lastInsertId();
+ if (!$email)return;
  $recipient=$config['admin_email'] ?? 'sania.iwannikow@yandex.ru';
  if (!is_string($recipient) || !filter_var($recipient,FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Invalid notification recipient');
  $base=rtrim($config['origin'],'/').'/';
