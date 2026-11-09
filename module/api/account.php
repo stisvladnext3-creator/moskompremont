@@ -24,7 +24,7 @@ try {
  if (isset($_SESSION['last_seen']) && time()-$_SESSION['last_seen']>7200) {$_SESSION=[];session_regenerate_id(true);}
  $_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
  $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
- $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription'];
+ $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions'];
  if (in_array($action,$writes,true)) {
   if ($method!=='POST')problem('Требуется POST.',405);
   if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
@@ -36,7 +36,7 @@ try {
    $body=$_POST;
   } else {
    if (stripos($_SERVER['CONTENT_TYPE'] ?? '','application/json')!==0)problem('Требуется JSON.',415);
-   $max=$action==='import_subscriptions'?1500000:20000;
+   $max=match($action){'import_subscriptions'=>1500000,'direct_assign_subscriptions'=>200000,default=>20000};
    if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0)>$max)problem('Слишком большой запрос.',413);
    $raw=file_get_contents('php://input',false,null,0,$max+1);if (strlen($raw)>$max)problem('Слишком большой запрос.',413);
    try {$body=json_decode($raw,true,16,JSON_THROW_ON_ERROR);}catch(Throwable $e){problem('Некорректный JSON.');}
@@ -55,7 +55,7 @@ try {
   finally {while(ob_get_level()>$level){if(!@ob_end_clean())break;}}
  });
  $user=isset($_SESSION['user_id'])?query($db,'SELECT id,first_name,last_name,telegram,email,created_at FROM internet_users WHERE id=?',[$_SESSION['user_id']])->fetch():null;
- if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>3,'photo_limits'=>photoLimits()]);
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>4,'photo_limits'=>photoLimits()]);
  if ($action==='register') {
   limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
   if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
@@ -81,7 +81,23 @@ try {
  }
  if ($action==='logout'){$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));answer(['ok'=>true,'csrf'=>$_SESSION['csrf']]);}
  if (!$user)problem('Сначала войдите в кабинет.',401);$userId=(int)$user['id'];$admin=publicUser($user,$config)['is_admin'];
- if (str_starts_with($action,'admin_') || in_array($action,['review_order','issue_subscription','import_subscriptions','resolve_claim','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription'],true)) {if (!$admin)problem('Нет доступа.',403);}
+ if (str_starts_with($action,'admin_') || in_array($action,['review_order','issue_subscription','import_subscriptions','resolve_claim','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions'],true)) {if (!$admin)problem('Нет доступа.',403);}
+ if ($action==='admin_user_search') {
+  $search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',254):'';
+  $where='';$args=[];$order=' ORDER BY id DESC';
+  if ($search!==''){$where=" WHERE email LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name,' ',last_name) LIKE ? OR telegram LIKE ? OR id=?";$like='%'.$search.'%';$args=[$like,$like,$like,$like,$like,preg_match('/\A[0-9]+\z/D',$search)?(int)$search:0,$search];$order=' ORDER BY CASE WHEN email=? THEN 0 ELSE 1 END,id DESC';}
+  $rows=query($db,'SELECT id,first_name,last_name,email,telegram FROM internet_users'.$where.$order.' LIMIT 50',$args)->fetchAll();
+  answer(['users'=>$rows,'limit'=>50]);
+ }
+ if ($action==='direct_assign_subscriptions') {
+  if (!isset($body['user_id']) || !is_int($body['user_id']) || $body['user_id']<1)problem('Выберите клиента для назначения подписок.');
+  $wanted=directAssignmentItems($body);$recipient=query($db,'SELECT id,first_name,last_name,email,telegram FROM internet_users WHERE id=?',[$body['user_id']])->fetch();
+  if (!$recipient)problem('Клиент не найден. Обновите список пользователей.',404);
+  $db->beginTransaction();
+  try {$result=assignDirectly($db,$recipient,$userId,$wanted);$db->commit();}
+  catch(PDOException $e){if ($db->inTransaction())$db->rollBack();if (in_array($e->getCode(),['23000','40001'],true))problem('База подписок изменилась. Обновите список и повторите назначение.',409);throw $e;}
+  answer($result);
+ }
  if ($action==='subscriptions') {
   $items=query($db,'SELECT id,name,url,assigned_at FROM internet_subscriptions WHERE user_id=? ORDER BY assigned_at DESC,id DESC',[$userId])->fetchAll();
   $claims=query($db,'SELECT id,name,status,created_at FROM internet_subscription_claims WHERE user_id=? ORDER BY id DESC',[$userId])->fetchAll();answer(['subscriptions'=>$items,'claims'=>$claims]);

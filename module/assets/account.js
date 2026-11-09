@@ -4,6 +4,7 @@
   if (!$('auth-section')) return;
   let csrf = '', user = null, payment = { available: false }, mode = 'client';
   let clientTab = 'subscriptions', adminTab = 'support', conversation = null;
+  let assignmentUsersLoaded = false; const assignmentUsers = new Map();
   const pages = { users: 0, payments: 0, subscriptions: 0 };
   const orderStatus = { created: 'Ожидает оплаты', submitted: 'На ручной проверке', paid: 'Оплата подтверждена', rejected: 'Оплата не подтверждена' };
   const claimStatus = { pending: 'Ожидает ссылки или проверки', approved: 'Подписка добавлена', rejected: 'Запрос отклонён', revoked: 'Привязка снята администратором' };
@@ -33,7 +34,7 @@
   function signedOut() {
     user = null; conversation = null; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
     for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'conversation-messages']) $(id).replaceChildren();
-    document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset();
+    document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
   }
   $('logout-button').onclick = e => run(e.target, async () => { await api('logout', {}); signedOut(); message('Вы вышли из кабинета.'); });
   async function showCabinet() {
@@ -131,7 +132,7 @@
   async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); await updateSummary(); }
   async function loadUsers() {
     const data = await api('admin_users', undefined, { page: pages.users }), target = $('admin-users'); target.replaceChildren();
-    for (const item of data.users) { const fresh = item.event_id && !item.event_read_at, box = el('article', null, 'record' + (fresh ? ' record-new' : '')); box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name), el('p', 'Почта: ' + item.email), el('p', 'Telegram: ' + item.telegram), el('p', 'Регистрация: ' + date(item.created_at), 'account-muted'), el('p', 'Указал подписки: ' + (item.claims.map(c => c.name).join(', ') || 'нет')), el('p', 'Выданы: ' + (item.subscriptions.map(s => s.name).join(', ') || 'пока нет'), 'account-muted')); if (fresh) box.append(readButton(item, loadUsers)); target.append(box); }
+    for (const item of data.users) { const fresh = item.event_id && !item.event_read_at, box = el('article', null, 'record' + (fresh ? ' record-new' : '')); box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name), el('p', 'Почта: ' + item.email), el('p', 'Telegram: ' + item.telegram), el('p', 'Регистрация: ' + date(item.created_at), 'account-muted'), el('p', 'Указал подписки: ' + (item.claims.map(c => c.name).join(', ') || 'нет')), el('p', 'Выданы: ' + (item.subscriptions.map(s => s.name).join(', ') || 'пока нет'), 'account-muted')); if (fresh) box.append(readButton(item, loadUsers)); box.append(button('Назначить подписки', () => chooseDirectRecipient(item))); target.append(box); }
     pager('users-pager', 'users', data.users.length);
   }
   async function loadAdminOrders() {
@@ -154,14 +155,50 @@
   $('import-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const file = e.target.elements.file.files[0]; if (!file || file.size > 1048576) throw Error('Выберите CSV размером до 1 МБ.'); const result = await api('import_subscriptions', { csv: await file.text() }); e.target.reset(); await loadAdminSubscriptions(); message('Импорт завершён. Добавлено: ' + result.added + ', обновлено: ' + result.updated + ', привязано к клиентам: ' + result.assigned + '.'); }); };
   $('subscription-search').onsubmit = e => { e.preventDefault(); pages.subscriptions = 0; run(e.submitter, loadAdminSubscriptions); };
   async function loadAdminSubscriptions() {
+    if (!assignmentUsersLoaded) await loadAssignmentUsers();
     const data = await api('admin_subscriptions', undefined, { page: pages.subscriptions, q: $('subscription-query').value }), target = $('admin-subscriptions'); target.replaceChildren();
     if (!data.subscriptions.length) target.append(el('p', 'Подписок пока нет. Загрузите CSV-файл выше.', 'account-muted'));
     for (const sub of data.subscriptions) { const box = subscriptionCard(sub); box.append(el('p', sub.user_id ? 'Клиент: ' + sub.first_name + ' ' + sub.last_name + ' · ' + sub.email : 'Свободна — ещё не привязана к клиенту', 'account-muted'));
       if (sub.user_id) box.append(button('Снять привязку', async () => { if (!confirm('Снять привязку ' + sub.name + ' у клиента ' + sub.email + '? Ссылка исчезнет из его кабинета, подписка останется в базе, история оплат сохранится.')) return; await api('unassign_subscription', { id: Number(sub.id), user_id: Number(sub.user_id) }); await loadAdminSubscriptions(); message('Привязка снята. Подписка свободна, история оплат сохранена.'); }, 'account-secondary account-danger'));
+      if (!sub.user_id) box.append(button('Назначить клиенту', async () => { const input = $('direct-assignment-form').elements.names; const names = input.value.split(/[\s,;]+/).filter(Boolean); if (!names.some(name => name.toUpperCase() === sub.name.toUpperCase())) names.push(sub.name); input.value = names.join(', '); $('direct-assignment').scrollIntoView({ behavior: 'smooth', block: 'start' }); if (!$('assignment-user').value) $('assignment-user').focus(); else input.focus(); }));
       target.append(box); }
     pager('subscriptions-pager', 'subscriptions', data.subscriptions.length, data.total); $('admin-claims').replaceChildren(); if (!data.claims.length) $('admin-claims').append(el('p', 'Нет запросов, ожидающих обработки.', 'account-muted'));
     for (const claim of data.claims) { const box = el('article', null, 'record'); box.append(el('h3', claim.name), el('p', claimStatus[claim.status] || claim.status, 'account-muted'), el('p', claim.first_name + ' ' + claim.last_name + ' · ' + claim.email), el('p', claim.telegram, 'account-muted')); const actions = el('div', null, 'order-buttons'); for (const [status, title] of [['approved', 'Привязать клиенту'], ['rejected', 'Отклонить']]) actions.append(button(title, async () => { await api('resolve_claim', { id: Number(claim.id), status }); await loadAdminSubscriptions(); message('Запрос обработан.'); })); box.append(actions); $('admin-claims').append(box); }
   }
+  async function loadAssignmentUsers(query = '', selectedId = 0) {
+    const select = $('assignment-user'); select.disabled = true; if (!selectedId) select.value = '';
+    try {
+      const data = await api('admin_user_search', undefined, { q: query }); select.replaceChildren(new Option('Выберите клиента', ''));
+      for (const item of data.users) { assignmentUsers.set(Number(item.id), item); select.append(new Option('#' + item.id + ' · ' + item.first_name + ' ' + item.last_name + ' · ' + item.email, String(item.id))); }
+      select.value = selectedId ? String(selectedId) : ''; assignmentUsersLoaded = true;
+      $('assignment-user-hint').textContent = data.users.length >= data.limit ? 'Показаны первые ' + data.limit + ' клиентов. Уточните поиск по почте, имени или Telegram.' : data.users.length ? 'Найдено клиентов: ' + data.users.length + '. Проверьте имя и почту получателя.' : 'Клиент не найден. Проверьте поиск или дождитесь его регистрации.';
+    } finally { select.disabled = false; }
+  }
+  async function chooseDirectRecipient(item) {
+    await selectAdmin('subscriptions'); $('assignment-user-query').value = item.email; await loadAssignmentUsers(item.email, Number(item.id));
+    $('direct-assignment').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('direct-assignment-form').elements.names.focus();
+  }
+  $('assignment-user-search').onsubmit = e => { e.preventDefault(); run(e.submitter, () => loadAssignmentUsers($('assignment-user-query').value)); };
+  function resetDirectRows() { $('direct-new-subscriptions').replaceChildren(); addDirectRow(); }
+  function addDirectRow() {
+    const target = $('direct-new-subscriptions'); if (target.children.length >= 20) return;
+    const row = el('fieldset', null, 'direct-subscription-row'); row.dataset.directRow = '';
+    const legend = el('legend', 'Новая подписка'), nameLabel = el('label', 'Название новой подписки'), name = el('input'); name.dataset.directName = ''; name.maxLength = 100; name.placeholder = 'Например VPN5092'; nameLabel.append(name);
+    const urlLabel = el('label', 'Новая подписочная ссылка'), url = el('textarea'); url.dataset.directUrl = ''; url.maxLength = 8192; url.rows = 2; url.placeholder = 'Вставьте ссылку'; urlLabel.append(url);
+    const syncRequired = () => { name.required = url.required = !!(name.value.trim() || url.value.trim()); }; name.oninput = url.oninput = syncRequired;
+    const remove = button('Убрать строку', async () => { row.remove(); $('add-direct-subscription').disabled = false; });
+    row.append(legend, nameLabel, urlLabel, remove); target.append(row); $('add-direct-subscription').disabled = target.children.length >= 20;
+  }
+  $('add-direct-subscription').onclick = addDirectRow; resetDirectRows();
+  $('direct-assignment-form').onsubmit = e => {
+    e.preventDefault(); run(e.submitter, async () => {
+      const select = $('assignment-user'), recipientId = Number(select.value); if (!recipientId || select.disabled) throw Error('Сначала выберите клиента.');
+      const rows = Array.from($('direct-new-subscriptions').children).map(row => ({ name: row.querySelector('[data-direct-name]').value, url: row.querySelector('[data-direct-url]').value }));
+      const data = await api('direct_assign_subscriptions', { user_id: recipientId, names: e.target.elements.names.value, new_subscriptions: rows });
+      e.target.elements.names.value = ''; resetDirectRows(); await loadAdminSubscriptions();
+      const recipient = assignmentUsers.get(recipientId); message('Клиенту ' + (recipient ? recipient.email : '#' + recipientId) + ' назначено подписок: ' + data.assigned + '. Новых в базе: ' + data.created + '. Уже были у клиента: ' + data.already_owned + '.');
+    });
+  };
   $('mail-test').onclick = e => run(e.target, async () => { const data = await api('mail_test', {}); await updateSummary(); message(data.ready ? 'Тестовое письмо поставлено в очередь отправки.' : 'Письмо сохранено в очереди. Сначала настройте отправку в private/config.php.'); });
   $('mail-retry').onclick = e => run(e.target, async () => { const data = await api('mail_retry', {}); await updateSummary(); message(data.ready ? 'Почтовым сервером принято: ' + data.sent + '. Не удалось отправить: ' + data.failed + '.' : 'Сначала настройте отправку писем в private/config.php.'); });
   setInterval(async () => { if (!user || document.hidden) return; try { if (conversation) await loadConversation(); else await updateSummary(); } catch (e) { if (e.status === 401) message('Сессия завершена. Войдите снова.', true); } }, 20000);

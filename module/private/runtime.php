@@ -86,3 +86,47 @@ function withOrderSubscriptions(PDO $db,array $orders): array {
 }
 
 require_once __DIR__.'/support-photos.php';
+
+function directAssignmentItems(array $body): array {
+ $wanted=[];
+ foreach(claimNames(field($body,'names',2500,true)) as $name)$wanted[$name]=null;
+ $rows=$body['new_subscriptions'] ?? [];
+ if (!is_array($rows) || !array_is_list($rows) || count($rows)>20)problem('Можно добавить до 20 новых подписок за раз.');
+ foreach($rows as $row) {
+  if (!is_array($row))problem('Проверьте данные новой подписки.');
+  $name=field($row,'name',100);$url=field($row,'url',8192);
+  if ($name==='' && $url==='')continue;
+  if ($name==='' || $url==='')problem('Для новой подписки укажите и название, и ссылку.');
+  $name=subscriptionName($name);$url=subscriptionUrl($url);
+  if (isset($wanted[$name]) && $wanted[$name]!==$url)problem('Для названия '.$name.' указаны разные ссылки.');
+  $wanted[$name]=$url;
+ }
+ if (!$wanted)problem('Укажите названия из базы или добавьте новую подписку со ссылкой.');
+ if (count($wanted)>20)problem('За раз можно назначить до 20 подписок.');
+ ksort($wanted,SORT_STRING);return $wanted;
+}
+function assignDirectly(PDO $db,array $recipient,int $adminId,array $wanted): array {
+ if (!$db->inTransaction())throw new LogicException('Direct assignment requires a transaction');
+ $recipientId=(int)$recipient['id'];$assigned=0;$created=0;$already=0;
+ foreach($wanted as $name=>$url) {
+  $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();
+  if ($sub) {
+   if ($sub['user_id']!==null && (int)$sub['user_id']!==$recipientId)problem('Подписка '.$name.' уже закреплена за другим клиентом. Сначала снимите её привязку.',409);
+   if ($url!==null && $url!==$sub['url'])problem('Название '.$name.' уже есть в базе с другой ссылкой. Выберите его по названию или укажите новое название.',409);
+   $id=(int)$sub['id'];
+   if ((int)$sub['user_id']===$recipientId)$already++;
+   else {query($db,'UPDATE internet_subscriptions SET user_id=?,assigned_at=CURRENT_TIMESTAMP WHERE id=?',[$recipientId,$id]);$assigned++;}
+  } else {
+   if ($url===null)problem('Подписка '.$name.' не найдена в базе. Добавьте её название вместе со ссылкой.',404);
+   query($db,'INSERT INTO internet_subscriptions(name,url,user_id,assigned_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',[$name,$url,$recipientId]);$id=(int)$db->lastInsertId();$assigned++;$created++;
+  }
+  // An administrator may explicitly restore a previously removed assignment.
+  query($db,'DELETE FROM internet_subscription_revocations WHERE subscription_id=? AND user_id=?',[$id,$recipientId]);
+  query($db,"UPDATE internet_subscription_claims SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE user_id=? AND name=? AND status IN ('pending','revoked','rejected')",[$recipientId,$name]);
+ }
+ if ($assigned>0)query($db,'INSERT INTO internet_admin_events(event_key,type,user_id,title,body) VALUES (?,?,?,?,?)',[
+  'direct-assignment:'.bin2hex(random_bytes(12)),'subscription',$recipientId,'Подписки назначены вручную',
+  contactText($recipient)."\nНазвания: ".implode(', ',array_keys($wanted))."\nНазначил администратор #".$adminId."\nВыдано без привязки к заявке на оплату.",
+ ]);
+ return ['assigned'=>$assigned,'created'=>$created,'already_owned'=>$already,'names'=>array_keys($wanted),'user_id'=>$recipientId];
+}
