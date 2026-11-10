@@ -15,6 +15,7 @@ function answer(array $body,int $status=200): never {
  $GLOBALS['internet_json_replied']=true;cleanJsonOutput();http_response_code($status);echo $payload;exit;
 }
 require_once dirname(__DIR__).'/private/runtime.php';
+require_once dirname(__DIR__).'/private/monitoring.php';
 $db=null;
 try {
  $path=getenv('INTERNET_CONFIG') ?: dirname(__DIR__).'/private/config.php';if (!is_file($path))problem('Кабинет ещё не настроен. Обратитесь к владельцу сайта.',503);
@@ -24,7 +25,7 @@ try {
  if (isset($_SESSION['last_seen']) && time()-$_SESSION['last_seen']>7200) {$_SESSION=[];session_regenerate_id(true);}
  $_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
  $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
- $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key'];
+ $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key'];
  if (in_array($action,$writes,true)) {
   if ($method!=='POST')problem('Требуется POST.',405);
   if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
@@ -55,7 +56,7 @@ try {
   finally {while(ob_get_level()>$level){if(!@ob_end_clean())break;}}
  });
  $user=isset($_SESSION['user_id'])?query($db,'SELECT id,first_name,last_name,telegram,email,created_at FROM internet_users WHERE id=?',[$_SESSION['user_id']])->fetch():null;
- if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>6,'photo_limits'=>photoLimits()]);
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>8,'photo_limits'=>photoLimits()]);
  if ($action==='register') {
   limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
   if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
@@ -82,6 +83,21 @@ try {
  if ($action==='logout'){$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));answer(['ok'=>true,'csrf'=>$_SESSION['csrf']]);}
  if (!$user)problem('Сначала войдите в кабинет.',401);$userId=(int)$user['id'];$admin=publicUser($user,$config)['is_admin'];
  if (str_starts_with($action,'admin_') || in_array($action,['review_order','issue_subscription','import_subscriptions','resolve_claim','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions'],true)) {if (!$admin)problem('Нет доступа.',403);}
+ if ($action==='admin_monitor')answer(monitorAdmin($db));
+ if ($action==='admin_monitor_save')answer(monitorSave($db,$body));
+ if ($action==='admin_monitor_token')answer(['token'=>monitorToken($db)]);
+ if ($action==='admin_clients') {
+  $search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',254):'';$where='';$args=[];$offset=max(0,min(1000000,(int)($_GET['offset'] ?? 0)));
+  if($search!==''){$where=" WHERE email LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name,' ',last_name) LIKE ? OR telegram LIKE ? OR id=?";$like='%'.$search.'%';$args=[$like,$like,$like,$like,'%'.(phoneContact($search) ?? $search).'%',preg_match('/\A[0-9]+\z/D',$search)?(int)$search:0];}
+  $total=(int)query($db,'SELECT COUNT(*) FROM internet_users'.$where,$args)->fetchColumn();
+  $rows=query($db,'SELECT id,first_name,last_name,email,telegram,created_at FROM internet_users'.$where." ORDER BY id DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();
+  $users=[];foreach($rows as $row){$id=(int)$row['id'];$row['subscriptions']=[];$row['router_keys']=[];$users[$id]=$row;}
+  if($users){$ids=array_keys($users);$marks=implode(',',array_fill(0,count($ids),'?'));
+   foreach(query($db,"SELECT id,user_id,name,assigned_at FROM internet_subscriptions WHERE user_id IN ($marks) ORDER BY name",$ids)->fetchAll() as $sub)$users[(int)$sub['user_id']]['subscriptions'][]=$sub;
+   foreach(query($db,"SELECT id,user_id,label,key_format,assigned_at FROM internet_router_keys WHERE user_id IN ($marks) ORDER BY label,id",$ids)->fetchAll() as $key)$users[(int)$key['user_id']]['router_keys'][]=$key;
+  }
+  answer(['users'=>array_values($users),'total'=>$total]);
+ }
  if ($action==='admin_user_search') {
   $search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',254):'';
   $where='';$args=[];$order=' ORDER BY id DESC';
@@ -125,6 +141,14 @@ try {
    $db->commit();
   } catch(PDOException $e){if ($db->inTransaction())$db->rollBack();if (in_array($e->getCode(),['23000','40001'],true))problem('Ключи изменились. Обновите список и повторите выдачу.',409);throw $e;}
   answer(['ok'=>true,'id'=>$id,'already_assigned'=>(bool)$already,'user_id'=>$recipientId]);
+ }
+ if ($action==='admin_delete_router_key') {
+  $id=$body['id'] ?? null;$owner=$body['user_id'] ?? null;
+  if(!is_int($id)||$id<1||!array_key_exists('user_id',$body)||($owner!==null&&(!is_int($owner)||$owner<1)))problem('Выберите ключ и его текущего владельца.');
+  $db->beginTransaction();$key=query($db,'SELECT id,label,user_id FROM internet_router_keys WHERE id=? FOR UPDATE',[$id])->fetch();if(!$key)problem('Ключ уже удалён.',404);
+  $current=$key['user_id']===null?null:(int)$key['user_id'];if($current!==$owner)problem('Владелец ключа изменился. Обновите список перед удалением.',409);
+  query($db,'DELETE FROM internet_router_keys WHERE id=?',[$id]);if($owner!==null)routerKeyJournal($db,$owner,$userId,$id,$key['label'],true,true);
+  $db->commit();answer(['ok'=>true]);
  }
  if ($action==='admin_unassign_router_key') {
   $id=$body['id'] ?? null;$owner=$body['user_id'] ?? null;if (!is_int($id) || !is_int($owner) || $id<1 || $owner<1)problem('Выберите ключ и его текущего владельца.');
@@ -271,11 +295,12 @@ try {
   $rows=query($db,"SELECT s.*,u.first_name,u.last_name,u.email FROM internet_subscriptions s LEFT JOIN internet_users u ON u.id=s.user_id $where ORDER BY s.id DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();
   $claims=query($db,"SELECT c.*,u.first_name,u.last_name,u.email,u.telegram FROM internet_subscription_claims c JOIN internet_users u ON u.id=c.user_id WHERE c.status IN ('pending','revoked') ORDER BY c.id LIMIT 200")->fetchAll();answer(['subscriptions'=>$rows,'claims'=>$claims,'total'=>$total]);
  }
+ if ($action==='admin_mail_diagnostics')answer(mailDiagnostics($db,$config));
  if ($action==='mail_test') {
   limitRate($db,'mailtest',3,$userId);$db->beginTransaction();notifyAdmin($db,$config,'mail-test:'.bin2hex(random_bytes(8)),'system',$userId,'Проверка почтовых уведомлений','Письма из кабинета МосКомпРемонт отправляются на этот адрес.');$db->commit();answer(['ok'=>true,'ready'=>mailReady($config)]);
  }
  if ($action==='mail_retry') {
-  limitRate($db,'mailretry',10,$userId);query($db,"UPDATE internet_mail_outbox SET status='retry',attempts=0,next_attempt_at=CURRENT_TIMESTAMP WHERE status='failed'");query($db,"UPDATE internet_mail_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE status='retry'");answer(sendPendingMail($db,$config,3));
+  limitRate($db,'mailretry',10,$userId);query($db,"UPDATE internet_mail_outbox SET status='retry',attempts=0,next_attempt_at=CURRENT_TIMESTAMP WHERE status='failed'");query($db,"UPDATE internet_mail_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE status='retry'");answer(sendPendingMail($db,$config,1));
  }
  problem('Действие не найдено.',404);
 } catch(AccountError $e) {if ($db instanceof PDO && $db->inTransaction())$db->rollBack();answer(['error'=>$e->getMessage()],$e->httpStatus);}

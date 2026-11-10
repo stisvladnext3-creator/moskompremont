@@ -16,9 +16,9 @@ function authorizedRouterKey(PDO $db,int $id,int $userId,bool $admin): array {
  $key=query($db,'SELECT id,label,key_format,key_value,user_id,assigned_at FROM internet_router_keys WHERE id=? AND (user_id=? OR ?=1)',[$id,$userId,(int)$admin])->fetch();
  if (!$key)problem('Ключ не найден.',404);return $key;
 }
-function routerKeyJournal(PDO $db,int $recipientId,int $adminId,int $keyId,string $label,bool $removed=false): void {
+function routerKeyJournal(PDO $db,int $recipientId,int $adminId,int $keyId,string $label,bool $removed=false,bool $deleted=false): void {
  query($db,'INSERT INTO internet_admin_events(event_key,type,user_id,title,body,read_at) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)',[
-  'router-key:'.bin2hex(random_bytes(12)),'subscription',$recipientId,$removed?'Снята привязка ключа роутера':'Ключ для роутера выдан',
+  'router-key:'.bin2hex(random_bytes(12)),'subscription',$recipientId,$deleted?'Ключ роутера удалён из базы':($removed?'Снята привязка ключа роутера':'Ключ для роутера выдан'),
   'Ключ #'.$keyId.' · '.$label."\nКлиент #".$recipientId."\nАдминистратор #".$adminId."\nСодержимое ключа в журнал не записывается.",
  ]);
 }

@@ -7,11 +7,36 @@ function mailSettings(array $config): array {
   'smtp_auth'=>true,'smtp_user'=>'','smtp_password'=>'',
  ],is_array($config['mail'] ?? null)?$config['mail']:[]);
 }
-function mailReady(array $config): bool {
- $m=mailSettings($config);
- if (!$m['enabled'] || !filter_var($m['from'],FILTER_VALIDATE_EMAIL)) return false;
- if ($m['transport']==='mail') return function_exists('mail');
- return $m['transport']==='smtp' && is_string($m['smtp_host']) && $m['smtp_host']!=='' && (!$m['smtp_auth'] || ($m['smtp_user']!=='' && $m['smtp_password']!==''));
+function mailIssues(array $config): array {
+ $m=mailSettings($config);$issues=[];
+ if(!$m['enabled'])$issues[]='Отправка писем выключена: mail.enabled должен быть true.';
+ if(!filter_var($m['from'],FILTER_VALIDATE_EMAIL))$issues[]='Не заполнен корректный адрес отправителя mail.from.';
+ if($m['transport']==='mail'){if(!function_exists('mail'))$issues[]='Функция PHP mail недоступна на хостинге.';return $issues;}
+ if($m['transport']!=='smtp'){$issues[]='Укажите mail.transport: smtp или mail.';return $issues;}
+ if(!is_string($m['smtp_host'])||trim($m['smtp_host'])==='')$issues[]='Не заполнен SMTP-сервер.';
+ if(!is_numeric($m['smtp_port'])||(int)$m['smtp_port']<1||(int)$m['smtp_port']>65535)$issues[]='Проверьте порт SMTP.';
+ if(!in_array($m['smtp_encryption'],['ssl','tls','none'],true))$issues[]='Проверьте шифрование SMTP.';
+ if($m['smtp_encryption']!=='none'&&!extension_loaded('openssl'))$issues[]='На PHP не включено расширение OpenSSL.';
+ if($m['smtp_auth']&&(!is_string($m['smtp_user'])||trim($m['smtp_user'])===''))$issues[]='Не заполнен логин SMTP.';
+ if($m['smtp_auth']&&(!is_string($m['smtp_password'])||trim($m['smtp_password'])===''||preg_match('/СЮДА_|YOUR_|ПАРОЛЬ_ПРИЛОЖЕНИЯ/iu',$m['smtp_password'])))$issues[]='Укажите настоящий пароль приложения почты в mail.smtp_password.';
+ return $issues;
+}
+function mailReady(array $config): bool {return !mailIssues($config);}
+function mailErrorMessage(Throwable $error): string {
+ $text=strtolower($error->getMessage());
+ if(preg_match('/authenticat|password|535|login failed/',$text))return 'SMTP_AUTH: почтовый сервер отклонил вход. Проверьте логин и пароль приложения Яндекса.';
+ if(preg_match('/certificate|crypto|tls|ssl/',$text))return 'SMTP_TLS: не удалось установить защищённое соединение. Проверьте порт, шифрование и сертификаты PHP.';
+ if(preg_match('/connect|timed out|resolve|getaddrinfo|network|refused/',$text))return 'SMTP_CONNECT: не удалось подключиться к SMTP. Проверьте адрес, порт и разрешение исходящих соединений на хостинге.';
+ if(preg_match('/recipient|rcpt|address|sender|550|553/',$text))return 'SMTP_ADDRESS: проверьте отправителя и получателя. Для Яндекса отправитель обычно совпадает с логином SMTP.';
+ return 'SMTP_SEND: сервер не принял письмо. Проверьте настройки отправителя и ограничения почты.';
+}
+function mailHeartbeat(PDO $db,int $sent,int $failed): void {
+ try{$db->prepare('INSERT INTO internet_monitor(id,mail_checked_at,mail_last_sent,mail_last_failed) VALUES (1,UTC_TIMESTAMP(),?,?) ON DUPLICATE KEY UPDATE mail_checked_at=UTC_TIMESTAMP(),mail_last_sent=VALUES(mail_last_sent),mail_last_failed=VALUES(mail_last_failed)')->execute([$sent,$failed]);}catch(PDOException $e){if($e->getCode()!=='42S02'&&$e->getCode()!=='42S22')throw $e;}
+}
+function mailDiagnostics(PDO $db,array $config): array {
+ $worker=null;try{$worker=$db->query('SELECT mail_checked_at,mail_last_sent,mail_last_failed FROM internet_monitor WHERE id=1')->fetch();}catch(PDOException $e){if($e->getCode()!=='42S02'&&$e->getCode()!=='42S22')throw $e;}
+ $rows=$db->query("SELECT id,status,attempts,last_error,next_attempt_at,sent_at FROM internet_mail_outbox ORDER BY id DESC LIMIT 20")->fetchAll();
+ return ['ready'=>mailReady($config),'issues'=>mailIssues($config),'worker'=>$worker ?: null,'messages'=>$rows];
 }
 function notifyAdmin(PDO $db,array $config,string $key,string $type,int $userId,string $title,string $body,?string $orderId=null,bool $email=true): void {
  $q=$db->prepare('INSERT INTO internet_admin_events(event_key,type,user_id,order_id,title,body) VALUES (?,?,?,?,?,?)');
@@ -26,9 +51,9 @@ function notifyAdmin(PDO $db,array $config,string $key,string $type,int $userId,
  $GLOBALS['internet_mail_queued']=true;
 }
 function sendPendingMail(PDO $db,array $config,int $limit=3): array {
- if (!mailReady($config)) return ['sent'=>0,'failed'=>0,'ready'=>false];
+ if (!mailReady($config)){mailHeartbeat($db,0,0);return ['sent'=>0,'failed'=>0,'ready'=>false,'issues'=>mailIssues($config)];}
  foreach (['Exception','SMTP','PHPMailer'] as $class) require_once __DIR__.'/vendor/PHPMailer/src/'.$class.'.php';
- $settings=mailSettings($config);$sent=0;$failed=0;
+ $settings=mailSettings($config);$sent=0;$failed=0;$errors=[];
  $db->exec("UPDATE internet_mail_outbox SET status='failed',lease_until=NULL,last_error='Отправка прервана после 10 попыток.' WHERE status='sending' AND lease_until<CURRENT_TIMESTAMP AND attempts>=10");
  for ($i=0;$i<max(1,min($limit,20));$i++) {
   $db->beginTransaction();
@@ -52,8 +77,8 @@ function sendPendingMail(PDO $db,array $config,int $limit=3): array {
    $attempts=(int)$item['attempts']+1;$delay=min(3600,60*(2**min($attempts-1,6)));
    $status=$attempts>=10?'failed':'retry';
    // SMTP diagnostics can contain credentials or message content: do not expose them.
-   $db->prepare('UPDATE internet_mail_outbox SET status=?,next_attempt_at=FROM_UNIXTIME(?),lease_until=NULL,last_error=? WHERE id=?')->execute([$status,time()+$delay,'Ошибка отправки: проверьте настройки SMTP или почту хостинга.',$item['id']]);$failed++;
+   $reason=mailErrorMessage($e);$errors[]=$reason;$db->prepare('UPDATE internet_mail_outbox SET status=?,next_attempt_at=FROM_UNIXTIME(?),lease_until=NULL,last_error=? WHERE id=?')->execute([$status,time()+$delay,$reason,$item['id']]);$failed++;
   }
  }
- return ['sent'=>$sent,'failed'=>$failed,'ready'=>true];
+ mailHeartbeat($db,$sent,$failed);return ['sent'=>$sent,'failed'=>$failed,'ready'=>true,'errors'=>array_values(array_unique($errors))];
 }
