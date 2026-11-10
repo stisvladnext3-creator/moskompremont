@@ -34,6 +34,19 @@
     "cabinetText": "1. Откройте «Мои подписки» в личном кабинете и скопируйте нужную ссылку.\n2. Откройте приложение Happ, V2raytun или Incy.\n3. Нажмите «+» или «Импорт из буфера».\n4. Подключитесь к новому серверу."
   },
   {
+    "id": "v2raytun-import-clipboard",
+    "includeWithCustom": true,
+    "title": "V2rayTun — добавление ссылки",
+    "text": "1. Скопируйте выданную ссылку.\n2. В V2rayTun нажмите «+» в правом верхнем углу.\n3. Выберите «Импорт из буфера обмена».",
+    "cabinetText": "1. Откройте «Мои подписки» в личном кабинете и скопируйте выданную ссылку.\n2. В V2rayTun нажмите «+» в правом верхнем углу.\n3. Выберите «Импорт из буфера обмена»."
+  },
+  {
+    "id": "v2raytun-remove-subscription",
+    "includeWithCustom": true,
+    "title": "V2rayTun — удаление подписки из приложения",
+    "text": "1. В V2rayTun зажмите пальцем название группы подписки.\n2. В появившемся меню нажмите «Удалить»."
+  },
+  {
     "title": "Invisible Man — настройка подписки",
     "text": "1. Скопируйте ссылку на этой странице.\n2. Откройте Invisible Man и нажмите «Manage server configuration».\n3. Перейдите на вкладку «Subscription».\n4. Нажмите «+» в правом нижнем углу.\n5. В поле Remarks укажите любое удобное название подписки.\n6. В поле Subscription link вставьте скопированную ссылку.\n7. Нажмите IMPORT. Если подписок несколько, выберите добавленную в списке.\n8. Для обновления подписки нажмите кнопку, обведённую красным.\n9. Для проверки доступности сервера нажмите значок, обведённый зелёным.\n10. После выбора сервера вернитесь на главный экран и нажмите RUN для подключения.",
     "images": [
@@ -66,6 +79,13 @@
     "cabinetText": "1. Откройте «Мои подписки» в личном кабинете и скопируйте нужную ссылку.\n2. Откройте Invisible Man и нажмите «Manage server configuration».\n3. Перейдите на вкладку «Subscription».\n4. Нажмите «+» в правом нижнем углу.\n5. В поле Remarks укажите любое удобное название подписки.\n6. В поле Subscription link вставьте скопированную ссылку.\n7. Нажмите IMPORT. Если подписок несколько, выберите добавленную в списке.\n8. Для обновления подписки нажмите кнопку, обведённую красным.\n9. Для проверки доступности сервера нажмите значок, обведённый зелёным.\n10. После выбора сервера вернитесь на главный экран и нажмите RUN для подключения."
   },
   {
+    "id": "v2rayn-import-clipboard",
+    "includeWithCustom": true,
+    "title": "V2RayN — импорт подписки из буфера обмена",
+    "text": "1. Скопируйте выданную ссылку-подписку.\n2. В V2RayN откройте меню «Configuration» в левом верхнем углу.\n3. Выберите «Import Share Links from clipboard» (Ctrl+V).\n4. Выберите добавленную группу «import_sub».\n5. Откройте меню «Subscription Group».\n6. Выберите «Update current subscription without proxy».",
+    "cabinetText": "1. Откройте «Мои подписки» в личном кабинете и скопируйте нужную ссылку.\n2. В V2RayN откройте меню «Configuration» в левом верхнем углу.\n3. Выберите «Import Share Links from clipboard» (Ctrl+V).\n4. Выберите добавленную группу «import_sub».\n5. Откройте меню «Subscription Group».\n6. Выберите «Update current subscription without proxy»."
+  },
+  {
     "title": "V2RayN — Windows и macOS",
     "text": "1. Для обновления списка серверов откройте Subscription Group, отмеченное зелёным, и выберите «update current subscription without proxy».\n2. Для проверки доступности серверов нажмите кнопку, отмеченную синим.\n3. Для выбора профиля маршрутизации откройте список, отмеченный красным.\n\nПрофили маршрутизации:\n• Для отдельных сервисов — через выбранный сервер направляются только нужные сервисы. Рекомендуется использовать этот профиль.\n• Весь трафик через сервер — отдельные российские сервисы, например налоговые, почта и Госуслуги, могут работать некорректно.\n• Иностранный трафик через сервер — российские сервисы открываются напрямую, остальной трафик идёт через выбранный сервер. Скорость может быть ниже.\n\nРасположение элементов и названия профилей могут отличаться в зависимости от версии приложения и системы. Работа сайтов и скорость зависят от выбранного сервера и профиля.",
     "images": [
@@ -94,11 +114,14 @@
   }
   function render(container, configured, options = {}) {
     if (!container) return;
-    const items = Array.isArray(configured) && configured.length ? configured : defaults;
+    const items = Array.isArray(configured) && configured.length
+      ? configured.concat(defaults.filter(item => item.includeWithCustom && !configured.some(value => value && (value.id === item.id || value.title === item.title))))
+      : defaults;
     const nodes = [];
     for (const item of items) {
       if (!item || typeof item.title !== 'string') continue;
       const details = element('details', undefined, 'accordion-item instruction-details');
+      if (typeof item.id === 'string') details.dataset.guideId = item.id;
       const summary = element('summary', undefined, 'accordion-header instruction-summary');
       summary.append(element('span', item.title), chevron());
       const body = element('div', undefined, 'instruction-body');

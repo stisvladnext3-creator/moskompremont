@@ -2,8 +2,9 @@
 
 Кабинет на PHP/MySQL: подписки и отдельные ключи для роутеров клиентов, ручная выдача с оплатой и без неё, переписка с фотографиями и разделы администратора.
 
-- [Скачать обновление кабинета v8](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v8-update.zip)
+- [Скачать обновление кабинета v9](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v9-update.zip)
 - [Полный комплект раздела и кабинета](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-account-php.zip)
+- [Установка v9: новые инструкции V2RayN и V2rayTun](downloads/UPDATE-CABINET-V9.md)
 - [Установка v8: серверы, клиенты, удаление ключей и почта](downloads/UPDATE-CABINET-V8.md)
 - [Ubuntu-служба мониторинга и обработки почты](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-monitor-ubuntu-v8.zip)
 - [Настройка мониторинга и доставки писем](downloads/MONITORING-SETUP.md)
@@ -30,9 +31,9 @@ Ubuntu-служба также обрабатывает очередь писе�
 
 ## Инструкции в кабинете
 
-Во вкладке «Инструкции» доступны все пять текущих руководств: первое подключение и обновление OneXray, Happ/V2raytun/Incy, Invisible Man и V2RayN. Включены девять скриншотов с открытием в полном размере. Из раздела можно перейти к «Моим подпискам»; текст объясняет копирование ссылки в кабинете. Прямая ссылка после входа — account.html#instructions.
+Во вкладке «Инструкции» доступны восемь руководств: первое подключение и обновление OneXray, Happ/V2raytun/Incy, добавление и удаление подписки V2rayTun, Invisible Man, импорт подписки V2RayN из буфера и настройка V2RayN. Новые три руководства добавлены текстом; изображения для них ожидают оригинальных файлов. Включены девять скриншотов с открытием в полном размере. Из раздела можно перейти к «Моим подпискам»; текст объясняет копирование ссылки в кабинете. Прямая ссылка после входа — account.html#instructions.
 
-Главная и кабинет используют общий каталог assets/instructions.js. Собственный SITE_CONFIG.instructions из сохраняемого assets/config.js применяется на обеих страницах. Для обновления до v8 нужна новая таблица из private/migrations/005-monitoring.sql, как указано в инструкции установки.
+Главная и кабинет используют общий каталог assets/instructions.js. Собственный SITE_CONFIG.instructions из сохраняемого assets/config.js применяется на обеих страницах. При обновлении с v8 до v9 достаточно заменить файлы. Для более старой версии требуется таблица v8, как указано в инструкции установки.
 
 ## Подписки
 
