@@ -132,7 +132,7 @@
   async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); await updateSummary(); }
   async function loadUsers() {
     const data = await api('admin_users', undefined, { page: pages.users }), target = $('admin-users'); target.replaceChildren();
-    for (const item of data.users) { const fresh = item.event_id && !item.event_read_at, box = el('article', null, 'record' + (fresh ? ' record-new' : '')); box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name), el('p', 'Почта: ' + item.email), el('p', 'Telegram: ' + item.telegram), el('p', 'Регистрация: ' + date(item.created_at), 'account-muted'), el('p', 'Указал подписки: ' + (item.claims.map(c => c.name).join(', ') || 'нет')), el('p', 'Выданы: ' + (item.subscriptions.map(s => s.name).join(', ') || 'пока нет'), 'account-muted')); if (fresh) box.append(readButton(item, loadUsers)); box.append(button('Назначить подписки', () => chooseDirectRecipient(item))); box.append(button('Выдать ключ роутера', () => chooseRouterKeyRecipient(item))); target.append(box); }
+    for (const item of data.users) { const fresh = item.event_id && !item.event_read_at, box = el('article', null, 'record' + (fresh ? ' record-new' : '')); box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name), el('p', 'Почта: ' + item.email), el('p', 'Telegram / телефон: ' + item.telegram), el('p', 'Регистрация: ' + date(item.created_at), 'account-muted'), el('p', 'Указал подписки: ' + (item.claims.map(c => c.name).join(', ') || 'нет')), el('p', 'Выданы: ' + (item.subscriptions.map(s => s.name).join(', ') || 'пока нет'), 'account-muted')); if (fresh) box.append(readButton(item, loadUsers)); box.append(button('Назначить подписки', () => chooseDirectRecipient(item))); box.append(button('Выдать ключ роутера', () => chooseRouterKeyRecipient(item))); target.append(box); }
     pager('users-pager', 'users', data.users.length);
   }
   async function loadAdminOrders() {
@@ -171,7 +171,7 @@
       const data = await api('admin_user_search', undefined, { q: query }); select.replaceChildren(new Option('Выберите клиента', ''));
       for (const item of data.users) { assignmentUsers.set(Number(item.id), item); select.append(new Option('#' + item.id + ' · ' + item.first_name + ' ' + item.last_name + ' · ' + item.email, String(item.id))); }
       select.value = selectedId ? String(selectedId) : ''; assignmentUsersLoaded = true;
-      $('assignment-user-hint').textContent = data.users.length >= data.limit ? 'Показаны первые ' + data.limit + ' клиентов. Уточните поиск по почте, имени или Telegram.' : data.users.length ? 'Найдено клиентов: ' + data.users.length + '. Проверьте имя и почту получателя.' : 'Клиент не найден. Проверьте поиск или дождитесь его регистрации.';
+      $('assignment-user-hint').textContent = data.users.length >= data.limit ? 'Показаны первые ' + data.limit + ' клиентов. Уточните поиск по почте, имени, Telegram / телефону.' : data.users.length ? 'Найдено клиентов: ' + data.users.length + '. Проверьте имя и почту получателя.' : 'Клиент не найден. Проверьте поиск или дождитесь его регистрации.';
     } finally { select.disabled = false; }
   }
   async function chooseDirectRecipient(item) {

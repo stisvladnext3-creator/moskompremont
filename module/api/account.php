@@ -55,13 +55,13 @@ try {
   finally {while(ob_get_level()>$level){if(!@ob_end_clean())break;}}
  });
  $user=isset($_SESSION['user_id'])?query($db,'SELECT id,first_name,last_name,telegram,email,created_at FROM internet_users WHERE id=?',[$_SESSION['user_id']])->fetch():null;
- if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>5,'photo_limits'=>photoLimits()]);
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>6,'photo_limits'=>photoLimits()]);
  if ($action==='register') {
   limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
   if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
   $email=strtolower(field($body,'email',254));if (!filter_var($email,FILTER_VALIDATE_EMAIL))problem('Укажите корректную почту.');
-  $telegram=field($body,'telegram',100);if (!preg_match('~^(?:https://t\.me/|@)([a-zA-Z][a-zA-Z0-9_]{4,31})/?$~',$telegram,$m))problem('Укажите Telegram: https://t.me/username или @username.');$telegram='https://t.me/'.$m[1];
-  $password=$body['password'] ?? null;if (!is_string($password) || preg_match_all('/./us',$password)<12 || strlen($password)>72)problem('Пароль: не менее 12 символов и не более 72 байт.');
+  $telegram=registrationContact(field($body,'telegram',100));
+  $password=$body['password'] ?? null;if (!is_string($password) || preg_match_all('/./us',$password)<6 || strlen($password)>72)problem('Пароль: не менее 6 символов и не более 72 байт.');
   $names=claimNames(field($body,'existing_subscriptions',2500,true));
   if (!empty($body['has_existing_subscriptions']) && !$names)problem('Укажите названия имеющихся подписок.');
   $hash=password_hash($password,PASSWORD_DEFAULT);$db->beginTransaction();
@@ -85,7 +85,7 @@ try {
  if ($action==='admin_user_search') {
   $search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',254):'';
   $where='';$args=[];$order=' ORDER BY id DESC';
-  if ($search!==''){$where=" WHERE email LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name,' ',last_name) LIKE ? OR telegram LIKE ? OR id=?";$like='%'.$search.'%';$args=[$like,$like,$like,$like,$like,preg_match('/\A[0-9]+\z/D',$search)?(int)$search:0,$search];$order=' ORDER BY CASE WHEN email=? THEN 0 ELSE 1 END,id DESC';}
+  if ($search!==''){$where=" WHERE email LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name,' ',last_name) LIKE ? OR telegram LIKE ? OR id=?";$like='%'.$search.'%';$contactLike='%'.(phoneContact($search) ?? $search).'%';$args=[$like,$like,$like,$like,$contactLike,preg_match('/\A[0-9]+\z/D',$search)?(int)$search:0,$search];$order=' ORDER BY CASE WHEN email=? THEN 0 ELSE 1 END,id DESC';}
   $rows=query($db,'SELECT id,first_name,last_name,email,telegram FROM internet_users'.$where.$order.' LIMIT 50',$args)->fetchAll();
   answer(['users'=>$rows,'limit'=>50]);
  }

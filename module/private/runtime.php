@@ -9,10 +9,19 @@ function field(array $body,string $key,int $max,bool $multiline=false): string {
  if (!is_string($v) || strlen($v)>$max || !preg_match('//u',$v) || preg_match($multiline?'/[\x00-\x08\x0b\x0c\x0e-\x1f]/':'/[\x00-\x1f]/',$v)) problem('Проверьте поле: '.$key);
  return trim($v);
 }
+function phoneContact(string $value): ?string {
+ $phone=preg_replace('/[\s\p{Z}()\p{Pd}]+/u','',$value);
+ return is_string($phone) && preg_match('/\A\+?[0-9]{7,15}\z/D',$phone)?$phone:null;
+}
+function registrationContact(string $value): string {
+ if (preg_match('~^(?:https://t\.me/|@)([a-zA-Z][a-zA-Z0-9_]{4,31})/?$~',$value,$m))return 'https://t.me/'.$m[1];
+ $phone=phoneContact($value);if ($phone!==null)return $phone;
+ problem('Укажите Telegram (@username или https://t.me/username) / номер телефона, например +7 999 123-45-67.');
+}
 function publicUser(array $u,array $config): array {
  return ['id'=>(int)$u['id'],'first_name'=>$u['first_name'],'last_name'=>$u['last_name'],'telegram'=>$u['telegram'],'email'=>$u['email'],'is_admin'=>in_array((int)$u['id'],array_map('intval',$config['admin_user_ids'] ?? []),true)];
 }
-function contactText(array $u): string {return $u['first_name'].' '.$u['last_name']."\nПочта: ".$u['email']."\nTelegram: ".$u['telegram'];}
+function contactText(array $u): string {return $u['first_name'].' '.$u['last_name']."\nПочта: ".$u['email']."\nTelegram / телефон: ".$u['telegram'];}
 function payment(array $config): array {
  $image=$config['qr_image'] ?? '';$ready=is_string($image) && preg_match('~^images/payment/[a-zA-Z0-9_.-]+\.(png|jpe?g|webp)$~i',$image) && is_file(dirname(__DIR__).'/'.$image) && !empty($config['recipient']);
  return ['available'=>(bool)$ready,'qr_image'=>$ready?$image:null,'recipient'=>$ready?$config['recipient']:'','note'=>$config['payment_note'] ?? ''];
