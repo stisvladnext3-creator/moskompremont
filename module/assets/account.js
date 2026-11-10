@@ -42,12 +42,12 @@
     $('profile-name').textContent = user.first_name + ' ' + user.last_name; $('profile-contact').textContent = user.email + ' · ' + user.telegram;
     $('client-mode').hidden = !user.is_admin; $('admin-mode').hidden = !user.is_admin;
     $('payment-unavailable').hidden = payment.available; $('order-form').querySelector('button').disabled = !payment.available;
-    mode = user.is_admin ? 'admin' : 'client'; if (location.hash === '#payment') { mode = 'client'; clientTab = 'payments'; } if (location.hash === '#instructions') { mode = 'client'; clientTab = 'instructions'; }
+    mode = user.is_admin ? 'admin' : 'client'; if (location.hash === '#payment') { mode = 'client'; clientTab = 'payments'; } if (location.hash === '#instructions') { mode = 'client'; clientTab = 'instructions'; } if (location.hash === '#servers') { mode = 'client'; clientTab = 'servers'; }
     await setMode(mode); await updateSummary();
   }
   async function setMode(value) { mode = value; $('client-shell').hidden = value !== 'client'; $('admin-shell').hidden = value !== 'admin'; closeConversation(); if (value === 'admin') await selectAdmin(adminTab); else await selectClient(clientTab); }
   $('client-mode').onclick = e => run(e.target, () => setMode('client')); $('admin-mode').onclick = e => run(e.target, () => setMode('admin'));
-  async function selectClient(value) { clientTab = value; closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); if (value === 'instructions') loadInstructions(); }
+  async function selectClient(value) { clientTab = value; closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); if (value === 'instructions') loadInstructions(); if (value === 'servers') await window.MKRServerStatus?.refresh(); }
   document.querySelectorAll('[data-client-tab]').forEach(b => b.onclick = () => run(b, () => selectClient(b.dataset.clientTab)));
   let instructionsLoaded = false;
   function loadInstructions() {

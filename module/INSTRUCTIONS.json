@@ -136,12 +136,12 @@
     "id": "v2rayn-update-subscription",
     "includeWithCustom": true,
     "title": "V2RayN — обновление списка серверов подписки",
-    "text": "1. Откройте меню «Subscription Group».\n2. Выберите «Update current subscription without proxy».",
+    "text": "1. Откройте меню «Subscription Group» (красная рамка).\n2. Выберите «Update current subscription without proxy» (оранжевая рамка).",
     "images": [
       {
-        "src": "images/instructions/v2rayn-import-04.jpg",
-        "alt": "В меню Subscription Group программы V2RayN выделен пункт Update current subscription without proxy.",
-        "caption": "Откройте Subscription Group и выберите Update current subscription without proxy.",
+        "src": "images/instructions/v2rayn-update-01.jpg",
+        "alt": "Меню Subscription Group в V2RayN выделено красной рамкой, пункт Update current subscription without proxy — оранжевой.",
+        "caption": "Шаги 1–2. Откройте Subscription Group (красная рамка), затем Update current subscription without proxy (оранжевая рамка).",
         "wide": true
       }
     ]
@@ -150,7 +150,15 @@
     "id": "v2rayn-set-active",
     "includeWithCustom": true,
     "title": "V2RayN — переключение сервера",
-    "text": "1. В V2RayN щёлкните правой кнопкой мыши по серверу, на который хотите переключиться.\n2. В появившемся меню выберите «Set as active»."
+    "text": "1. В V2RayN щёлкните правой кнопкой мыши по серверу, на который хотите переключиться.\n2. В появившемся меню выберите «Set as active».",
+    "images": [
+      {
+        "src": "images/instructions/v2rayn-set-active-01.jpg",
+        "alt": "В контекстном меню выбранного сервера V2RayN есть пункт Set as active.",
+        "caption": "Нажмите правой кнопкой мыши по нужному серверу и выберите Set as active.",
+        "wide": true
+      }
+    ]
   },
   {
     "title": "V2RayN — Windows и macOS",
@@ -169,6 +177,14 @@
     "includeWithCustom": true,
     "title": "Роутер OpenWrt / Podkop — замена ссылки",
     "text": "1. Подключитесь к Wi-Fi своего роутера.\n2. Введите в адресную строку браузера 192.168.31.1.\n3. Нажмите зелёную кнопку «Login» («Войти»).\n4. В верхнем меню откройте «Services → Podkop» («Сервисы → Подкоп»).\n5. Во вкладке «Секции» найдите поле «URL прокси».\n6. Замените старую ссылку на новую выданную ссылку для роутера.\n7. В самом низу страницы нажмите синюю кнопку «Save & Apply» («Сохранить и применить»).\n8. Перейдите во вкладку «Диагностика».\n9. Нажмите «Запустить диагностику».",
-    "cabinetText": "1. Подключитесь к Wi-Fi своего роутера.\n2. Введите в адресную строку браузера 192.168.31.1.\n3. Нажмите зелёную кнопку «Login» («Войти»).\n4. В верхнем меню откройте «Services → Podkop» («Сервисы → Подкоп»).\n5. Во вкладке «Секции» найдите поле «URL прокси».\n6. Замените старую ссылку на новую выданную ссылку для роутера. Если она выдана в личном кабинете, скопируйте её из раздела «Ключи для роутера».\n7. В самом низу страницы нажмите синюю кнопку «Save & Apply» («Сохранить и применить»).\n8. Перейдите во вкладку «Диагностика».\n9. Нажмите «Запустить диагностику»."
+    "cabinetText": "1. Подключитесь к Wi-Fi своего роутера.\n2. Введите в адресную строку браузера 192.168.31.1.\n3. Нажмите зелёную кнопку «Login» («Войти»).\n4. В верхнем меню откройте «Services → Podkop» («Сервисы → Подкоп»).\n5. Во вкладке «Секции» найдите поле «URL прокси».\n6. Замените старую ссылку на новую выданную ссылку для роутера. Если она выдана в личном кабинете, скопируйте её из раздела «Ключи для роутера».\n7. В самом низу страницы нажмите синюю кнопку «Save & Apply» («Сохранить и применить»).\n8. Перейдите во вкладку «Диагностика».\n9. Нажмите «Запустить диагностику».",
+    "images": [
+      {
+        "src": "images/instructions/podkop-menu-01.jpg",
+        "alt": "В интерфейсе OpenWrt раскрыто меню Services с пунктом Podkop.",
+        "caption": "Шаг 4. В верхнем меню роутера откройте Services → Podkop.",
+        "wide": true
+      }
+    ]
   }
 ]
