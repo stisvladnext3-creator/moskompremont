@@ -2,8 +2,9 @@
 
 Кабинет на PHP/MySQL: подписки и отдельные ключи для роутеров клиентов, ручная выдача с оплатой и без неё, переписка с фотографиями и разделы администратора.
 
-- [Скачать обновление кабинета v6](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v6-update.zip)
+- [Скачать обновление кабинета v7](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v7-update.zip)
 - [Полный комплект раздела и кабинета](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-account-php.zip)
+- [Установка v7: все инструкции в личном кабинете](downloads/UPDATE-CABINET-V7.md)
 - [Установка v6: пароль от 6 символов и Telegram / номер телефона](downloads/UPDATE-CABINET-V6.md)
 - [Установка v5: отдельные ключи для роутеров](downloads/UPDATE-CABINET-V5.md)
 - [Назначение подписок без оплаты](downloads/UPDATE-CABINET-V4.md)
@@ -13,6 +14,12 @@
 - [Исходники модуля](module/)
 - [Предпросмотр клиента](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=client)
 - [Предпросмотр администратора](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=admin)
+
+## Инструкции в кабинете
+
+Во вкладке «Инструкции» доступны все пять текущих руководств: первое подключение и обновление OneXray, Happ/V2raytun/Incy, Invisible Man и V2RayN. Включены девять скриншотов с открытием в полном размере. Из раздела можно перейти к «Моим подпискам»; текст объясняет копирование ссылки в кабинете. Прямая ссылка после входа — account.html#instructions.
+
+Главная и кабинет используют общий каталог assets/instructions.js. Собственный SITE_CONFIG.instructions из сохраняемого assets/config.js применяется на обеих страницах. Обновление с v5/v6 требует только замены файлов, без импорта SQL.
 
 ## Подписки
 
@@ -46,7 +53,7 @@
 
 Нужны PHP 8.1+ с pdo_mysql, fileinfo, openssl и сессиями; MySQL 8+ или MariaDB 10.6+; HTTPS. PHPMailer 7.2.0 включён с лицензией. Для трёх фото до 5 МБ: upload_max_filesize=5M, post_max_size=20M, лимит веб-сервера не меньше 20 МБ; max_allowed_packet MySQL не меньше 8 МБ.
 
-При переходе с v5 на v6 замените файлы: импорт SQL не требуется. При регистрации пароль должен содержать от 6 символов (до 72 байт); в поле «Telegram / номер телефона» можно указать Telegram или номер телефона. Телефон хранится в существующем поле telegram.
+При переходе с v5/v6 на v7 замените файлы: импорт SQL не требуется. При регистрации пароль должен содержать от 6 символов (до 72 байт); в поле «Telegram / номер телефона» можно указать Telegram или номер телефона. Телефон хранится в существующем поле telegram.
 
 При переходе с v4 импортируйте **private/migrations/004-router-keys.sql** и загрузите файлы: добавится только таблица ключей. При более ранней версии или новой установке импортируйте **private/schema.sql** в ту же базу, которая указана в config.php, и загрузите файлы. Скрипт только создаёт недостающие таблицы и сохраняет данные. При полностью установленной v2 достаточно private/migrations/003-subscription-photos.sql. Свои config.php, assets/config.js, QR и общие стили сайта сохраняйте — архив обновления их не заменяет.
 

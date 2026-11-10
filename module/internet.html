@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#07070f">
+    <meta name="description" content="Мировой интернет от МосКомпРемонт. Серверы, ссылки подключения, инструкции и помощь с настройкой.">
+    <title>Мировой интернет | МосКомпРемонт</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="assets/fonts/inter-cyrillic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="assets/tailwind.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="assets/internet.css">
+    <script src="assets/image-fallback.js"></script>
+    <script src="assets/config.js" defer></script>
+    <script src="assets/instructions.js?v=7" defer></script>
+    <script src="assets/app.js?v=7" defer></script>
+    <link rel="stylesheet" href="assets/account.css?v=7">
+    <script src="assets/account.js" defer></script>
+</head>
+<body class="internet-page">
+    <a class="skip-link" href="#main">Перейти к содержимому</a>
+    <div class="bg-orbs" aria-hidden="true">
+        <div class="orb orb-1"></div><div class="orb orb-2"></div>
+        <div class="orb orb-3"></div><div class="orb orb-4"></div>
+    </div>
+    <div class="grid-overlay" aria-hidden="true"></div>
+
+
+    <nav aria-label="Основная навигация" class="nav-glass fixed top-0 left-0 right-0 z-50">
+        <div class="container mx-auto px-4 2xl:px-6 py-5 flex justify-between items-center">
+            <a href="index.html" class="flex items-center gap-3">
+                <img src="images/logotipmain.png" data-fallback="favicon.svg" alt="МосКомпРемонт" class="site-brand-image w-[4.5rem] h-[4.5rem] rounded-xl object-contain">
+                <div class="flex flex-col">
+                    <span class="site-brand-name text-2xl font-bold text-white leading-none">МосКомпРемонт</span>
+                    <span class="site-brand-caption text-sm text-gray-400 mt-1">Ремонт компьютеров с выездом</span>
+                </div>
+            </a>
+
+            <div class="nav-main hidden 2xl:flex items-center gap-10 text-lg">
+                <a href="index.html" class="text-gray-300 hover:text-cyan-400 font-medium transition">Главная</a>
+                <a href="services.html" class="text-gray-300 hover:text-cyan-400 font-medium transition">Услуги</a>
+                <a href="builds.html" class="text-gray-300 hover:text-cyan-400 font-medium transition">Сборки ПК</a>
+                <a href="reviews.html" class="text-gray-300 hover:text-cyan-400 font-medium transition">Отзывы</a>
+                <a href="gallery.html" class="text-gray-300 hover:text-cyan-400 font-medium transition">Фото работ</a>
+                <a href="internet.html" class="text-cyan-400 font-medium" aria-current="page">Мировой интернет</a>
+            </div>
+
+            <div class="hidden 2xl:flex items-center gap-4">
+                <a href="tel:+79152449644" class="flex items-center text-gray-300 hover:text-cyan-400 transition">
+                    <svg class="icon w-4 h-4 mr-2" aria-hidden="true"><use href="assets/icons.svg#phone"></use></svg>
+                    <span class="font-semibold">+7 (915) 244 9644</span>
+                </a>
+                <button type="button" data-contact-open class="btn-neon px-5 py-2.5 text-sm" aria-haspopup="dialog" aria-controls="contact-dialog">Связаться</button>
+            </div>
+
+            <a class="account-nav" href="account.html">Личный кабинет</a>
+            <!-- Mobile menu button -->
+            <button type="button" id="mobile-menu-btn" aria-label="Открыть меню" aria-haspopup="dialog" aria-controls="mobile-menu" aria-expanded="false" class="2xl:hidden text-white p-2">
+                <svg class="icon w-6 h-6" aria-hidden="true"><use href="assets/icons.svg#menu"></use></svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <dialog id="mobile-menu" aria-label="Навигация по сайту" class="mobile-menu w-72 glass p-6 flex-col">
+        <div class="flex justify-between items-center mb-8">
+            <span class="text-lg font-bold text-white">Меню</span>
+            <button type="button" id="mobile-menu-close" data-dialog-close aria-label="Закрыть меню" class="text-gray-400 hover:text-white">
+                <svg class="icon w-6 h-6" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>
+            </button>
+        </div>
+        <nav class="flex flex-col gap-5">
+            <a href="index.html" class="text-gray-300 hover:text-cyan-400 font-medium text-lg flex items-center gap-3"><svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#home"></use></svg> Главная</a>
+            <a href="services.html" class="text-gray-300 hover:text-cyan-400 font-medium text-lg flex items-center gap-3"><svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#wrench"></use></svg> Услуги</a>
+            <a href="builds.html" class="text-gray-300 hover:text-cyan-400 font-medium text-lg flex items-center gap-3"><svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#monitor"></use></svg> Сборки ПК</a>
+            <a href="reviews.html" class="text-gray-300 hover:text-cyan-400 font-medium text-lg flex items-center gap-3"><svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#message-square"></use></svg> Отзывы</a>
+            <a href="gallery.html" class="text-gray-300 hover:text-cyan-400 font-medium text-lg flex items-center gap-3"><svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#camera"></use></svg> Фото работ</a>
+            <a href="index.html#call-master" class="text-gray-300 hover:text-cyan-400 font-medium text-lg flex items-center gap-3"><svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#user-check"></use></svg> Вызвать мастера</a>
+            <a href="internet.html" aria-current="page" class="text-cyan-400 font-medium text-lg flex items-center gap-3"><svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg> Мировой интернет</a>
+            <a href="tel:+79152449644" class="text-cyan-400 font-semibold text-lg flex items-center gap-3 mt-4"><svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#phone"></use></svg> +7 (915) 244 9644</a>
+        </nav>
+        <button type="button" data-contact-open class="btn-neon px-5 py-3 text-center mt-6">Написать нам</button>
+    </dialog>
+
+    <main id="main">
+        <section class="internet-hero relative">
+            <div class="container mx-auto px-4 lg:px-6 text-center">
+                <a href="index.html" class="breadcrumb inline-flex items-center gap-2 text-sm text-gray-400 hover:text-cyan-400 transition mb-8">
+                    <svg class="icon w-4 h-4" aria-hidden="true"><use href="assets/icons.svg#arrow-left"></use></svg> На главную
+                </a>
+                <div class="flex justify-center mb-6">
+                    <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass text-sm text-cyan-400 font-medium">
+                        <span class="glow-dot" aria-hidden="true"></span> Всегда на связи с миром
+                    </span>
+                </div>
+                <h1 class="text-4xl md:text-5xl lg:text-6xl font-black leading-tight mb-6">Мировой <span class="gradient-text">интернет</span></h1>
+                <p class="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed">Ваши серверы, ссылки подключения и инструкции.<br class="hidden sm:block"> Всё необходимое — на одной странице.</p>
+                <div class="hero-actions flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4 mt-8">
+                    <button type="button" id="urgent" class="btn-neon px-8 py-4 text-base inline-flex items-center justify-center gap-3" aria-haspopup="dialog" aria-controls="links-dialog">
+                        <svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#zap"></use></svg> Срочная ссылка <svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#arrow-up-right"></use></svg>
+                    </button>
+                    <button type="button" class="btn-outline-neon px-8 py-4 text-base inline-flex items-center justify-center gap-3" data-contact-open aria-haspopup="dialog" aria-controls="contact-dialog">
+                        <svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#message-circle"></use></svg> Нужна помощь?
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-4">Ссылки подключения · понятные инструкции · помощь с подключением</p>
+                <a href="#pricing-section" class="pricing-shortcut">Посмотреть цены <svg class="icon w-4 h-4" aria-hidden="true"><use href="assets/icons.svg#arrow-down-right"></use></svg></a>
+                <div class="steps-grid grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto mt-12 text-left">
+                    <a href="#servers-section" class="stat-card flex items-center gap-4 transition group">
+                        <span class="step-number gradient-text font-black text-2xl">01</span>
+                        <div><span class="font-semibold text-white block mb-1">Выберите сервер</span><span class="text-xs text-gray-400">Подходящее направление</span></div>
+                        <svg class="icon w-4 h-4 ml-auto text-gray-500 group-hover:text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#arrow-down-right"></use></svg>
+                    </a>
+                    <button type="button" data-links-open class="stat-card flex items-center gap-4 text-left transition group">
+                        <span class="step-number gradient-text font-black text-2xl">02</span>
+                        <div><span class="font-semibold text-white block mb-1">Получите ссылку</span><span class="text-xs text-gray-400">Доступные варианты</span></div>
+                        <svg class="icon w-4 h-4 ml-auto text-gray-500 group-hover:text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#arrow-up-right"></use></svg>
+                    </button>
+                    <a href="#instructions-section" class="stat-card flex items-center gap-4 transition group">
+                        <span class="step-number gradient-text font-black text-2xl">03</span>
+                        <div><span class="font-semibold text-white block mb-1">Подключитесь</span><span class="text-xs text-gray-400">По инструкции для устройства</span></div>
+                        <svg class="icon w-4 h-4 ml-auto text-gray-500 group-hover:text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#arrow-down-right"></use></svg>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section id="pricing-section" class="internet-section relative" aria-labelledby="pricing-title" aria-describedby="pricing-note">
+            <div class="container mx-auto px-4 lg:px-6">
+                <div class="text-center mb-10">
+                    <span class="section-kicker">Мировой интернет</span>
+                    <h2 id="pricing-title" class="text-3xl md:text-4xl font-black mt-2 mb-4">Тарифы и <span class="gradient-text">цены</span></h2>
+                    <p id="pricing-note" class="pricing-note">Все цены указаны <strong>за 1 устройство</strong>.</p>
+                </div>
+                <div class="pricing-grid">
+                    <article class="service-card pricing-card" aria-labelledby="monthly-title">
+                        <div class="pricing-card-heading">
+                            <div class="glow-icon"><svg class="icon w-6 h-6 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg></div>
+                            <div><h3 id="monthly-title">Ежемесячно</h3><p>Оплата за каждое устройство в месяц</p></div>
+                        </div>
+                        <table class="pricing-table">
+                            <caption>Ежемесячная оплата: все цены за одно устройство в месяц</caption>
+                            <thead><tr><th scope="col">Устройств</th><th scope="col">Цена за 1 устройство</th></tr></thead>
+                            <tbody>
+                                <tr><th scope="row">1 устройство</th><td><span class="pricing-price"><span class="price-amount gradient-text">250 ₽</span><span class="pricing-period">/мес</span></span></td></tr>
+                                <tr><th scope="row">От 2 устройств</th><td><span class="pricing-price"><span class="price-amount gradient-text">225 ₽</span><span class="pricing-period">/мес</span></span></td></tr>
+                                <tr><th scope="row">От 3 устройств</th><td><span class="pricing-price"><span class="price-amount gradient-text">200 ₽</span><span class="pricing-period">/мес</span></span></td></tr>
+                                <tr><th scope="row">От 4 устройств</th><td><span class="pricing-price"><span class="price-amount gradient-text">175 ₽</span><span class="pricing-period">/мес</span></span></td></tr>
+                            </tbody>
+                        </table>
+                    </article>
+                    <article class="service-card pricing-card" aria-labelledby="lifetime-title">
+                        <div class="pricing-card-heading">
+                            <div class="glow-icon glow-icon-purple"><svg class="icon w-6 h-6 text-purple-400" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg></div>
+                            <div><h3 id="lifetime-title">Навсегда</h3><p>Разовая оплата за каждое устройство</p></div>
+                        </div>
+                        <table class="pricing-table">
+                            <caption>Подключение навсегда: все цены за одно устройство, разовая оплата</caption>
+                            <thead><tr><th scope="col">Устройств</th><th scope="col">Цена за 1 устройство</th></tr></thead>
+                            <tbody>
+                                <tr><th scope="row">1 устройство</th><td><span class="price-amount gradient-text">3 000 ₽</span></td></tr>
+                                <tr><th scope="row">2 устройства</th><td><span class="price-amount gradient-text">2 500 ₽</span></td></tr>
+                                <tr><th scope="row">3 устройства</th><td><span class="price-amount gradient-text">2 000 ₽</span></td></tr>
+                                <tr><th scope="row">От 4 устройств</th><td><span class="price-amount gradient-text">1 650 ₽</span></td></tr>
+                            </tbody>
+                        </table>
+                    </article>
+                </div>
+                <div class="pricing-contact"><a href="account.html#payment" class="btn-neon pricing-contact-button">Выбрать тариф и оплатить</a>
+                    <button type="button" data-contact-open class="btn-neon pricing-contact-button" aria-haspopup="dialog" aria-controls="contact-dialog">Написать по подключению <svg class="icon w-5 h-5" aria-hidden="true"><use href="assets/icons.svg#arrow-up-right"></use></svg></button>
+                </div>
+            </div>
+        </section>
+
+        <section id="servers-section" class="internet-section relative" aria-labelledby="servers-title">
+            <div class="container mx-auto px-4 lg:px-6">
+                <div class="text-center mb-10">
+                    <span class="section-kicker">Ваши направления</span>
+                    <h2 id="servers-title" class="text-3xl md:text-4xl font-black mt-2 mb-4">Наши <span class="gradient-text">серверы</span></h2>
+                    <p class="text-gray-400 max-w-2xl mx-auto">Выберите сервер для подключения к мировому интернету.</p>
+                </div>
+                <div id="servers" class="server-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="empty-state glass rounded-3xl text-center col-span-full px-6 py-10">
+                        <div class="glow-icon mx-auto mb-5"><svg class="icon w-6 h-6 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg></div>
+                        <h3 class="text-lg font-bold text-white mb-2">Список серверов готовится</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed max-w-md mx-auto">Здесь появятся доступные направления и информация о каждом сервере. По вопросам подключения напишите нам.</p>
+                        <button type="button" data-contact-open class="text-cyan-400 text-sm font-semibold mt-5 inline-flex items-center gap-2 hover:text-cyan-300">Связаться с нами <svg class="icon w-4 h-4" aria-hidden="true"><use href="assets/icons.svg#arrow-up-right"></use></svg></button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="instructions-section" class="internet-section relative" aria-labelledby="help-title">
+            <div class="container mx-auto px-4 lg:px-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-start">
+                    <div>
+                        <span class="section-kicker">Подключение без сложностей</span>
+                        <h2 id="help-title" class="text-3xl md:text-4xl font-black mt-2 mb-5">С чего <span class="gradient-text">начать?</span></h2>
+                        <p class="text-gray-400 leading-relaxed max-w-md">Нажмите «Срочная ссылка», выберите вариант и скопируйте ссылку. Затем откройте инструкцию для своего устройства.</p>
+                        <div class="banner-neon help-note p-5 mt-6 gap-4 max-w-md">
+                            <svg class="icon w-5 h-5 shrink-0" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
+                            <p class="text-sm leading-relaxed">Если нужна помощь с настройкой, напишите нам — подскажем, что делать дальше.</p>
+                        </div>
+                    </div>
+                    <div id="instructions" class="space-y-3">
+                        <div class="accordion-item p-7">
+                            <div class="flex items-center gap-4 mb-4"><div class="glow-icon glow-icon-purple shrink-0"><svg class="icon w-6 h-6 text-purple-400" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg></div><h3 class="text-lg font-bold text-white">Инструкции скоро появятся</h3></div>
+                            <p class="text-sm text-gray-400 leading-relaxed">Здесь будут отдельные пошаговые инструкции для разных устройств. Пока вы можете обратиться к нам за помощью.</p>
+                            <button type="button" data-contact-open class="text-cyan-400 text-sm font-semibold mt-5 inline-flex items-center gap-2 hover:text-cyan-300">Помочь с подключением <svg class="icon w-4 h-4" aria-hidden="true"><use href="assets/icons.svg#arrow-up-right"></use></svg></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="internet-section contact-section relative" aria-labelledby="contact-title">
+            <div class="container mx-auto px-4 lg:px-6">
+                <div class="animated-border p-6 md:p-10">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                        <div>
+                            <span class="section-kicker">Прямая связь</span>
+                            <h2 id="contact-title" class="text-3xl md:text-4xl font-black mt-2 mb-4">Мы <span class="gradient-text">поможем</span></h2>
+                            <p class="text-gray-400 leading-relaxed max-w-md">Не получается подключиться или есть вопрос?<br>Напишите нам удобным способом.</p>
+                        </div>
+                        <div class="contact-details lg:text-right">
+                            <a data-contact-phone class="contact-phone text-2xl md:text-3xl font-bold text-white hover:text-cyan-400 transition" href="tel:+79152449644">+7 (915) 244-96-44</a>
+                            <p class="text-sm text-gray-400 mt-2">СМС или сообщение в мессенджере</p>
+                            <div class="contact-channels mt-6 lg:justify-end" data-contact-channels></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+
+    <footer class="site-footer py-12 border-t border-white/5 relative">
+        <div class="container mx-auto px-4 lg:px-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                <div>
+                    <div class="flex items-center mb-4">
+                        <img src="images/logotipmain.png" data-fallback="favicon.svg" alt="МосКомпРемонт" class="w-10 h-10 rounded-xl object-contain mr-3">
+                        <h3 class="text-xl font-bold text-white">МосКомпРемонт</h3>
+                    </div>
+                    <p class="text-gray-400 text-sm">Качественный ремонт компьютеров и ноутбуков в Москве с гарантией до 12 месяцев.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-bold text-white mb-4">Контакты</h4>
+                    <ul class="space-y-3">
+                        <li class="flex items-center text-gray-400 text-sm">
+                            <svg class="icon w-4 h-4 mr-3 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#phone"></use></svg>
+                            <a href="tel:+79152449644" class="hover:text-cyan-400 transition">+7 (915) 244 9644</a>
+                        </li>
+                        <li class="flex items-center text-gray-400 text-sm">
+                            <svg class="icon w-4 h-4 mr-3 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg>
+                            <span>info@moskompremont.ru</span>
+                        </li>
+                        <li class="flex items-center text-gray-400 text-sm">
+                            <svg class="icon w-4 h-4 mr-3 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg>
+                            <span>zakaz@moskompremont.ru</span>
+                        </li>
+                        <li class="flex items-center text-gray-400 text-sm">
+                            <svg class="icon w-4 h-4 mr-3 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#map-pin"></use></svg>
+                            <span>г. Москва, ул. Маршала Тухачевского, 51</span>
+                        </li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-lg font-bold text-white mb-4">Режим работы</h4>
+                    <ul class="space-y-3">
+                        <li class="flex items-center text-gray-400 text-sm">
+                            <svg class="icon w-4 h-4 mr-3 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg>
+                            <span>Пн-Пт: 9:00 - 21:00</span>
+                        </li>
+                        <li class="flex items-center text-gray-400 text-sm">
+                            <svg class="icon w-4 h-4 mr-3 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg>
+                            <span>Сб-Вс: 10:00 - 20:00</span>
+                        </li>
+                        <li class="flex items-center text-gray-400 text-sm">
+                            <svg class="icon w-4 h-4 mr-3 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#zap"></use></svg>
+                            <span>Экстренный выезд 24/7</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="pt-6 border-t border-white/5 text-xs text-gray-500 flex flex-wrap justify-between gap-3"><span>© <span id="year"></span> МосКомпРемонт</span><a href="index.html" class="hover:text-cyan-400 transition">На главный сайт</a></div>
+        </div>
+    </footer>
+
+    <button type="button" data-contact-open class="floating-widget widget-call help-widget" aria-label="Открыть контакты для помощи" aria-haspopup="dialog" aria-controls="contact-dialog">
+        <svg class="icon w-6 h-6" aria-hidden="true"><use href="assets/icons.svg#message-circle"></use></svg><span>Помощь</span>
+    </button>
+
+    <dialog id="links-dialog" class="internet-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
+        <div class="dialog-inner">
+            <button type="button" class="dialog-close" data-dialog-close aria-label="Закрыть окно ссылок"><svg class="icon w-6 h-6" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
+            <div class="glow-icon mb-5"><svg class="icon w-6 h-6 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#zap"></use></svg></div>
+            <span class="section-kicker">Быстрый доступ</span>
+            <h2 id="dialog-title" class="text-2xl md:text-3xl font-black mt-2 mb-3">Срочная <span class="gradient-text">ссылка</span></h2>
+            <p id="dialog-description" class="text-sm text-gray-400 leading-relaxed">Выберите доступную ссылку. Скопируйте её и используйте по инструкции для своего устройства.</p>
+            <div id="links-status" class="links-status text-sm" role="status" aria-live="polite" aria-atomic="true">Ссылки пока не добавлены.</div>
+            <div id="link-options" class="link-options" role="group" aria-label="Выберите ссылку подключения"></div>
+            <button type="button" id="retry-links" class="btn-outline-neon px-5 py-2.5 text-sm" hidden><svg class="icon w-4 h-4" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Попробовать ещё раз</button>
+            <div id="selected-link" class="selected-link" hidden>
+                <label for="subscription" class="block text-sm text-gray-400 font-medium mb-2">Ссылка подключения</label>
+                <div class="copy-row flex gap-3"><input id="subscription" class="form-input min-w-0" readonly spellcheck="false" autocapitalize="off"><button type="button" id="copy" class="btn-neon px-6 py-3 shrink-0 text-sm">Копировать</button></div>
+            </div>
+            <div class="dialog-guide mt-6 pt-6 border-t border-white/10">
+                <h3 class="font-bold text-white mb-4">Как подключиться</h3>
+                <ol class="guide-steps text-sm text-gray-400 space-y-3">
+                    <li><span class="guide-step-number">1</span><span>Выберите доступную ссылку выше.</span></li>
+                    <li><span class="guide-step-number">2</span><span>Нажмите «Копировать».</span></li>
+                    <li><span class="guide-step-number">3</span><span>Откройте инструкцию для своего устройства и следуйте её шагам.</span></li>
+                </ol>
+                <a href="#instructions-section" id="to-guide" class="btn-outline-neon px-5 py-3 text-sm inline-flex items-center gap-2 mt-5">К инструкциям <svg class="icon w-4 h-4" aria-hidden="true"><use href="assets/icons.svg#arrow-up-right"></use></svg></a>
+            </div>
+            <div class="dialog-contact mt-6 pt-5 border-t border-white/10 flex flex-wrap gap-3 items-center justify-between"><span class="text-sm text-gray-400">Нужна помощь?</span><button type="button" data-contact-open class="text-cyan-400 text-sm font-semibold inline-flex items-center gap-2"><svg class="icon w-4 h-4" aria-hidden="true"><use href="assets/icons.svg#message-circle"></use></svg> Написать нам</button></div>
+        </div>
+    </dialog>
+
+    <dialog id="contact-dialog" class="internet-dialog contact-dialog" aria-labelledby="contact-dialog-title">
+        <div class="dialog-inner text-center">
+            <button type="button" class="dialog-close" data-dialog-close aria-label="Закрыть контакты"><svg class="icon w-6 h-6" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
+            <div class="glow-icon mx-auto mb-5"><svg class="icon w-6 h-6 text-cyan-400" aria-hidden="true"><use href="assets/icons.svg#message-circle"></use></svg></div>
+            <h2 id="contact-dialog-title" class="text-2xl font-bold text-white mb-3">Мы на связи</h2>
+            <p class="text-sm text-gray-400 leading-relaxed mb-6">Напишите СМС или выберите мессенджер.<br>Поможем разобраться с подключением.</p>
+            <a data-contact-phone class="contact-phone text-2xl font-bold text-cyan-400" href="tel:+79152449644">+7 (915) 244-96-44</a>
+            <div class="contact-channels justify-center mt-7" data-contact-channels></div>
+            <p class="text-xs text-gray-500 mt-6">Выберите удобный способ связи</p>
+        </div>
+    </dialog>
+    <noscript><p class="container mx-auto p-6 text-gray-400">Чтобы получить ссылки, включите JavaScript. Для помощи позвоните: <a href="tel:+79152449644">+7 (915) 244-96-44</a>.</p></noscript>
+</body>
+</html>
