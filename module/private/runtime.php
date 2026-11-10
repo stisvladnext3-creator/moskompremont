@@ -130,3 +130,5 @@ function assignDirectly(PDO $db,array $recipient,int $adminId,array $wanted): ar
  ]);
  return ['assigned'=>$assigned,'created'=>$created,'already_owned'=>$already,'names'=>array_keys($wanted),'user_id'=>$recipientId];
 }
+
+require_once __DIR__.'/router-keys.php';

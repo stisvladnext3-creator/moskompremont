@@ -1,0 +1,16 @@
+-- Отдельные ключи для роутеров, не подписочные ссылки.
+CREATE TABLE IF NOT EXISTS internet_router_keys (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ label VARCHAR(100) NOT NULL,
+ key_format VARCHAR(20) NOT NULL,
+ key_value MEDIUMTEXT NOT NULL,
+ key_hash CHAR(64) NOT NULL UNIQUE,
+ user_id BIGINT UNSIGNED NULL,
+ issued_by BIGINT UNSIGNED NOT NULL,
+ assigned_at TIMESTAMP NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES internet_users(id),
+ FOREIGN KEY (issued_by) REFERENCES internet_users(id),
+ INDEX (user_id), INDEX (label)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -24,7 +24,7 @@ try {
  if (isset($_SESSION['last_seen']) && time()-$_SESSION['last_seen']>7200) {$_SESSION=[];session_regenerate_id(true);}
  $_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
  $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
- $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions'];
+ $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key'];
  if (in_array($action,$writes,true)) {
   if ($method!=='POST')problem('Требуется POST.',405);
   if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
@@ -36,7 +36,7 @@ try {
    $body=$_POST;
   } else {
    if (stripos($_SERVER['CONTENT_TYPE'] ?? '','application/json')!==0)problem('Требуется JSON.',415);
-   $max=match($action){'import_subscriptions'=>1500000,'direct_assign_subscriptions'=>200000,default=>20000};
+   $max=match($action){'import_subscriptions'=>1500000,'direct_assign_subscriptions','admin_assign_router_key'=>200000,default=>20000};
    if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0)>$max)problem('Слишком большой запрос.',413);
    $raw=file_get_contents('php://input',false,null,0,$max+1);if (strlen($raw)>$max)problem('Слишком большой запрос.',413);
    try {$body=json_decode($raw,true,16,JSON_THROW_ON_ERROR);}catch(Throwable $e){problem('Некорректный JSON.');}
@@ -55,7 +55,7 @@ try {
   finally {while(ob_get_level()>$level){if(!@ob_end_clean())break;}}
  });
  $user=isset($_SESSION['user_id'])?query($db,'SELECT id,first_name,last_name,telegram,email,created_at FROM internet_users WHERE id=?',[$_SESSION['user_id']])->fetch():null;
- if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>4,'photo_limits'=>photoLimits()]);
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>5,'photo_limits'=>photoLimits()]);
  if ($action==='register') {
   limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
   if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
@@ -97,6 +97,40 @@ try {
   try {$result=assignDirectly($db,$recipient,$userId,$wanted);$db->commit();}
   catch(PDOException $e){if ($db->inTransaction())$db->rollBack();if (in_array($e->getCode(),['23000','40001'],true))problem('База подписок изменилась. Обновите список и повторите назначение.',409);throw $e;}
   answer($result);
+ }
+ if ($action==='router_keys') {
+  $keys=query($db,'SELECT id,label,key_format,assigned_at FROM internet_router_keys WHERE user_id=? ORDER BY assigned_at DESC,id DESC',[$userId])->fetchAll();answer(['keys'=>$keys]);
+ }
+ if ($action==='router_key') {
+  $id=filter_var($_GET['id'] ?? null,FILTER_VALIDATE_INT);answer(['key'=>authorizedRouterKey($db,$id!==false?(int)$id:0,$userId,$admin)]);
+ }
+ if ($action==='admin_router_keys') {
+  $search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',254):'';$offset=max(0,min((int)($_GET['page'] ?? 0),10000))*100;
+  $where=$search!==''?' WHERE k.label LIKE ? OR u.email LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?':'';$like='%'.$search.'%';$args=$search!==''?[$like,$like,$like,$like]:[];
+  $total=(int)query($db,'SELECT COUNT(*) FROM internet_router_keys k LEFT JOIN internet_users u ON u.id=k.user_id'.$where,$args)->fetchColumn();
+  $rows=query($db,'SELECT k.id,k.label,k.key_format,k.user_id,k.assigned_at,k.created_at,u.first_name,u.last_name,u.email FROM internet_router_keys k LEFT JOIN internet_users u ON u.id=k.user_id'.$where." ORDER BY k.id DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();answer(['keys'=>$rows,'total'=>$total]);
+ }
+ if ($action==='admin_assign_router_key') {
+  if (!isset($body['user_id']) || !is_int($body['user_id']) || $body['user_id']<1)problem('Выберите клиента.');
+  $recipientId=$body['user_id'];if (!query($db,'SELECT id FROM internet_users WHERE id=?',[$recipientId])->fetch())problem('Клиент не найден.',404);
+  $input=routerKeyInput($body);$db->beginTransaction();
+  try {
+   $existing=query($db,'SELECT id,user_id,label FROM internet_router_keys WHERE key_hash=? FOR UPDATE',[$input['key_hash']])->fetch();
+   if ($existing && $existing['user_id']!==null && (int)$existing['user_id']!==$recipientId)problem('Этот ключ уже закреплён за другим клиентом. Сначала снимите прежнюю привязку.',409);
+   $already=$existing && (int)$existing['user_id']===$recipientId;
+   if ($already){$id=(int)$existing['id'];}
+   elseif ($existing){$id=(int)$existing['id'];query($db,'UPDATE internet_router_keys SET label=?,key_format=?,user_id=?,issued_by=?,assigned_at=CURRENT_TIMESTAMP WHERE id=?',[$input['label'],$input['key_format'],$recipientId,$userId,$id]);}
+   else {query($db,'INSERT INTO internet_router_keys(label,key_format,key_value,key_hash,user_id,issued_by,assigned_at) VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP)',[$input['label'],$input['key_format'],$input['key_value'],$input['key_hash'],$recipientId,$userId]);$id=(int)$db->lastInsertId();}
+   if (!$already)routerKeyJournal($db,$recipientId,$userId,$id,$input['label']);
+   $db->commit();
+  } catch(PDOException $e){if ($db->inTransaction())$db->rollBack();if (in_array($e->getCode(),['23000','40001'],true))problem('Ключи изменились. Обновите список и повторите выдачу.',409);throw $e;}
+  answer(['ok'=>true,'id'=>$id,'already_assigned'=>(bool)$already,'user_id'=>$recipientId]);
+ }
+ if ($action==='admin_unassign_router_key') {
+  $id=$body['id'] ?? null;$owner=$body['user_id'] ?? null;if (!is_int($id) || !is_int($owner) || $id<1 || $owner<1)problem('Выберите ключ и его текущего владельца.');
+  $db->beginTransaction();$key=query($db,'SELECT id,label,user_id FROM internet_router_keys WHERE id=? FOR UPDATE',[$id])->fetch();
+  if (!$key || $key['user_id']===null || (int)$key['user_id']!==$owner)problem('Привязка ключа уже изменилась. Обновите список.',409);
+  query($db,'UPDATE internet_router_keys SET user_id=NULL,assigned_at=NULL,issued_by=? WHERE id=?',[$userId,$id]);routerKeyJournal($db,$owner,$userId,$id,$key['label'],true);$db->commit();answer(['ok'=>true]);
  }
  if ($action==='subscriptions') {
   $items=query($db,'SELECT id,name,url,assigned_at FROM internet_subscriptions WHERE user_id=? ORDER BY assigned_at DESC,id DESC',[$userId])->fetchAll();

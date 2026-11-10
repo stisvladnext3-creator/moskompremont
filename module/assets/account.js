@@ -4,8 +4,8 @@
   if (!$('auth-section')) return;
   let csrf = '', user = null, payment = { available: false }, mode = 'client';
   let clientTab = 'subscriptions', adminTab = 'support', conversation = null;
-  let assignmentUsersLoaded = false; const assignmentUsers = new Map();
-  const pages = { users: 0, payments: 0, subscriptions: 0 };
+  let routerKeyUsersLoaded = false; let assignmentUsersLoaded = false; const assignmentUsers = new Map();
+  const pages = { users: 0, payments: 0, subscriptions: 0, 'router-keys': 0 };
   const orderStatus = { created: 'Ожидает оплаты', submitted: 'На ручной проверке', paid: 'Оплата подтверждена', rejected: 'Оплата не подтверждена' };
   const claimStatus = { pending: 'Ожидает ссылки или проверки', approved: 'Подписка добавлена', rejected: 'Запрос отклонён', revoked: 'Привязка снята администратором' };
   const money = n => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(n));
@@ -33,8 +33,8 @@
   };
   function signedOut() {
     user = null; conversation = null; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
-    for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'conversation-messages']) $(id).replaceChildren();
-    document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
+    for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages']) $(id).replaceChildren();
+    document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; routerKeyUsersLoaded = false; $('router-key-user').replaceChildren(new Option('Выберите клиента', '')); $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
   }
   $('logout-button').onclick = e => run(e.target, async () => { await api('logout', {}); signedOut(); message('Вы вышли из кабинета.'); });
   async function showCabinet() {
@@ -47,7 +47,7 @@
   }
   async function setMode(value) { mode = value; $('client-shell').hidden = value !== 'client'; $('admin-shell').hidden = value !== 'admin'; closeConversation(); if (value === 'admin') await selectAdmin(adminTab); else await selectClient(clientTab); }
   $('client-mode').onclick = e => run(e.target, () => setMode('client')); $('admin-mode').onclick = e => run(e.target, () => setMode('admin'));
-  async function selectClient(value) { clientTab = value; closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); }
+  async function selectClient(value) { clientTab = value; closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); }
   document.querySelectorAll('[data-client-tab]').forEach(b => b.onclick = () => run(b, () => selectClient(b.dataset.clientTab)));
   async function selectAdmin(value) { adminTab = value; closeConversation(); document.querySelectorAll('[data-admin-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.adminTab === value))); document.querySelectorAll('[data-admin-panel]').forEach(p => p.hidden = p.dataset.adminPanel !== value); await loadAdmin(value); }
   document.querySelectorAll('[data-admin-tab]').forEach(b => b.onclick = () => run(b, () => selectAdmin(b.dataset.adminTab)));
@@ -129,10 +129,10 @@
   }
   function pager(id, key, count, total) { const target = $(id); target.replaceChildren(); const box = el('div', null, 'pager'); const prev = button('← Назад', async () => { pages[key]--; await loadAdmin(key); }); prev.disabled = pages[key] === 0; const next = button('Далее →', async () => { pages[key]++; await loadAdmin(key); }); next.disabled = total === undefined ? count < 100 : (pages[key] + 1) * 100 >= total; box.append(prev, el('span', 'Страница ' + (pages[key] + 1)), next); target.append(box); }
   function readButton(record, reload) { return button('Отметить прочитанным', async () => { await api('read_event', { id: record.event_id }); await reload(); await updateSummary(); }); }
-  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); await updateSummary(); }
+  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); await updateSummary(); }
   async function loadUsers() {
     const data = await api('admin_users', undefined, { page: pages.users }), target = $('admin-users'); target.replaceChildren();
-    for (const item of data.users) { const fresh = item.event_id && !item.event_read_at, box = el('article', null, 'record' + (fresh ? ' record-new' : '')); box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name), el('p', 'Почта: ' + item.email), el('p', 'Telegram: ' + item.telegram), el('p', 'Регистрация: ' + date(item.created_at), 'account-muted'), el('p', 'Указал подписки: ' + (item.claims.map(c => c.name).join(', ') || 'нет')), el('p', 'Выданы: ' + (item.subscriptions.map(s => s.name).join(', ') || 'пока нет'), 'account-muted')); if (fresh) box.append(readButton(item, loadUsers)); box.append(button('Назначить подписки', () => chooseDirectRecipient(item))); target.append(box); }
+    for (const item of data.users) { const fresh = item.event_id && !item.event_read_at, box = el('article', null, 'record' + (fresh ? ' record-new' : '')); box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name), el('p', 'Почта: ' + item.email), el('p', 'Telegram: ' + item.telegram), el('p', 'Регистрация: ' + date(item.created_at), 'account-muted'), el('p', 'Указал подписки: ' + (item.claims.map(c => c.name).join(', ') || 'нет')), el('p', 'Выданы: ' + (item.subscriptions.map(s => s.name).join(', ') || 'пока нет'), 'account-muted')); if (fresh) box.append(readButton(item, loadUsers)); box.append(button('Назначить подписки', () => chooseDirectRecipient(item))); box.append(button('Выдать ключ роутера', () => chooseRouterKeyRecipient(item))); target.append(box); }
     pager('users-pager', 'users', data.users.length);
   }
   async function loadAdminOrders() {
@@ -199,6 +199,52 @@
       const recipient = assignmentUsers.get(recipientId); message('Клиенту ' + (recipient ? recipient.email : '#' + recipientId) + ' назначено подписок: ' + data.assigned + '. Новых в базе: ' + data.created + '. Уже были у клиента: ' + data.already_owned + '.');
     });
   };
+  const routerFormats = { connection: 'Ключ подключения', wireguard: 'WireGuard', openvpn: 'OpenVPN', text: 'Текстовая конфигурация' };
+  function routerKeyCard(item) {
+    const card = el('article', null, 'subscription-card router-key-card'); card.append(el('h3', item.label), el('p', routerFormats[item.key_format] || 'Ключ для роутера', 'account-muted'));
+    const details = el('details'), summary = el('summary', 'Показать ключ'), text = el('textarea'); text.readOnly = true; text.rows = item.key_format === 'connection' ? 3 : 8; text.spellcheck = false; text.autocapitalize = 'off'; text.placeholder = 'Загрузка ключа…'; text.setAttribute('aria-label', 'Ключ: ' + item.label); details.append(summary, text); card.append(details);
+    let material = null, pending = null;
+    async function ensureKey() {
+      if (material !== null) return material;
+      if (!pending) pending = api('router_key', undefined, { id: item.id });
+      try { const data = await pending; material = data.key.key_value; text.value = material; return material; } finally { pending = null; }
+    }
+    details.addEventListener('toggle', () => { if (details.open && material === null) run(null, ensureKey); });
+    const copy = button('Скопировать ключ', async () => { const value = await ensureKey(); try { await navigator.clipboard.writeText(value); copy.textContent = 'Скопировано'; setTimeout(() => copy.textContent = 'Скопировать ключ', 2000); } catch { details.open = true; text.focus(); text.select(); message('Скопируйте выделенный ключ.'); } });
+    const download = el('a', 'Скачать ' + (item.key_format === 'wireguard' ? '.conf' : item.key_format === 'openvpn' ? '.ovpn' : '.txt')); download.href = 'api/router-key.php?' + new URLSearchParams({ id: item.id });
+    const actions = el('div', null, 'order-buttons'); actions.append(copy, download); card.append(actions); return { card, ensureKey };
+  }
+  async function loadRouterKeys() {
+    const data = await api('router_keys'); $('router-keys-list').replaceChildren();
+    if (!data.keys.length) $('router-keys-list').append(el('p', 'Ключей для роутера пока нет. Администратор добавит их в ваш кабинет.', 'account-muted'));
+    for (const key of data.keys) { const { card } = routerKeyCard(key); if (key.assigned_at) card.append(el('p', 'Выдан: ' + date(key.assigned_at), 'account-muted')); $('router-keys-list').append(card); }
+  }
+  $('refresh-router-keys').onclick = e => run(e.target, loadRouterKeys);
+  async function loadRouterKeyUsers(query = '', selectedId = 0) {
+    const select = $('router-key-user'); select.disabled = true; if (!selectedId) select.value = '';
+    try { const data = await api('admin_user_search', undefined, { q: query }); select.replaceChildren(new Option('Выберите клиента', '')); for (const item of data.users) { assignmentUsers.set(Number(item.id), item); select.append(new Option('#' + item.id + ' · ' + item.first_name + ' ' + item.last_name + ' · ' + item.email, String(item.id))); } select.value = selectedId ? String(selectedId) : ''; routerKeyUsersLoaded = true; $('router-key-user-hint').textContent = data.users.length >= data.limit ? 'Уточните поиск, если нужного клиента нет среди первых ' + data.limit + '.' : 'Найдено клиентов: ' + data.users.length + '. Проверьте получателя.'; }
+    finally { select.disabled = false; }
+  }
+  async function chooseRouterKeyRecipient(item) { await selectAdmin('router-keys'); $('router-key-user-query').value = item.email; await loadRouterKeyUsers(item.email, Number(item.id)); $('router-key-assignment').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('router-key-form').elements.label.focus(); }
+  $('router-key-user-search').onsubmit = e => { e.preventDefault(); run(e.submitter, () => loadRouterKeyUsers($('router-key-user-query').value)); };
+  $('router-key-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => {
+    const select = $('router-key-user'), recipientId = Number(select.value); if (!recipientId || select.disabled) throw Error('Выберите получателя ключа.');
+    const data = Object.fromEntries(new FormData(e.target)); data.user_id = recipientId; const result = await api('admin_assign_router_key', data);
+    e.target.elements.label.value = ''; e.target.elements.key_value.value = ''; await loadAdminRouterKeys();
+    const recipient = assignmentUsers.get(recipientId); message(result.already_assigned ? 'Этот ключ уже был назначен выбранному клиенту. Дубликат не создан.' : 'Ключ выдан клиенту ' + (recipient ? recipient.email : '#' + recipientId) + ' и доступен в разделе «Ключи для роутера».');
+  }); };
+  $('router-key-search').onsubmit = e => { e.preventDefault(); pages['router-keys'] = 0; run(e.submitter, loadAdminRouterKeys); };
+  async function loadAdminRouterKeys() {
+    if (!routerKeyUsersLoaded) await loadRouterKeyUsers(); const data = await api('admin_router_keys', undefined, { q: $('router-key-query').value, page: pages['router-keys'] }); $('admin-router-keys').replaceChildren();
+    if (!data.keys.length) $('admin-router-keys').append(el('p', 'Ключей пока нет. Вставьте готовый ключ в форму выше и выберите клиента.', 'account-muted'));
+    for (const key of data.keys) {
+      const { card, ensureKey } = routerKeyCard(key); card.append(el('p', key.user_id ? 'Клиент: ' + key.first_name + ' ' + key.last_name + ' · ' + key.email : 'Ключ свободен — привязка снята', 'account-muted'));
+      if (key.user_id) card.append(button('Снять привязку ключа', async () => { if (!confirm('Снять привязку ключа «' + key.label + '» у ' + key.email + '? Он исчезнет из кабинета клиента и останется в базе.')) return; await api('admin_unassign_router_key', { id: Number(key.id), user_id: Number(key.user_id) }); await loadAdminRouterKeys(); message('Привязка ключа снята.'); }, 'account-secondary account-danger'));
+      else card.append(button('Выдать ключ клиенту', async () => { const value = await ensureKey(); const form = $('router-key-form'); form.elements.label.value = key.label; form.elements.key_format.value = key.key_format; form.elements.key_value.value = value; $('router-key-assignment').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('router-key-user').focus(); }));
+      $('admin-router-keys').append(card);
+    }
+    pager('router-keys-pager', 'router-keys', data.keys.length, data.total);
+  }
   $('mail-test').onclick = e => run(e.target, async () => { const data = await api('mail_test', {}); await updateSummary(); message(data.ready ? 'Тестовое письмо поставлено в очередь отправки.' : 'Письмо сохранено в очереди. Сначала настройте отправку в private/config.php.'); });
   $('mail-retry').onclick = e => run(e.target, async () => { const data = await api('mail_retry', {}); await updateSummary(); message(data.ready ? 'Почтовым сервером принято: ' + data.sent + '. Не удалось отправить: ' + data.failed + '.' : 'Сначала настройте отправку писем в private/config.php.'); });
   setInterval(async () => { if (!user || document.hidden) return; try { if (conversation) await loadConversation(); else await updateSummary(); } catch (e) { if (e.status === 401) message('Сессия завершена. Войдите снова.', true); } }, 20000);
