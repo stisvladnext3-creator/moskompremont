@@ -57,6 +57,7 @@
     instructionsLoaded = true;
   }
   $('instructions-subscriptions').onclick = e => run(e.target, () => selectClient('subscriptions'));
+  $('instructions-router-keys').onclick = e => run(e.target, () => selectClient('router-keys'));
   $('account-instructions-link').onclick = e => {
     if (!user) return;
     e.preventDefault(); run(null, async () => { clientTab = 'instructions'; await setMode('client'); $('cabinet-instructions').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
