@@ -38,13 +38,37 @@
     "includeWithCustom": true,
     "title": "V2rayTun — добавление ссылки",
     "text": "1. Скопируйте выданную ссылку.\n2. В V2rayTun нажмите «+» в правом верхнем углу.\n3. Выберите «Импорт из буфера обмена».",
-    "cabinetText": "1. Откройте «Мои подписки» в личном кабинете и скопируйте выданную ссылку.\n2. В V2rayTun нажмите «+» в правом верхнем углу.\n3. Выберите «Импорт из буфера обмена»."
+    "cabinetText": "1. Откройте «Мои подписки» в личном кабинете и скопируйте выданную ссылку.\n2. В V2rayTun нажмите «+» в правом верхнем углу.\n3. Выберите «Импорт из буфера обмена».",
+    "images": [
+      {
+        "src": "images/instructions/v2raytun-import-01.jpg",
+        "alt": "В V2rayTun красной рамкой выделена кнопка «+» в правом верхнем углу.",
+        "caption": "Шаг 2. Нажмите «+» в правом верхнем углу."
+      },
+      {
+        "src": "images/instructions/v2raytun-import-02.jpg",
+        "alt": "В меню V2rayTun выделен пункт «Импорт из буфера обмена».",
+        "caption": "Шаг 3. Выберите «Импорт из буфера обмена»."
+      }
+    ]
   },
   {
     "id": "v2raytun-remove-subscription",
     "includeWithCustom": true,
     "title": "V2rayTun — удаление подписки из приложения",
-    "text": "1. В V2rayTun зажмите пальцем название группы подписки.\n2. В появившемся меню нажмите «Удалить»."
+    "text": "1. В V2rayTun зажмите пальцем название группы подписки.\n2. В появившемся меню нажмите «Удалить».",
+    "images": [
+      {
+        "src": "images/instructions/v2raytun-remove-01.jpg",
+        "alt": "В V2rayTun красной рамкой выделено название группы подписки.",
+        "caption": "Шаг 1. Зажмите пальцем название группы подписки, выделенное красной рамкой."
+      },
+      {
+        "src": "images/instructions/v2raytun-remove-02.jpg",
+        "alt": "В контекстном меню подписки V2rayTun красной рамкой выделено «Удалить».",
+        "caption": "Шаг 2. В появившемся меню нажмите «Удалить»."
+      }
+    ]
   },
   {
     "title": "Invisible Man — настройка подписки",
@@ -83,7 +107,33 @@
     "includeWithCustom": true,
     "title": "V2RayN — импорт подписки из буфера обмена",
     "text": "1. Скопируйте выданную ссылку-подписку.\n2. В V2RayN откройте меню «Configuration» в левом верхнем углу.\n3. Выберите «Import Share Links from clipboard» (Ctrl+V).\n4. Выберите добавленную группу «import_sub».\n5. Откройте меню «Subscription Group».\n6. Выберите «Update current subscription without proxy».",
-    "cabinetText": "1. Откройте «Мои подписки» в личном кабинете и скопируйте нужную ссылку.\n2. В V2RayN откройте меню «Configuration» в левом верхнем углу.\n3. Выберите «Import Share Links from clipboard» (Ctrl+V).\n4. Выберите добавленную группу «import_sub».\n5. Откройте меню «Subscription Group».\n6. Выберите «Update current subscription without proxy»."
+    "cabinetText": "1. Откройте «Мои подписки» в личном кабинете и скопируйте нужную ссылку.\n2. В V2RayN откройте меню «Configuration» в левом верхнем углу.\n3. Выберите «Import Share Links from clipboard» (Ctrl+V).\n4. Выберите добавленную группу «import_sub».\n5. Откройте меню «Subscription Group».\n6. Выберите «Update current subscription without proxy».",
+    "images": [
+      {
+        "src": "images/instructions/v2rayn-import-01.jpg",
+        "alt": "В V2RayN красной рамкой выделено меню Configuration в левом верхнем углу.",
+        "caption": "Шаг 2. Откройте Configuration в левом верхнем углу.",
+        "wide": true
+      },
+      {
+        "src": "images/instructions/v2rayn-import-02.jpg",
+        "alt": "В меню Configuration выделен пункт Import Share Links from clipboard.",
+        "caption": "Шаг 3. Выберите Import Share Links from clipboard или нажмите Ctrl+V.",
+        "wide": true
+      },
+      {
+        "src": "images/instructions/v2rayn-import-03.jpg",
+        "alt": "Группа import_sub обведена оранжевым, меню Subscription Group — красным.",
+        "caption": "Шаги 4–5. Выберите import_sub (оранжевая рамка), затем Subscription Group (красная рамка).",
+        "wide": true
+      },
+      {
+        "src": "images/instructions/v2rayn-import-04.jpg",
+        "alt": "В меню Subscription Group выделено Update current subscription without proxy.",
+        "caption": "Шаг 6. Выберите Update current subscription without proxy.",
+        "wide": true
+      }
+    ]
   },
   {
     "title": "V2RayN — Windows и macOS",
@@ -127,9 +177,11 @@
       const body = element('div', undefined, 'instruction-body');
       const text = options.cabinet && typeof item.cabinetText === 'string' ? item.cabinetText : item.text;
       if (text) body.append(element('p', text));
-      if (Array.isArray(item.images)) {
+      const guideDefault = defaults.find(value => value.includeWithCustom && (value.id === item.id || value.title === item.title));
+      const guideImages = Array.isArray(item.images) ? item.images : guideDefault?.images;
+      if (Array.isArray(guideImages)) {
         const gallery = element('div', undefined, 'instruction-gallery');
-        item.images.forEach((value, index) => {
+        guideImages.forEach((value, index) => {
           const picture = typeof value === 'string' ? { src: value } : value;
           if (!picture || typeof picture.src !== 'string' || !picture.src.trim()) return;
           let url;
