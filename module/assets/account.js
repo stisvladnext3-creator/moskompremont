@@ -4,6 +4,7 @@
   if (!$('auth-section')) return;
   let csrf = '', user = null, payment = { available: false }, mode = 'client';
   let clientTab = 'subscriptions', adminTab = 'support', conversation = null;
+  let keeneticEnabled = false, keeneticUser = null, keeneticUsersLoaded = false, keeneticRequest = 0;
   let routerKeyUsersLoaded = false; let assignmentUsersLoaded = false; const assignmentUsers = new Map();
   const pages = { clients: 0, users: 0, payments: 0, subscriptions: 0, 'router-keys': 0 };
   const orderStatus = { created: 'Ожидает оплаты', submitted: 'На ручной проверке', paid: 'Оплата подтверждена', rejected: 'Оплата не подтверждена' };
@@ -32,9 +33,9 @@
     });
   };
   function signedOut() {
-    user = null; conversation = null; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
-    for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-clients', 'mail-diagnostics', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages']) $(id).replaceChildren();
-    document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; routerKeyUsersLoaded = false; $('router-key-user').replaceChildren(new Option('Выберите клиента', '')); $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
+    user = null; conversation = null; setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
+    for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-clients', 'keenetic-files', 'admin-keenetic-files', 'mail-diagnostics', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages']) $(id).replaceChildren();
+    document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; routerKeyUsersLoaded = false; $('keenetic-user').replaceChildren(new Option('Выберите клиента', '')); $('router-key-user').replaceChildren(new Option('Выберите клиента', '')); $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
   }
   $('logout-button').onclick = e => run(e.target, async () => { await api('logout', {}); signedOut(); message('Вы вышли из кабинета.'); });
   async function showCabinet() {
@@ -43,11 +44,13 @@
     $('client-mode').hidden = !user.is_admin; $('admin-mode').hidden = !user.is_admin;
     $('payment-unavailable').hidden = payment.available; $('order-form').querySelector('button').disabled = !payment.available;
     mode = user.is_admin ? 'admin' : 'client'; if (location.hash === '#payment') { mode = 'client'; clientTab = 'payments'; } if (location.hash === '#instructions') { mode = 'client'; clientTab = 'instructions'; } if (location.hash === '#servers') { mode = 'client'; clientTab = 'servers'; }
+    await loadKeenetic(); if (location.hash === '#keenetic') { mode = 'client'; clientTab = 'keenetic'; }
+    if (clientTab === 'keenetic' && !keeneticEnabled) clientTab = 'subscriptions';
     await setMode(mode); await updateSummary();
   }
   async function setMode(value) { mode = value; $('client-shell').hidden = value !== 'client'; $('admin-shell').hidden = value !== 'admin'; closeConversation(); if (value === 'admin') await selectAdmin(adminTab); else await selectClient(clientTab); }
   $('client-mode').onclick = e => run(e.target, () => setMode('client')); $('admin-mode').onclick = e => run(e.target, () => setMode('admin'));
-  async function selectClient(value) { clientTab = value; closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); if (value === 'instructions') loadInstructions(); if (value === 'servers') await window.MKRServerStatus?.refresh(); }
+  async function selectClient(value) { if (value === 'keenetic' && !keeneticEnabled) value = 'subscriptions'; clientTab = value; closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); if (value === 'instructions') loadInstructions(); if (value === 'servers') await window.MKRServerStatus?.refresh(); if (value === 'keenetic') await loadKeenetic(); }
   document.querySelectorAll('[data-client-tab]').forEach(b => b.onclick = () => run(b, () => selectClient(b.dataset.clientTab)));
   let instructionsLoaded = false;
   function loadInstructions() {
@@ -138,15 +141,16 @@
   function badge(node, value) { if (!node) return; node.hidden = !Number(value); node.textContent = Number(value) > 99 ? '99+' : value; }
   async function updateSummary() {
     if (!user) return; const summary = await api('summary'); badge($('support-unread'), summary.unread_support);
+    setKeeneticVisibility(!!summary.keenetic_enabled); if (!keeneticEnabled && clientTab === 'keenetic' && mode === 'client') await selectClient('subscriptions');
     if (user.is_admin) { const data = await api('admin_summary'); Object.entries(data.unread).forEach(([type, count]) => document.querySelectorAll('[data-count="' + type + '"]').forEach(node => badge(node, count))); const m = data.mail; $('mail-status').textContent = 'Получатель: ' + m.recipient + '\n' + (m.ready ? 'Отправка настроена.' : 'Отправка не настроена. Заполните раздел mail в private/config.php.') + '\nПринято почтовым сервером: ' + m.sent + '. В очереди: ' + m.pending + '. Ошибок после повторов: ' + m.failed + '.'; $('mail-status').style.whiteSpace = 'pre-line'; $('mail-status').classList.toggle('mail-warning', !m.ready || m.failed > 0); }
   }
   function pager(id, key, count, total) { const target = $(id); target.replaceChildren(); const box = el('div', null, 'pager'); const prev = button('← Назад', async () => { pages[key]--; await loadAdmin(key); }); prev.disabled = pages[key] === 0; const next = button('Далее →', async () => { pages[key]++; await loadAdmin(key); }); next.disabled = total === undefined ? count < 100 : (pages[key] + 1) * 100 >= total; box.append(prev, el('span', 'Страница ' + (pages[key] + 1)), next); target.append(box); }
   function readButton(record, reload) { return button('Отметить прочитанным', async () => { await api('read_event', { id: record.event_id }); await reload(); await updateSummary(); }); }
-  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'clients') await loadClients(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); if (value === 'monitoring') await loadMonitoring(); if (value === 'mail') await loadMailDiagnostics(); await updateSummary(); }
+  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'clients') await loadClients(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); if (value === 'keenetic') await loadAdminKeenetic(); if (value === 'monitoring') await loadMonitoring(); if (value === 'mail') await loadMailDiagnostics(); await updateSummary(); }
   $('clients-search').onsubmit = e => { e.preventDefault(); pages.clients = 0; run(e.submitter, loadClients); };
   async function loadClients() {
     const data = await api('admin_clients', undefined, { offset: pages.clients * 100, q: $('clients-query').value.trim() });
-    $('admin-clients').replaceChildren(); $('clients-total').textContent = 'Найдено клиентов: ' + data.total;
+    $('admin-clients').replaceChildren(); $('clients-total').textContent = 'Найдено клиентов: ' + data.total + (data.keenetic_ready === false ? '. Для Keenetic импортируйте private/migrations/006-keenetic.sql.' : '');
     for (const item of data.users) {
       const box = el('article', null, 'record client-directory-card');
       box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name), el('p', item.email + ' · ' + item.telegram, 'account-muted'));
@@ -155,7 +159,11 @@
       if (item.subscriptions.length) { const list = el('ul'); for (const sub of item.subscriptions) list.append(el('li', sub.name)); subs.append(list); } else subs.append(el('p', 'Не привязаны', 'account-muted'));
       keys.append(el('h4', 'Ключи для роутеров (' + item.router_keys.length + ')'));
       if (item.router_keys.length) { const list = el('ul'); for (const key of item.router_keys) list.append(el('li', key.label + ' · ' + (routerFormats[key.key_format] || key.key_format))); keys.append(list); } else keys.append(el('p', 'Не привязаны', 'account-muted'));
-      assigned.append(subs, keys); box.append(assigned, button('Назначить подписки', () => chooseDirectRecipient(item)), button('Выдать ключ роутера', () => chooseRouterKeyRecipient(item))); $('admin-clients').append(box);
+      assigned.append(subs, keys); box.append(assigned);
+      const accessLabel = el('label', null, 'checkbox-label'), access = el('input'); access.type = 'checkbox'; access.checked = !!item.keenetic_enabled; access.disabled = data.keenetic_ready === false;
+      accessLabel.append(access, document.createTextNode('Показывать вкладку Keenetic')); box.append(accessLabel, el('p', 'Файлов Keenetic: ' + (item.keenetic_files_count || 0), 'account-muted'));
+      access.onchange = () => { const enabled = access.checked; run(null, async () => { access.disabled = true; try { await api('admin_keenetic_access', { user_id: Number(item.id), enabled }); item.keenetic_enabled = enabled; message(enabled ? 'Вкладка Keenetic включена для ' + item.email + '.' : 'Вкладка Keenetic и скачивание файлов отключены для ' + item.email + '.'); } catch (e) { access.checked = !enabled; throw e; } finally { access.disabled = false; } }); };
+      box.append(button('Файлы Keenetic', () => chooseKeeneticRecipient(item)), button('Назначить подписки', () => chooseDirectRecipient(item)), button('Выдать ключ роутера', () => chooseRouterKeyRecipient(item))); $('admin-clients').append(box);
     }
     pager('clients-pager', 'clients', data.users.length, data.total);
   }
@@ -226,6 +234,84 @@
       const data = await api('direct_assign_subscriptions', { user_id: recipientId, names: e.target.elements.names.value, new_subscriptions: rows });
       e.target.elements.names.value = ''; resetDirectRows(); await loadAdminSubscriptions();
       const recipient = assignmentUsers.get(recipientId); message('Клиенту ' + (recipient ? recipient.email : '#' + recipientId) + ' назначено подписок: ' + data.assigned + '. Новых в базе: ' + data.created + '. Уже были у клиента: ' + data.already_owned + '.');
+    });
+  };
+  function setKeeneticVisibility(enabled) {
+    keeneticEnabled = enabled; $('keenetic-client-tab').hidden = !enabled;
+    if (!enabled) { $('keenetic-files').replaceChildren(); $('cabinet-keenetic').hidden = true; }
+  }
+  function keeneticFileCard(file) {
+    const card = el('article', null, 'subscription-card keenetic-file-card');
+    card.append(el('h3', file.file_name), el('p', (Number(file.byte_size) < 1024 ? file.byte_size + ' Б' : Number(file.byte_size) < 1048576 ? Math.ceil(Number(file.byte_size) / 1024) + ' КБ' : (Number(file.byte_size) / 1048576).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' МБ') + ' · ' + date(file.created_at), 'account-muted'));
+    const actions = el('div', null, 'order-buttons'), download = el('a', 'Скачать файл', 'account-secondary'); download.href = 'api/keenetic-file.php?' + new URLSearchParams({ id: file.id }); download.download = file.file_name; actions.append(download); card.append(actions); return { card, actions };
+  }
+  async function loadKeenetic() {
+    const owner = user?.id; if (!owner) return;
+    const data = await api('keenetic'); if (user?.id !== owner) return;
+    setKeeneticVisibility(!!data.enabled); $('keenetic-files').replaceChildren();
+    if (!data.enabled) { if (clientTab === 'keenetic' && mode === 'client') await selectClient('subscriptions'); return; }
+    if (!data.files.length) $('keenetic-files').append(el('p', 'Конфигурации пока не загружены. Администратор добавит их в этот раздел.', 'account-muted'));
+    for (const file of data.files) $('keenetic-files').append(keeneticFileCard(file).card);
+  }
+  $('refresh-keenetic').onclick = e => run(e.target, loadKeenetic);
+  function clearKeeneticManagement() {
+    keeneticRequest++; keeneticUser = null; $('keenetic-management').hidden = true; $('admin-keenetic-files').replaceChildren(); $('keenetic-upload-form').reset(); $('keenetic-enabled').checked = false;
+  }
+  async function loadKeeneticUsers(query = '', selectedId = 0) {
+    clearKeeneticManagement(); const request = keeneticRequest, select = $('keenetic-user'); select.disabled = true; select.replaceChildren(new Option('Выберите клиента', ''));
+    try {
+      const data = await api('admin_user_search', undefined, { q: query }); if (request !== keeneticRequest || !user?.is_admin) return;
+      for (const item of data.users) select.append(new Option('#' + item.id + ' · ' + item.first_name + ' ' + item.last_name + ' · ' + item.email, String(item.id)));
+      select.value = selectedId ? String(selectedId) : ''; keeneticUsersLoaded = true;
+      $('keenetic-user-hint').textContent = data.users.length >= data.limit ? 'Уточните поиск, если нужного клиента нет среди первых ' + data.limit + '.' : 'Найдено клиентов: ' + data.users.length + '. Выберите получателя конфигураций.';
+    } finally { if (request === keeneticRequest) select.disabled = false; }
+    if (selectedId && select.value) await loadKeeneticRecipient();
+  }
+  function keeneticAccessHint() {
+    $('keenetic-access-hint').textContent = $('keenetic-enabled').checked ? 'Клиент видит вкладку Keenetic и может скачивать свои файлы.' : 'Вкладка скрыта, скачивание для клиента закрыто. Можно заранее загрузить файлы, затем включить доступ.';
+  }
+  async function loadKeeneticRecipient() {
+    const id = Number($('keenetic-user').value); clearKeeneticManagement(); if (!id) return;
+    const request = keeneticRequest, data = await api('admin_keenetic', undefined, { user_id: id });
+    if (request !== keeneticRequest || !user?.is_admin) return;
+    keeneticUser = data.user; $('keenetic-management').hidden = false; $('keenetic-recipient').textContent = 'Клиент: ' + data.user.first_name + ' ' + data.user.last_name + ' · ' + data.user.email;
+    $('keenetic-enabled').checked = data.enabled; keeneticAccessHint();
+    if (!data.files.length) $('admin-keenetic-files').append(el('p', 'У этого клиента пока нет файлов Keenetic.', 'account-muted'));
+    for (const file of data.files) {
+      const { card, actions } = keeneticFileCard(file);
+      actions.append(button('Удалить файл', async () => {
+        if (!confirm('Удалить файл «' + file.file_name + '» у ' + data.user.email + '?')) return;
+        await api('admin_keenetic_delete', { id: file.id, user_id: id }); if (Number(keeneticUser?.id) === id) await loadKeeneticRecipient(); message('Файл «' + file.file_name + '» удалён.');
+      }, 'account-secondary account-danger')); $('admin-keenetic-files').append(card);
+    }
+  }
+  async function loadAdminKeenetic() {
+    if (!keeneticUsersLoaded) await loadKeeneticUsers($('keenetic-user-query').value);
+    else if ($('keenetic-user').value) await loadKeeneticRecipient();
+  }
+  async function chooseKeeneticRecipient(item) {
+    await selectAdmin('keenetic'); $('keenetic-user-query').value = item.email; await loadKeeneticUsers(item.email, Number(item.id)); $('admin-keenetic-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  $('keenetic-user-search').onsubmit = e => { e.preventDefault(); run(e.submitter, () => loadKeeneticUsers($('keenetic-user-query').value)); };
+  $('keenetic-user').onchange = () => run(null, loadKeeneticRecipient);
+  $('keenetic-enabled').onchange = () => {
+    const recipient = keeneticUser, enabled = $('keenetic-enabled').checked; if (!recipient) return;
+    run(null, async () => {
+      $('keenetic-enabled').disabled = true;
+      try { await api('admin_keenetic_access', { user_id: Number(recipient.id), enabled }); message('Доступ к Keenetic для ' + recipient.email + (enabled ? ' включён.' : ' отключён.')); }
+      catch (e) { if (keeneticUser?.id === recipient.id) $('keenetic-enabled').checked = !enabled; throw e; }
+      finally { $('keenetic-enabled').disabled = false; keeneticAccessHint(); }
+    });
+  };
+  $('keenetic-upload-form').onsubmit = e => {
+    e.preventDefault(); run(e.submitter, async () => {
+      const recipient = keeneticUser; if (!recipient) throw Error('Сначала выберите клиента.');
+      const input = e.target.querySelector('input[type=file]'), files = Array.from(input.files);
+      if (!files.length || files.length > 3 || files.some(f => !f.size || f.size > 5 * 1024 * 1024)) throw Error('Выберите от 1 до 3 непустых файлов, до 5 МБ каждый.');
+      if (files.some(f => !/\.(conf|ovpn|cfg|config|json|txt|yaml|yml|zip)$/i.test(f.name))) throw Error('Поддерживаются .conf, .ovpn, .cfg, .config, .json, .txt, .yaml, .yml и .zip.');
+      const data = new FormData(e.target); data.set('user_id', String(recipient.id)); await api('admin_keenetic_upload', data);
+      if (keeneticUser?.id === recipient.id) await loadKeeneticRecipient();
+      message('Загружено файлов: ' + files.length + ' · ' + recipient.email + '.');
     });
   };
   const routerFormats = { connection: 'Ключ подключения', wireguard: 'WireGuard', openvpn: 'OpenVPN', text: 'Текстовая конфигурация' };

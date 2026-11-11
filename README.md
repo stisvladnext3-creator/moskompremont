@@ -2,8 +2,9 @@
 
 Кабинет на PHP/MySQL: подписки и отдельные ключи для роутеров клиентов, ручная выдача с оплатой и без неё, переписка с фотографиями и разделы администратора.
 
-- [Скачать обновление кабинета v12](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v12-update.zip)
+- [Скачать обновление кабинета v13](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v13-update.zip)
 - [Полный комплект раздела и кабинета](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-account-php.zip)
+- [Установка v13: персональная вкладка Keenetic и конфигурации роутеров](downloads/UPDATE-CABINET-V13.md)
 - [Установка v12: статус серверов в кабинете и все новые скриншоты](downloads/UPDATE-CABINET-V12.md)
 - [Установка v11: обновление/выбор сервера V2RayN и настройка Podkop](downloads/UPDATE-CABINET-V11.md)
 - [Установка v10: все скриншоты V2RayN и V2rayTun](downloads/UPDATE-CABINET-V10.md)
@@ -21,6 +22,12 @@
 - [Исходники модуля](module/)
 - [Предпросмотр клиента](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=client)
 - [Предпросмотр администратора](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=admin)
+
+## Keenetic для выбранных клиентов (v13)
+
+В «Админка → Клиенты» галочка «Показывать вкладку Keenetic» включает персональный раздел. Кнопка «Файлы Keenetic» открывает управление конфигурациями выбранного клиента; отдельный раздел Keenetic также позволяет найти получателя, загрузить до трёх файлов по 5 МБ и удалить отдельные файлы. Конфигурации хранятся в MySQL и скачиваются только владельцем с включённым доступом или администратором. Снятие галочки сразу закрывает скачивание, сохраняя файлы для повторного включения.
+
+Для v8–v12 импортируйте `module/private/migrations/006-keenetic.sql` в текущую базу. Для v7 и старше или новой установки используйте полный `module/private/schema.sql`. Затем загрузите обновление с заменой файлов, сохранив свои config.php, config.js и QR. Службу Ubuntu обновлять не требуется. Пошаговая установка — в UPDATE-CABINET-V13.md.
 
 ## Мониторинг, клиенты и почта (v8)
 

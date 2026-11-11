@@ -16,6 +16,7 @@ function answer(array $body,int $status=200): never {
 }
 require_once dirname(__DIR__).'/private/runtime.php';
 require_once dirname(__DIR__).'/private/monitoring.php';
+require_once dirname(__DIR__).'/private/keenetic.php';
 $db=null;
 try {
  $path=getenv('INTERNET_CONFIG') ?: dirname(__DIR__).'/private/config.php';if (!is_file($path))problem('Кабинет ещё не настроен. Обратитесь к владельцу сайта.',503);
@@ -25,15 +26,15 @@ try {
  if (isset($_SESSION['last_seen']) && time()-$_SESSION['last_seen']>7200) {$_SESSION=[];session_regenerate_id(true);}
  $_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
  $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
- $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key'];
+ $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete'];
  if (in_array($action,$writes,true)) {
   if ($method!=='POST')problem('Требуется POST.',405);
   if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
   if (!hash_equals($_SESSION['csrf'],$_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))problem('Обновите страницу и попробуйте снова.',403);
   $multipart=stripos($_SERVER['CONTENT_TYPE'] ?? '','multipart/form-data')===0;
   if ($multipart) {
-   if (!in_array($action,['create_ticket','reply_ticket'],true))problem('Для этого действия требуется JSON.',415);
-   if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0)>16*1024*1024 || ((int)($_SERVER['CONTENT_LENGTH'] ?? 0)>0 && !$_POST && !$_FILES))problem('Загрузка превышает лимит хостинга. Для трёх фото до 5 МБ установите post_max_size=20M и upload_max_filesize=5M.',413);
+   if (!in_array($action,['create_ticket','reply_ticket','admin_keenetic_upload'],true))problem('Для этого действия требуется JSON.',415);
+   if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0)>16*1024*1024 || ((int)($_SERVER['CONTENT_LENGTH'] ?? 0)>0 && !$_POST && !$_FILES))problem('Загрузка превышает лимит хостинга. Для трёх файлов до 5 МБ установите post_max_size=20M и upload_max_filesize=5M.',413);
    $body=$_POST;
   } else {
    if (stripos($_SERVER['CONTENT_TYPE'] ?? '','application/json')!==0)problem('Требуется JSON.',415);
@@ -56,7 +57,7 @@ try {
   finally {while(ob_get_level()>$level){if(!@ob_end_clean())break;}}
  });
  $user=isset($_SESSION['user_id'])?query($db,'SELECT id,first_name,last_name,telegram,email,created_at FROM internet_users WHERE id=?',[$_SESSION['user_id']])->fetch():null;
- if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>8,'photo_limits'=>photoLimits()]);
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>13,'photo_limits'=>photoLimits()]);
  if ($action==='register') {
   limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
   if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
@@ -96,7 +97,13 @@ try {
    foreach(query($db,"SELECT id,user_id,name,assigned_at FROM internet_subscriptions WHERE user_id IN ($marks) ORDER BY name",$ids)->fetchAll() as $sub)$users[(int)$sub['user_id']]['subscriptions'][]=$sub;
    foreach(query($db,"SELECT id,user_id,label,key_format,assigned_at FROM internet_router_keys WHERE user_id IN ($marks) ORDER BY label,id",$ids)->fetchAll() as $key)$users[(int)$key['user_id']]['router_keys'][]=$key;
   }
-  answer(['users'=>array_values($users),'total'=>$total]);
+  $keeneticReady=keeneticReady($db);
+  foreach($users as &$row){$row['keenetic_enabled']=false;$row['keenetic_files_count']=0;}unset($row);
+  if($users && $keeneticReady){
+   foreach(query($db,"SELECT user_id,enabled FROM internet_keenetic_access WHERE user_id IN ($marks)",$ids)->fetchAll() as $access)$users[(int)$access['user_id']]['keenetic_enabled']=(bool)$access['enabled'];
+   foreach(query($db,"SELECT user_id,COUNT(*) AS n FROM internet_keenetic_files WHERE user_id IN ($marks) GROUP BY user_id",$ids)->fetchAll() as $file)$users[(int)$file['user_id']]['keenetic_files_count']=(int)$file['n'];
+  }
+  answer(['users'=>array_values($users),'total'=>$total,'keenetic_ready'=>$keeneticReady]);
  }
  if ($action==='admin_user_search') {
   $search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',254):'';
@@ -113,6 +120,28 @@ try {
   try {$result=assignDirectly($db,$recipient,$userId,$wanted);$db->commit();}
   catch(PDOException $e){if ($db->inTransaction())$db->rollBack();if (in_array($e->getCode(),['23000','40001'],true))problem('База подписок изменилась. Обновите список и повторите назначение.',409);throw $e;}
   answer($result);
+ }
+ if ($action==='keenetic') {
+  $enabled=keeneticEnabled($db,$userId);answer(['enabled'=>$enabled,'files'=>$enabled?keeneticFiles($db,$userId):[]]);
+ }
+ if ($action==='admin_keenetic') {
+  keeneticRequireReady($db);$recipient=keeneticRecipient($db,$_GET['user_id'] ?? null);$id=(int)$recipient['id'];
+  answer(['user'=>$recipient,'enabled'=>keeneticEnabled($db,$id),'files'=>keeneticFiles($db,$id),'limits'=>keeneticLimits()]);
+ }
+ if ($action==='admin_keenetic_access') {
+  keeneticRequireReady($db);if(!isset($body['enabled'])||!is_bool($body['enabled']))problem('Укажите, включать ли вкладку Keenetic.');
+  $db->beginTransaction();$recipient=keeneticRecipient($db,$body['user_id'] ?? null,true);$id=(int)$recipient['id'];
+  query($db,'INSERT INTO internet_keenetic_access(user_id,enabled,updated_by) VALUES (?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),updated_by=VALUES(updated_by)',[$id,(int)$body['enabled'],$userId]);
+  $db->commit();answer(['ok'=>true,'user_id'=>$id,'enabled'=>$body['enabled']]);
+ }
+ if ($action==='admin_keenetic_upload') {
+  keeneticRequireReady($db);$files=uploadedKeeneticFiles($_FILES);$db->beginTransaction();$recipient=keeneticRecipient($db,$body['user_id'] ?? null,true);$id=(int)$recipient['id'];
+  $ids=saveKeeneticFiles($db,$id,$userId,$files);$db->commit();answer(['ok'=>true,'ids'=>$ids,'user_id'=>$id],201);
+ }
+ if ($action==='admin_keenetic_delete') {
+  keeneticRequireReady($db);$id=keeneticFileId($body['id'] ?? null);$db->beginTransaction();$recipient=keeneticRecipient($db,$body['user_id'] ?? null,true);
+  $file=query($db,'SELECT id FROM internet_keenetic_files WHERE id=? AND user_id=? FOR UPDATE',[$id,$recipient['id']])->fetch();if(!$file)problem('Файл не найден у выбранного клиента. Обновите список.',404);
+  query($db,'DELETE FROM internet_keenetic_files WHERE id=?',[$id]);$db->commit();answer(['ok'=>true]);
  }
  if ($action==='router_keys') {
   $keys=query($db,'SELECT id,label,key_format,assigned_at FROM internet_router_keys WHERE user_id=? ORDER BY assigned_at DESC,id DESC',[$userId])->fetchAll();answer(['keys'=>$keys]);
@@ -267,7 +296,7 @@ try {
  }
  if ($action==='summary') {
   $unread=(int)query($db,'SELECT COUNT(*) FROM internet_messages m JOIN internet_tickets t ON t.id=m.ticket_id WHERE t.user_id=? AND m.is_admin=1 AND m.id>t.user_seen_message_id',[$userId])->fetchColumn();
-  $issued=(int)query($db,'SELECT COUNT(*) FROM internet_subscriptions WHERE user_id=?',[$userId])->fetchColumn();answer(['unread_support'=>$unread,'subscriptions'=>$issued]);
+  $issued=(int)query($db,'SELECT COUNT(*) FROM internet_subscriptions WHERE user_id=?',[$userId])->fetchColumn();answer(['unread_support'=>$unread,'subscriptions'=>$issued,'keenetic_enabled'=>keeneticEnabled($db,$userId)]);
  }
  if ($action==='admin_summary') {
   $counts=['user'=>0,'payment'=>0,'support'=>0,'subscription'=>0];foreach(query($db,'SELECT type,COUNT(*) AS n FROM internet_admin_events WHERE read_at IS NULL GROUP BY type')->fetchAll() as $row)$counts[$row['type']]=(int)$row['n'];
