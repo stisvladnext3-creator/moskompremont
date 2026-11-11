@@ -31,7 +31,7 @@
     catch { if (latest) render(latest); target.hidden = false; note.textContent = 'Не удалось обновить доступность серверов.'; }
     finally { clearTimeout(timeout); busy = false; refresh.disabled = false; }
   }
-  function refreshView() { if (!active()) return; if (latest) render(latest); return load(); }
+  function refreshView() { if (!active()) return; window.MKRServiceNotice?.refresh(); if (latest) render(latest); return load(); }
   window.MKRServerStatus = Object.freeze({ refresh: refreshView });
   refresh.onclick = refreshView;
   setInterval(() => { if (active()) load(); }, 60000);

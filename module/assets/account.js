@@ -33,7 +33,7 @@
     });
   };
   function signedOut() {
-    user = null; conversation = null; setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
+    user = null; conversation = null; setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('service-notice-form').reset(); $('service-notice-preview').textContent = ''; $('service-notice-saved').textContent = ''; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
     for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-clients', 'keenetic-files', 'admin-keenetic-files', 'mail-diagnostics', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages']) $(id).replaceChildren();
     document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; routerKeyUsersLoaded = false; $('keenetic-user').replaceChildren(new Option('Выберите клиента', '')); $('router-key-user').replaceChildren(new Option('Выберите клиента', '')); $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
   }
@@ -146,7 +146,7 @@
   }
   function pager(id, key, count, total) { const target = $(id); target.replaceChildren(); const box = el('div', null, 'pager'); const prev = button('← Назад', async () => { pages[key]--; await loadAdmin(key); }); prev.disabled = pages[key] === 0; const next = button('Далее →', async () => { pages[key]++; await loadAdmin(key); }); next.disabled = total === undefined ? count < 100 : (pages[key] + 1) * 100 >= total; box.append(prev, el('span', 'Страница ' + (pages[key] + 1)), next); target.append(box); }
   function readButton(record, reload) { return button('Отметить прочитанным', async () => { await api('read_event', { id: record.event_id }); await reload(); await updateSummary(); }); }
-  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'clients') await loadClients(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); if (value === 'keenetic') await loadAdminKeenetic(); if (value === 'monitoring') await loadMonitoring(); if (value === 'mail') await loadMailDiagnostics(); await updateSummary(); }
+  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'clients') await loadClients(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); if (value === 'keenetic') await loadAdminKeenetic(); if (value === 'service-notice') await loadServiceNotice(); if (value === 'monitoring') await loadMonitoring(); if (value === 'mail') await loadMailDiagnostics(); await updateSummary(); }
   $('clients-search').onsubmit = e => { e.preventDefault(); pages.clients = 0; run(e.submitter, loadClients); };
   async function loadClients() {
     const data = await api('admin_clients', undefined, { offset: pages.clients * 100, q: $('clients-query').value.trim() });
@@ -364,6 +364,19 @@
     }
     pager('router-keys-pager', 'router-keys', data.keys.length, data.total);
   }
+  function renderServiceNoticeSettings(data) {
+    const form = $('service-notice-form'); form.elements.enabled.checked = data.enabled; form.elements.message.value = data.message;
+    $('service-notice-preview').textContent = data.message || 'Текст не задан.';
+    $('service-notice-saved').textContent = (data.enabled ? 'Объявление показывается.' : 'Объявление скрыто.') + (data.updated_at ? ' Сохранено: ' + date(data.updated_at) : '');
+  }
+  async function loadServiceNotice() { const data = await api('admin_service_notice'); if (user?.is_admin) renderServiceNoticeSettings(data); }
+  $('service-notice-form').onsubmit = e => {
+    e.preventDefault(); run(e.submitter, async () => {
+      const form = e.target, data = await api('admin_service_notice_save', { enabled: form.elements.enabled.checked, message: form.elements.message.value });
+      if (!user?.is_admin) return; renderServiceNoticeSettings(data); window.MKRServiceNotice?.refresh();
+      message(data.enabled ? 'Объявление сохранено и включено. Открытые страницы обновят его в течение минуты.' : 'Объявление скрыто. Текст сохранён для следующего включения.');
+    });
+  };
   async function loadMonitoring() {
     const data = await api('admin_monitor'); const form = $('monitor-form');
     form.elements.enabled.checked = data.enabled; form.elements.subscription_url.value = ''; form.elements.main_host.value = data.main_host; form.elements.main_port.value = data.main_port;

@@ -15,8 +15,8 @@
     <script src="assets/config.js" defer></script>
     <script src="assets/instructions.js?v=12" defer></script>
     <script src="assets/app.js?v=8" defer></script>
-    <script src="assets/server-status.js?v=12" defer></script>
-    <link rel="stylesheet" href="assets/account.css?v=8">
+    <link rel="stylesheet" href="assets/service-notice.css?v=14"><script src="assets/service-notice.js?v=14" defer></script><script src="assets/server-status.js?v=14" defer></script>
+    <link rel="stylesheet" href="assets/account.css?v=13">
     <link rel="stylesheet" href="assets/server-status.css?v=12">
     <script src="assets/account.js" defer></script>
 </head>
@@ -91,6 +91,7 @@
                 <a href="index.html" class="breadcrumb inline-flex items-center gap-2 text-sm text-gray-400 hover:text-cyan-400 transition mb-8">
                     <svg class="icon w-4 h-4" aria-hidden="true"><use href="assets/icons.svg#arrow-left"></use></svg> На главную
                 </a>
+                <aside class="service-notice service-notice-hero" data-service-notice role="status" aria-live="polite" aria-atomic="true" hidden><span class="service-notice-icon" aria-hidden="true">!</span><div class="service-notice-content"><strong>Важная информация</strong><p data-service-notice-text></p></div></aside>
                 <div class="flex justify-center mb-6">
                     <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass text-sm text-cyan-400 font-medium">
                         <span class="glow-dot" aria-hidden="true"></span> Всегда на связи с миром
@@ -182,6 +183,7 @@
                     <h2 id="servers-title" class="text-3xl md:text-4xl font-black mt-2 mb-4">Наши <span class="gradient-text">серверы</span></h2>
                     <p class="text-gray-400 max-w-2xl mx-auto">Выберите сервер для подключения к мировому интернету.</p>
                 </div>
+                <aside class="service-notice" data-service-notice role="status" aria-live="polite" aria-atomic="true" hidden><span class="service-notice-icon" aria-hidden="true">!</span><div class="service-notice-content"><strong>Важная информация</strong><p data-service-notice-text></p></div></aside>
                 <div id="server-monitor" hidden><div class="monitor-heading"><p>Доступность серверов</p><button id="server-monitor-refresh" type="button">Обновить</button></div><p id="server-monitor-note" class="monitor-note" role="status" aria-live="polite"></p><div id="server-monitor-list" class="server-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div></div>
                 <div id="servers" class="server-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div class="empty-state glass rounded-3xl text-center col-span-full px-6 py-10">

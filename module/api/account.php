@@ -17,6 +17,7 @@ function answer(array $body,int $status=200): never {
 require_once dirname(__DIR__).'/private/runtime.php';
 require_once dirname(__DIR__).'/private/monitoring.php';
 require_once dirname(__DIR__).'/private/keenetic.php';
+require_once dirname(__DIR__).'/private/service-notice.php';
 $db=null;
 try {
  $path=getenv('INTERNET_CONFIG') ?: dirname(__DIR__).'/private/config.php';if (!is_file($path))problem('Кабинет ещё не настроен. Обратитесь к владельцу сайта.',503);
@@ -26,7 +27,7 @@ try {
  if (isset($_SESSION['last_seen']) && time()-$_SESSION['last_seen']>7200) {$_SESSION=[];session_regenerate_id(true);}
  $_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
  $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
- $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete'];
+ $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete','admin_service_notice_save'];
  if (in_array($action,$writes,true)) {
   if ($method!=='POST')problem('Требуется POST.',405);
   if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
@@ -57,7 +58,7 @@ try {
   finally {while(ob_get_level()>$level){if(!@ob_end_clean())break;}}
  });
  $user=isset($_SESSION['user_id'])?query($db,'SELECT id,first_name,last_name,telegram,email,created_at FROM internet_users WHERE id=?',[$_SESSION['user_id']])->fetch():null;
- if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>13,'photo_limits'=>photoLimits()]);
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>14,'photo_limits'=>photoLimits()]);
  if ($action==='register') {
   limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
   if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
@@ -84,6 +85,8 @@ try {
  if ($action==='logout'){$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));answer(['ok'=>true,'csrf'=>$_SESSION['csrf']]);}
  if (!$user)problem('Сначала войдите в кабинет.',401);$userId=(int)$user['id'];$admin=publicUser($user,$config)['is_admin'];
  if (str_starts_with($action,'admin_') || in_array($action,['review_order','issue_subscription','import_subscriptions','resolve_claim','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions'],true)) {if (!$admin)problem('Нет доступа.',403);}
+ if ($action==='admin_service_notice')answer(serviceNoticeAdmin($db));
+ if ($action==='admin_service_notice_save')answer(serviceNoticeSave($db,$body,$userId));
  if ($action==='admin_monitor')answer(monitorAdmin($db));
  if ($action==='admin_monitor_save')answer(monitorSave($db,$body));
  if ($action==='admin_monitor_token')answer(['token'=>monitorToken($db)]);

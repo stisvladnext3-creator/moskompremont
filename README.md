@@ -2,8 +2,9 @@
 
 Кабинет на PHP/MySQL: подписки и отдельные ключи для роутеров клиентов, ручная выдача с оплатой и без неё, переписка с фотографиями и разделы администратора.
 
-- [Скачать обновление кабинета v13](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v13-update.zip)
+- [Скачать обновление кабинета v14](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v14-update.zip)
 - [Полный комплект раздела и кабинета](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-account-php.zip)
+- [Установка v14: редактируемое объявление на сайте и в статусе серверов](downloads/UPDATE-CABINET-V14.md)
 - [Установка v13: персональная вкладка Keenetic и конфигурации роутеров](downloads/UPDATE-CABINET-V13.md)
 - [Установка v12: статус серверов в кабинете и все новые скриншоты](downloads/UPDATE-CABINET-V12.md)
 - [Установка v11: обновление/выбор сервера V2RayN и настройка Podkop](downloads/UPDATE-CABINET-V11.md)
@@ -22,6 +23,12 @@
 - [Исходники модуля](module/)
 - [Предпросмотр клиента](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=client)
 - [Предпросмотр администратора](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=admin)
+
+## Объявление сервиса (v14)
+
+«Админка → Объявление» управляет текстом и видимостью общего сообщения на странице «Мировой интернет» и в статусе серверов на сайте и в кабинете. Начальный текст сообщает об исправной работе через Wi-Fi и сбое / ограничении на мобильной связи. Снятая галочка скрывает сообщение, сохраняя текст; редактирование и повторное включение доступны там же. Объявление работает независимо от мониторинга, обновляется примерно раз в минуту и выводится обычным текстом.
+
+Для v13 импортируйте `module/private/migrations/007-service-notice.sql` и загрузите обновление. Для v8–v12 нужна также миграция `006-keenetic.sql`; для v7 и старше или новой установки — полный `module/private/schema.sql`. Повторный импорт сохраняет отредактированное и скрытое объявление. Подробные шаги — в UPDATE-CABINET-V14.md.
 
 ## Keenetic для выбранных клиентов (v13)
 
