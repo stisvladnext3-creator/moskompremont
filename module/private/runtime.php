@@ -86,10 +86,15 @@ function importCsv(string $csv): array {
  fclose($stream);if (!$records)problem('В CSV пока нет подписок.');return $records;
 }
 
-function withOrderSubscriptions(PDO $db,array $orders): array {
+function withOrderSubscriptions(PDO $db,array $orders,bool $admin=false): array {
  foreach($orders as &$order) {
+  $order['months']=orderMonths($db,$order['id']);
+  try {$order['deleted_subscriptions']=query($db,'SELECT name,deleted_at FROM internet_order_deleted_subscriptions WHERE order_id=? ORDER BY deleted_at,name',[$order['id']])->fetchAll();}
+  catch(PDOException $e){if($e->getCode()!=='42S02')throw $e;$order['deleted_subscriptions']=[];}
+
   $order['revoked_subscriptions']=query($db,'SELECT s.name,r.revoked_at FROM internet_order_subscriptions os JOIN internet_subscriptions s ON s.id=os.subscription_id JOIN internet_subscription_revocations r ON r.subscription_id=s.id AND r.user_id=? WHERE os.order_id=? ORDER BY s.id',[$order['user_id'],$order['id']])->fetchAll();
   $order['subscriptions']=query($db,'SELECT s.id,s.name,s.url,os.issued_at FROM internet_order_subscriptions os JOIN internet_subscriptions s ON s.id=os.subscription_id WHERE os.order_id=? AND s.user_id=? ORDER BY os.issued_at,s.id',[$order['id'],$order['user_id']])->fetchAll();
+  $order['subscriptions']=withSubscriptionTerms($db,$order['subscriptions'],$admin);
  }
  unset($order);return $orders;
 }
@@ -141,3 +146,5 @@ function assignDirectly(PDO $db,array $recipient,int $adminId,array $wanted): ar
 }
 
 require_once __DIR__.'/router-keys.php';
+
+require_once __DIR__.'/subscription-terms.php';

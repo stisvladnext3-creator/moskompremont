@@ -18,6 +18,8 @@ require_once dirname(__DIR__).'/private/runtime.php';
 require_once dirname(__DIR__).'/private/monitoring.php';
 require_once dirname(__DIR__).'/private/keenetic.php';
 require_once dirname(__DIR__).'/private/service-notice.php';
+require_once dirname(__DIR__).'/private/router-hosts.php';
+require_once dirname(__DIR__).'/private/subscription-delete.php';
 $db=null;
 try {
  $path=getenv('INTERNET_CONFIG') ?: dirname(__DIR__).'/private/config.php';if (!is_file($path))problem('Кабинет ещё не настроен. Обратитесь к владельцу сайта.',503);
@@ -27,7 +29,7 @@ try {
  if (isset($_SESSION['last_seen']) && time()-$_SESSION['last_seen']>7200) {$_SESSION=[];session_regenerate_id(true);}
  $_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
  $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
- $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete','admin_service_notice_save'];
+ $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete','admin_service_notice_save','admin_router_host_preview','admin_router_host_apply','admin_delete_subscription','admin_subscription_term_save'];
  if (in_array($action,$writes,true)) {
   if ($method!=='POST')problem('Требуется POST.',405);
   if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
@@ -58,7 +60,7 @@ try {
   finally {while(ob_get_level()>$level){if(!@ob_end_clean())break;}}
  });
  $user=isset($_SESSION['user_id'])?query($db,'SELECT id,first_name,last_name,telegram,email,created_at FROM internet_users WHERE id=?',[$_SESSION['user_id']])->fetch():null;
- if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>14,'photo_limits'=>photoLimits()]);
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>15,'photo_limits'=>photoLimits()]);
  if ($action==='register') {
   limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
   if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
@@ -85,6 +87,16 @@ try {
  if ($action==='logout'){$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));answer(['ok'=>true,'csrf'=>$_SESSION['csrf']]);}
  if (!$user)problem('Сначала войдите в кабинет.',401);$userId=(int)$user['id'];$admin=publicUser($user,$config)['is_admin'];
  if (str_starts_with($action,'admin_') || in_array($action,['review_order','issue_subscription','import_subscriptions','resolve_claim','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions'],true)) {if (!$admin)problem('Нет доступа.',403);}
+ if ($action==='admin_subscription_term_save')answer(saveSubscriptionTerm($db,$body,$userId));
+ if ($action==='admin_subscription_terms') {
+  subscriptionTermsReady($db);$search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',254):'';$offset=max(0,min((int)($_GET['page'] ?? 0),10000))*100;
+  $where=$search!==''?' WHERE s.name LIKE ? OR u.email LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?':'';$args=$search!==''?array_fill(0,4,'%'.$search.'%'):[];
+  $total=(int)query($db,'SELECT COUNT(*) FROM internet_subscriptions s LEFT JOIN internet_users u ON u.id=s.user_id'.$where,$args)->fetchColumn();
+  $rows=query($db,'SELECT s.id,s.name,s.user_id,u.first_name,u.last_name,u.email FROM internet_subscriptions s LEFT JOIN internet_users u ON u.id=s.user_id'.$where." ORDER BY s.id DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();answer(['subscriptions'=>withSubscriptionTerms($db,$rows,true),'total'=>$total]);
+ }
+ if ($action==='admin_delete_subscription')answer(deleteSubscription($db,$body,$userId));
+ if ($action==='admin_router_host_preview')answer(routerHostPreview($db,$body));
+ if ($action==='admin_router_host_apply')answer(routerHostApply($db,$body,$userId));
  if ($action==='admin_service_notice')answer(serviceNoticeAdmin($db));
  if ($action==='admin_service_notice_save')answer(serviceNoticeSave($db,$body,$userId));
  if ($action==='admin_monitor')answer(monitorAdmin($db));
@@ -97,7 +109,7 @@ try {
   $rows=query($db,'SELECT id,first_name,last_name,email,telegram,created_at FROM internet_users'.$where." ORDER BY id DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();
   $users=[];foreach($rows as $row){$id=(int)$row['id'];$row['subscriptions']=[];$row['router_keys']=[];$users[$id]=$row;}
   if($users){$ids=array_keys($users);$marks=implode(',',array_fill(0,count($ids),'?'));
-   foreach(query($db,"SELECT id,user_id,name,assigned_at FROM internet_subscriptions WHERE user_id IN ($marks) ORDER BY name",$ids)->fetchAll() as $sub)$users[(int)$sub['user_id']]['subscriptions'][]=$sub;
+   foreach(withSubscriptionTerms($db,query($db,"SELECT id,user_id,name,assigned_at FROM internet_subscriptions WHERE user_id IN ($marks) ORDER BY name",$ids)->fetchAll(),true) as $sub)$users[(int)$sub['user_id']]['subscriptions'][]=$sub;
    foreach(query($db,"SELECT id,user_id,label,key_format,assigned_at FROM internet_router_keys WHERE user_id IN ($marks) ORDER BY label,id",$ids)->fetchAll() as $key)$users[(int)$key['user_id']]['router_keys'][]=$key;
   }
   $keeneticReady=keeneticReady($db);
@@ -190,7 +202,7 @@ try {
  }
  if ($action==='subscriptions') {
   $items=query($db,'SELECT id,name,url,assigned_at FROM internet_subscriptions WHERE user_id=? ORDER BY assigned_at DESC,id DESC',[$userId])->fetchAll();
-  $claims=query($db,'SELECT id,name,status,created_at FROM internet_subscription_claims WHERE user_id=? ORDER BY id DESC',[$userId])->fetchAll();answer(['subscriptions'=>$items,'claims'=>$claims]);
+  $claims=query($db,'SELECT id,name,status,created_at FROM internet_subscription_claims WHERE user_id=? ORDER BY id DESC',[$userId])->fetchAll();answer(['subscriptions'=>withSubscriptionTerms($db,$items),'claims'=>$claims]);
  }
  if ($action==='claim_subscriptions') {
   limitRate($db,'claims',20,$userId);$names=claimNames(field($body,'names',2500,true));if (!$names)problem('Укажите название подписки.');
@@ -204,16 +216,17 @@ try {
  if ($action==='create_order') {
   limitRate($db,'orders',30,$userId);if (!payment($config)['available'])problem('Владелец ещё не добавил реквизиты оплаты.',503);
   $plan=field($body,'plan',20);$devices=$body['devices'] ?? null;if (!in_array($plan,['monthly','lifetime'],true) || !is_int($devices) || $devices<1 || $devices>20)problem('Выберите тариф и от 1 до 20 устройств.');
-  $rates=$plan==='monthly'?[1=>250,2=>225,3=>200,4=>175]:[1=>3000,2=>2500,3=>2000,4=>1650];$amount=$rates[min($devices,4)]*$devices;
+  subscriptionTermsReady($db);$months=termMonthsInput($body['months'] ?? 1);if($plan==='lifetime'&&$months!==1)problem('Для бессрочного тарифа количество месяцев не требуется.');
+  $rates=$plan==='monthly'?[1=>250,2=>225,3=>200,4=>175]:[1=>3000,2=>2500,3=>2000,4=>1650];$amount=$rates[min($devices,4)]*$devices*($plan==='monthly'?$months:1);
   $db->beginTransaction();query($db,'SELECT id FROM internet_users WHERE id=? FOR UPDATE',[$userId]);
   if (query($db,"SELECT id FROM internet_orders WHERE user_id=? AND status IN ('created','submitted') LIMIT 1",[$userId])->fetch())problem('У вас уже есть незавершённая заявка. Откройте её в списке.',409);
-  $id=bin2hex(random_bytes(16));query($db,'INSERT INTO internet_orders(id,user_id,plan,devices,amount) VALUES (?,?,?,?,?)',[$id,$userId,$plan,$devices,$amount]);$db->commit();answer(['id'=>$id,'amount'=>$amount],201);
+  $id=bin2hex(random_bytes(16));query($db,'INSERT INTO internet_orders(id,user_id,plan,devices,amount) VALUES (?,?,?,?,?)',[$id,$userId,$plan,$devices,$amount]);query($db,'INSERT INTO internet_order_terms(order_id,months) VALUES (?,?)',[$id,$months]);$db->commit();answer(['id'=>$id,'amount'=>$amount,'months'=>$months],201);
  }
  if ($action==='submit_payment') {
   $id=field($body,'id',32);$reference=field($body,'reference',500);if (preg_match_all('/./us',$reference)<4)problem('Укажите время перевода или последние 4 цифры телефона.');
   $db->beginTransaction();$order=query($db,'SELECT * FROM internet_orders WHERE id=? AND user_id=? FOR UPDATE',[$id,$userId])->fetch();if (!$order || $order['status']!=='created')problem('Заявка не найдена или уже отправлена.',409);
   query($db,"UPDATE internet_orders SET status='submitted',payment_reference=?,submitted_at=CURRENT_TIMESTAMP WHERE id=?",[$reference,$id]);
-  notifyAdmin($db,$config,'payment:'.$id,'payment',$userId,'Клиент сообщил об оплате',contactText($user)."\nЗаявка: $id\nТариф: ".($order['plan']==='monthly'?'Ежемесячно':'Навсегда')."\nУстройств: ".$order['devices']."\nСумма: ".$order['amount']." ₽\nДанные перевода: ".$reference."\n\nПроверьте поступление в Озон Банке. Нажатие кнопки клиентом не подтверждает оплату.",$id);
+  notifyAdmin($db,$config,'payment:'.$id,'payment',$userId,'Клиент сообщил об оплате',contactText($user)."\nЗаявка: $id\nТариф: ".($order['plan']==='monthly'?'На '.orderMonths($db,$id).' мес.':'Навсегда')."\nУстройств: ".$order['devices']."\nСумма: ".$order['amount']." ₽\nДанные перевода: ".$reference."\n\nПроверьте поступление в Озон Банке. Нажатие кнопки клиентом не подтверждает оплату.",$id);
   $db->commit();answer(['ok'=>true]);
  }
  if ($action==='review_order') {
@@ -225,12 +238,14 @@ try {
   $id=field($body,'order_id',32);$name=subscriptionName(field($body,'name',100));$url=field($body,'url',8192);if ($url!=='')$url=subscriptionUrl($url);
   $db->beginTransaction();$order=query($db,'SELECT * FROM internet_orders WHERE id=? FOR UPDATE',[$id])->fetch();if (!$order || $order['status']!=='paid')problem('Сначала подтвердите поступление оплаты.',409);
   $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();
-  if ($sub && (int)$sub['user_id']===(int)$order['user_id'] && query($db,'SELECT order_id FROM internet_order_subscriptions WHERE order_id=? AND subscription_id=?',[$id,$sub['id']])->fetch())problem('Эта подписка уже выдана по данной заявке.',409);
+  $alreadyIssued=$sub&&(bool)query($db,'SELECT order_id FROM internet_order_subscriptions WHERE order_id=? AND subscription_id=?',[$id,$sub['id']])->fetch();
+  if ($sub && (int)$sub['user_id']===(int)$order['user_id'] && $alreadyIssued)problem('Эта подписка уже выдана по данной заявке.',409);
   if ($sub && $sub['user_id']!==null && (int)$sub['user_id']!==(int)$order['user_id'])problem('Эта подписка уже закреплена за другим клиентом.',409);
   if (!$sub && $url==='')problem('Вставьте ссылку новой подписки или укажите название из базы.');
   if ($sub) {
    $subId=(int)$sub['id'];query($db,'UPDATE internet_subscriptions SET user_id=?,url=?,assigned_at=COALESCE(assigned_at,CURRENT_TIMESTAMP) WHERE id=?',[$order['user_id'],$url!==''?$url:$sub['url'],$subId]);
   } else {query($db,'INSERT INTO internet_subscriptions(name,url,user_id,assigned_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',[$name,$url,$order['user_id']]);$subId=(int)$db->lastInsertId();}
+  issueOrderSubscriptionTerm($db,$subId,$order,$userId,(bool)$alreadyIssued);
   query($db,'INSERT INTO internet_order_subscriptions(order_id,subscription_id,issued_by) VALUES (?,?,?) ON DUPLICATE KEY UPDATE issued_by=VALUES(issued_by),issued_at=CURRENT_TIMESTAMP',[$id,$subId,$userId]);
   query($db,'DELETE FROM internet_subscription_revocations WHERE subscription_id=? AND user_id=?',[$subId,$order['user_id']]);
   query($db,"UPDATE internet_subscription_claims SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE user_id=? AND name=? AND status IN ('pending','revoked','rejected')",[$order['user_id'],$name]);
@@ -318,7 +333,7 @@ try {
  }
  if ($action==='admin_orders') {
   $offset=max(0,min((int)($_GET['page'] ?? 0),10000))*100;
-  $rows=query($db,"SELECT o.*,u.first_name,u.last_name,u.email,u.telegram,e.id AS event_id,e.read_at AS event_read_at FROM internet_orders o JOIN internet_users u ON u.id=o.user_id LEFT JOIN internet_admin_events e ON e.order_id=o.id AND e.type='payment' ORDER BY o.created_at DESC,o.id DESC LIMIT 100 OFFSET $offset")->fetchAll();answer(['orders'=>withOrderSubscriptions($db,$rows)]);
+  $rows=query($db,"SELECT o.*,u.first_name,u.last_name,u.email,u.telegram,e.id AS event_id,e.read_at AS event_read_at FROM internet_orders o JOIN internet_users u ON u.id=o.user_id LEFT JOIN internet_admin_events e ON e.order_id=o.id AND e.type='payment' ORDER BY o.created_at DESC,o.id DESC LIMIT 100 OFFSET $offset")->fetchAll();answer(['orders'=>withOrderSubscriptions($db,$rows,true)]);
  }
  if ($action==='admin_subscriptions') {
   $search=isset($_GET['q'])?field(['q'=>$_GET['q']],'q',100):'';$offset=max(0,min((int)($_GET['page'] ?? 0),10000))*100;

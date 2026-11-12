@@ -5,8 +5,9 @@
   let csrf = '', user = null, payment = { available: false }, mode = 'client';
   let clientTab = 'subscriptions', adminTab = 'support', conversation = null;
   let keeneticEnabled = false, keeneticUser = null, keeneticUsersLoaded = false, keeneticRequest = 0;
+  let routerHostPreview = null;
   let routerKeyUsersLoaded = false; let assignmentUsersLoaded = false; const assignmentUsers = new Map();
-  const pages = { clients: 0, users: 0, payments: 0, subscriptions: 0, 'router-keys': 0 };
+  const pages = { terms: 0, clients: 0, users: 0, payments: 0, subscriptions: 0, 'router-keys': 0 };
   const orderStatus = { created: 'Ожидает оплаты', submitted: 'На ручной проверке', paid: 'Оплата подтверждена', rejected: 'Оплата не подтверждена' };
   const claimStatus = { pending: 'Ожидает ссылки или проверки', approved: 'Подписка добавлена', rejected: 'Запрос отклонён', revoked: 'Привязка снята администратором' };
   const money = n => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(n));
@@ -33,8 +34,8 @@
     });
   };
   function signedOut() {
-    user = null; conversation = null; setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('service-notice-form').reset(); $('service-notice-preview').textContent = ''; $('service-notice-saved').textContent = ''; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
-    for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-clients', 'keenetic-files', 'admin-keenetic-files', 'mail-diagnostics', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages']) $(id).replaceChildren();
+    user = null; conversation = null; clearRouterHostPreview(); setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('service-notice-form').reset(); $('service-notice-preview').textContent = ''; $('service-notice-saved').textContent = ''; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
+    for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-clients', 'admin-terms', 'keenetic-files', 'admin-keenetic-files', 'mail-diagnostics', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages']) $(id).replaceChildren();
     document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; routerKeyUsersLoaded = false; $('keenetic-user').replaceChildren(new Option('Выберите клиента', '')); $('router-key-user').replaceChildren(new Option('Выберите клиента', '')); $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
   }
   $('logout-button').onclick = e => run(e.target, async () => { await api('logout', {}); signedOut(); message('Вы вышли из кабинета.'); });
@@ -43,14 +44,15 @@
     $('profile-name').textContent = user.first_name + ' ' + user.last_name; $('profile-contact').textContent = user.email + ' · ' + user.telegram;
     $('client-mode').hidden = !user.is_admin; $('admin-mode').hidden = !user.is_admin;
     $('payment-unavailable').hidden = payment.available; $('order-form').querySelector('button').disabled = !payment.available;
-    mode = user.is_admin ? 'admin' : 'client'; if (location.hash === '#payment') { mode = 'client'; clientTab = 'payments'; } if (location.hash === '#instructions') { mode = 'client'; clientTab = 'instructions'; } if (location.hash === '#servers') { mode = 'client'; clientTab = 'servers'; }
+    mode = user.is_admin ? 'admin' : 'client'; if (location.hash === '#payment') { mode = 'client'; clientTab = 'payments'; } if (location.hash === '#instructions') { mode = 'client'; clientTab = 'instructions'; } if (['#servers', '#service-status'].includes(location.hash)) { mode = 'client'; clientTab = 'servers'; }
     await loadKeenetic(); if (location.hash === '#keenetic') { mode = 'client'; clientTab = 'keenetic'; }
     if (clientTab === 'keenetic' && !keeneticEnabled) clientTab = 'subscriptions';
-    await setMode(mode); await updateSummary();
+    await setMode(mode); window.MKRServiceNotice?.refresh(); await updateSummary();
   }
-  async function setMode(value) { mode = value; $('client-shell').hidden = value !== 'client'; $('admin-shell').hidden = value !== 'admin'; closeConversation(); if (value === 'admin') await selectAdmin(adminTab); else await selectClient(clientTab); }
+  async function setMode(value) { mode = value; $('service-status-button').setAttribute('aria-pressed', String(value === 'client' && clientTab === 'servers')); $('client-shell').hidden = value !== 'client'; $('admin-shell').hidden = value !== 'admin'; closeConversation(); if (value === 'admin') await selectAdmin(adminTab); else await selectClient(clientTab); }
+  $('service-status-button').onclick = e => run(e.target, async () => { clientTab = 'servers'; await setMode('client'); $('cabinet-servers').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   $('client-mode').onclick = e => run(e.target, () => setMode('client')); $('admin-mode').onclick = e => run(e.target, () => setMode('admin'));
-  async function selectClient(value) { if (value === 'keenetic' && !keeneticEnabled) value = 'subscriptions'; clientTab = value; closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); if (value === 'instructions') loadInstructions(); if (value === 'servers') await window.MKRServerStatus?.refresh(); if (value === 'keenetic') await loadKeenetic(); }
+  async function selectClient(value) { if (value === 'keenetic' && !keeneticEnabled) value = 'subscriptions'; clientTab = value; $('service-status-button').setAttribute('aria-pressed', String(mode === 'client' && value === 'servers')); closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); if (value === 'instructions') loadInstructions(); if (value === 'servers') await window.MKRServerStatus?.refresh(); if (value === 'keenetic') await loadKeenetic(); }
   document.querySelectorAll('[data-client-tab]').forEach(b => b.onclick = () => run(b, () => selectClient(b.dataset.clientTab)));
   let instructionsLoaded = false;
   function loadInstructions() {
@@ -73,7 +75,13 @@
     const copy = button('Копировать', async () => { try { await navigator.clipboard.writeText(url); copy.textContent = 'Скопировано ✓'; setTimeout(() => copy.textContent = 'Копировать', 2000); } catch { input.focus(); input.select(); message('Скопируйте выделенную ссылку.'); } }); row.append(copy);
     if (/^(https?|vless|vmess|trojan|ss|hysteria2):\/\//i.test(url)) { const a = el('a', 'Открыть'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; row.append(a); } return row;
   }
-  function subscriptionCard(sub) { const card = el('article', null, 'subscription-card'); card.append(el('h3', sub.name), linkRow(sub.url, sub.name)); return card; }
+  function subscriptionCard(sub, revealExpired = false) {
+    const card = el('article', null, 'subscription-card'); card.append(el('h3', sub.name), subscriptionTermBadge(sub));
+    if (sub.expires_at) card.append(el('p', 'Действует до: ' + date(sub.expires_at), 'account-muted'));
+    if (sub.url && (!sub.is_expired || revealExpired)) { const link = linkRow(sub.url, sub.name); link.classList.add('subscription-link'); link.dataset.hideExpired = String(!revealExpired); card.append(link); }
+    else if (sub.is_expired) card.append(el('p', 'Срок подписки истёк. Для продления выберите тариф или напишите в поддержку.', 'account-note subscription-expired-note'));
+    return card;
+  }
   async function loadSubscriptions() {
     const data = await api('subscriptions'); $('subscriptions-list').replaceChildren(); $('claims-list').replaceChildren();
     if (!data.subscriptions.length) $('subscriptions-list').append(el('p', 'У вас пока нет выданных подписок. Укажите имеющиеся названия ниже или выберите тариф.', 'account-muted'));
@@ -82,10 +90,14 @@
   }
   $('refresh-subscriptions').onclick = e => run(e.target, loadSubscriptions);
   $('claim-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { await api('claim_subscriptions', { names: e.target.elements.names.value }); e.target.reset(); await loadSubscriptions(); message('Запрос обработан. Найденные подписки добавлены в кабинет.'); }); };
-  function total() { const form = $('order-form'), count = Number(form.elements.devices.value), monthly = form.elements.plan.value === 'monthly', rates = monthly ? [250, 225, 200, 175] : [3000, 2500, 2000, 1650]; $('order-total').textContent = Number.isInteger(count) && count >= 1 && count <= 20 ? money(rates[Math.min(count, 4) - 1] * count) + (monthly ? ' / месяц' : ' разово') : 'Укажите от 1 до 20 устройств'; }
+  function total() {
+    const form = $('order-form'), count = Number(form.elements.devices.value), monthly = form.elements.plan.value === 'monthly', months = Number(form.elements.months.value), rates = monthly ? [250, 225, 200, 175] : [3000, 2500, 2000, 1650];
+    $('order-months-label').hidden = !monthly;
+    $('order-total').textContent = Number.isInteger(count) && count >= 1 && count <= 20 ? money(rates[Math.min(count, 4) - 1] * count * (monthly ? months : 1)) + (monthly ? ' за ' + months + ' мес.' : ' разово') : 'Укажите от 1 до 20 устройств';
+  }
   $('order-form').oninput = total; total();
-  $('order-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { await api('create_order', { plan: e.target.elements.plan.value, devices: Number(e.target.elements.devices.value) }); await loadOrders(); message('Заявка создана. Оплатите по QR-коду ниже.'); $('orders-list').scrollIntoView({ behavior: 'smooth' }); }); };
-  function orderCard(order) { const box = el('article', null, 'account-order'); box.append(el('h3', (order.plan === 'monthly' ? 'Ежемесячно' : 'Навсегда') + ' · ' + order.devices + ' устр. · ' + money(order.amount)), el('p', 'Заявка ' + order.id, 'account-muted'), el('span', orderStatus[order.status] || order.status, 'status-badge status-' + order.status)); return box; }
+  $('order-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { await api('create_order', { plan: e.target.elements.plan.value, devices: Number(e.target.elements.devices.value), months: e.target.elements.plan.value === 'monthly' ? Number(e.target.elements.months.value) : 1 }); await loadOrders(); message('Заявка создана. Оплатите по QR-коду ниже.'); $('orders-list').scrollIntoView({ behavior: 'smooth' }); }); };
+  function orderCard(order) { const box = el('article', null, 'account-order'); box.append(el('h3', (order.plan === 'monthly' ? 'Подписка на ' + (order.months || 1) + ' мес.' : 'Навсегда') + ' · ' + order.devices + ' устр. · ' + money(order.amount)), el('p', 'Заявка ' + order.id, 'account-muted'), el('span', orderStatus[order.status] || order.status, 'status-badge status-' + order.status)); if (order.deleted_subscriptions?.length) box.append(el('p', 'Удалённые подписки: ' + order.deleted_subscriptions.map(s => s.name).join(', '), 'account-muted')); return box; }
   async function loadOrders() {
     const data = await api('orders'); $('orders-list').replaceChildren(); if (!data.orders.length) $('orders-list').append(el('p', 'У вас пока нет заявок.', 'account-muted'));
     for (const order of data.orders) {
@@ -97,7 +109,7 @@
         const submit = el('button', 'Я оплатил — отправить на проверку', 'account-primary'); submit.type = 'submit'; form.append(label, submit); form.onsubmit = e => { e.preventDefault(); run(submit, async () => { await api('submit_payment', { id: order.id, reference: input.value }); await loadOrders(); message('Вы сообщили об оплате. Администратору создано уведомление; после проверки он выдаст подписку.'); }); }; box.append(form);
       }
       if (order.status === 'submitted') box.append(el('p', 'Ожидайте проверки поступления. Повторно платить не нужно.', 'account-muted'));
-      if (order.status === 'paid' && !order.subscriptions.length) box.append(el('p', order.revoked_subscriptions?.length ? 'Привязка подписки снята администратором. История оплаты сохранена.' : 'Оплата подтверждена. Ожидайте выдачи подписки администратором.', 'account-note'));
+      if (order.status === 'paid' && !order.subscriptions.length) box.append(el('p', order.deleted_subscriptions?.length ? 'Подписка удалена администратором. История оплаты сохранена.' : order.revoked_subscriptions?.length ? 'Привязка подписки снята администратором. История оплаты сохранена.' : 'Оплата подтверждена. Ожидайте выдачи подписки администратором.', 'account-note'));
       for (const sub of order.subscriptions) box.append(subscriptionCard(sub));
       if (order.status === 'rejected') box.append(el('p', 'Свяжитесь с поддержкой для сверки перевода перед повторной оплатой.', 'account-muted'));
       $('orders-list').append(box);
@@ -146,7 +158,7 @@
   }
   function pager(id, key, count, total) { const target = $(id); target.replaceChildren(); const box = el('div', null, 'pager'); const prev = button('← Назад', async () => { pages[key]--; await loadAdmin(key); }); prev.disabled = pages[key] === 0; const next = button('Далее →', async () => { pages[key]++; await loadAdmin(key); }); next.disabled = total === undefined ? count < 100 : (pages[key] + 1) * 100 >= total; box.append(prev, el('span', 'Страница ' + (pages[key] + 1)), next); target.append(box); }
   function readButton(record, reload) { return button('Отметить прочитанным', async () => { await api('read_event', { id: record.event_id }); await reload(); await updateSummary(); }); }
-  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'clients') await loadClients(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); if (value === 'keenetic') await loadAdminKeenetic(); if (value === 'service-notice') await loadServiceNotice(); if (value === 'monitoring') await loadMonitoring(); if (value === 'mail') await loadMailDiagnostics(); await updateSummary(); }
+  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'clients') await loadClients(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); if (value === 'terms') await loadAdminTerms(); if (value === 'keenetic') await loadAdminKeenetic(); if (value === 'service-notice') await loadServiceNotice(); if (value === 'monitoring') await loadMonitoring(); if (value === 'mail') await loadMailDiagnostics(); await updateSummary(); }
   $('clients-search').onsubmit = e => { e.preventDefault(); pages.clients = 0; run(e.submitter, loadClients); };
   async function loadClients() {
     const data = await api('admin_clients', undefined, { offset: pages.clients * 100, q: $('clients-query').value.trim() });
@@ -156,9 +168,21 @@
       box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name), el('p', item.email + ' · ' + item.telegram, 'account-muted'));
       const assigned = el('div', null, 'client-assigned-columns'), subs = el('div'), keys = el('div');
       subs.append(el('h4', 'Подписки (' + item.subscriptions.length + ')'));
-      if (item.subscriptions.length) { const list = el('ul'); for (const sub of item.subscriptions) list.append(el('li', sub.name)); subs.append(list); } else subs.append(el('p', 'Не привязаны', 'account-muted'));
+      if (item.subscriptions.length) { const list = el('ul'); for (const sub of item.subscriptions) {
+        const row = el('li', null, 'client-assigned-item'); row.dataset.subscriptionId = sub.id; row.append(el('span', sub.name)); row.append(subscriptionTermBadge(sub));
+        const actions = el('div', null, 'order-buttons'); actions.append(button('Срок', () => chooseSubscriptionTerm(sub))); actions.append(button('Удалить подписку', async () => {
+          if (!confirm('Полностью удалить подписку «' + sub.name + '» у ' + item.email + ' из базы кабинета? Ссылка и связанные запросы будут удалены. История оплаты сохранится. Подключение в 3x-ui отключается отдельно.')) return;
+          await api('admin_delete_subscription', { id: Number(sub.id), user_id: Number(item.id) }); await loadClients(); message('Подписка удалена из базы кабинета.');
+        }, 'account-secondary account-danger')); row.append(actions); list.append(row);
+      } subs.append(list); } else subs.append(el('p', 'Не привязаны', 'account-muted'));
       keys.append(el('h4', 'Ключи для роутеров (' + item.router_keys.length + ')'));
-      if (item.router_keys.length) { const list = el('ul'); for (const key of item.router_keys) list.append(el('li', key.label + ' · ' + (routerFormats[key.key_format] || key.key_format))); keys.append(list); } else keys.append(el('p', 'Не привязаны', 'account-muted'));
+      if (item.router_keys.length) { const list = el('ul'); for (const key of item.router_keys) {
+        const row = el('li', null, 'client-assigned-item'); row.dataset.routerKeyId = key.id; row.append(el('span', key.label + ' · ' + (routerFormats[key.key_format] || key.key_format)));
+        const actions = el('div', null, 'order-buttons'); actions.append(button('Удалить ключ', async () => {
+          if (!confirm('Полностью удалить ключ «' + key.label + '» у ' + item.email + ' из базы кабинета? Подключение на VPN-сервере отключается отдельно.')) return;
+          await api('admin_delete_router_key', { id: Number(key.id), user_id: Number(item.id) }); await loadClients(); message('Ключ удалён из базы кабинета.');
+        }, 'account-secondary account-danger')); row.append(actions); list.append(row);
+      } keys.append(list); } else keys.append(el('p', 'Не привязаны', 'account-muted'));
       assigned.append(subs, keys); box.append(assigned);
       const accessLabel = el('label', null, 'checkbox-label'), access = el('input'); access.type = 'checkbox'; access.checked = !!item.keenetic_enabled; access.disabled = data.keenetic_ready === false;
       accessLabel.append(access, document.createTextNode('Показывать вкладку Keenetic')); box.append(accessLabel, el('p', 'Файлов Keenetic: ' + (item.keenetic_files_count || 0), 'account-muted'));
@@ -178,7 +202,7 @@
       const box = orderCard(order); if (order.event_id && !order.event_read_at) box.classList.add('record-new'); box.append(el('p', order.first_name + ' ' + order.last_name + ' · ' + order.email), el('p', order.telegram, 'account-muted')); if (order.payment_reference) box.append(el('p', 'Данные перевода: ' + order.payment_reference));
       if (order.event_id && !order.event_read_at) box.append(readButton(order, loadAdminOrders));
       if (order.status === 'submitted') { const actions = el('div', null, 'order-buttons'); for (const [status, title] of [['paid', 'Подтвердить поступление'], ['rejected', 'Отклонить']]) actions.append(button(title, async () => { if (!confirm(status === 'paid' ? 'Вы проверили поступление полной суммы в Озон Банке?' : 'Отклонить заявку после сверки перевода?')) return; await api('review_order', { id: order.id, status }); await loadAdminOrders(); await updateSummary(); message(status === 'paid' ? 'Оплата подтверждена. Теперь выдайте подписку в этой заявке.' : 'Заявка отклонена.'); }, status === 'paid' ? 'account-primary' : 'account-secondary')); box.append(actions); }
-      for (const sub of order.subscriptions) box.append(subscriptionCard(sub));
+      for (const sub of order.subscriptions) box.append(subscriptionCard(sub, true));
       if (order.status === 'paid') {
         const details = el('details', null, 'issue-form'); details.open = !order.subscriptions.length; details.append(el('summary', order.subscriptions.length ? 'Выдать ещё одну подписку' : 'Выдать подписку клиенту'));
         const form = el('form'), nameLabel = el('label', 'Название подписки'), name = el('input'); name.name = 'name'; name.required = true; name.maxLength = 100; name.placeholder = 'VPN5089'; nameLabel.append(name);
@@ -195,7 +219,7 @@
     if (!assignmentUsersLoaded) await loadAssignmentUsers();
     const data = await api('admin_subscriptions', undefined, { page: pages.subscriptions, q: $('subscription-query').value }), target = $('admin-subscriptions'); target.replaceChildren();
     if (!data.subscriptions.length) target.append(el('p', 'Подписок пока нет. Загрузите CSV-файл выше.', 'account-muted'));
-    for (const sub of data.subscriptions) { const box = subscriptionCard(sub); box.append(el('p', sub.user_id ? 'Клиент: ' + sub.first_name + ' ' + sub.last_name + ' · ' + sub.email : 'Свободна — ещё не привязана к клиенту', 'account-muted'));
+    for (const sub of data.subscriptions) { const box = subscriptionCard(sub, true); box.append(el('p', sub.user_id ? 'Клиент: ' + sub.first_name + ' ' + sub.last_name + ' · ' + sub.email : 'Свободна — ещё не привязана к клиенту', 'account-muted'));
       if (sub.user_id) box.append(button('Снять привязку', async () => { if (!confirm('Снять привязку ' + sub.name + ' у клиента ' + sub.email + '? Ссылка исчезнет из его кабинета, подписка останется в базе, история оплат сохранится.')) return; await api('unassign_subscription', { id: Number(sub.id), user_id: Number(sub.user_id) }); await loadAdminSubscriptions(); message('Привязка снята. Подписка свободна, история оплат сохранена.'); }, 'account-secondary account-danger'));
       if (!sub.user_id) box.append(button('Назначить клиенту', async () => { const input = $('direct-assignment-form').elements.names; const names = input.value.split(/[\s,;]+/).filter(Boolean); if (!names.some(name => name.toUpperCase() === sub.name.toUpperCase())) names.push(sub.name); input.value = names.join(', '); $('direct-assignment').scrollIntoView({ behavior: 'smooth', block: 'start' }); if (!$('assignment-user').value) $('assignment-user').focus(); else input.focus(); }));
       target.append(box); }
@@ -364,17 +388,88 @@
     }
     pager('router-keys-pager', 'router-keys', data.keys.length, data.total);
   }
+  function termText(sub, seconds) {
+    if (sub.term_kind === 'lifetime') return 'Бессрочная подписка';
+    if (sub.term_kind !== 'fixed' || seconds === null || seconds === undefined) return 'Срок не указан';
+    if (seconds <= 0) return 'Срок истёк';
+    const days = Math.floor(seconds / 86400), hours = Math.floor(seconds % 86400 / 3600), minutes = Math.floor(seconds % 3600 / 60);
+    return days ? 'Осталось: ' + days + ' дн. ' + hours + ' ч.' : hours ? 'Осталось: ' + hours + ' ч. ' + minutes + ' мин.' : minutes ? 'Осталось: ' + minutes + ' мин.' : 'Осталось меньше минуты';
+  }
+  function subscriptionTermBadge(sub) {
+    const badge = el('span', termText(sub, sub.remaining_seconds), 'subscription-term'); badge.dataset.termKind = sub.term_kind || 'unspecified';
+    if (sub.term_kind === 'fixed' && Number.isFinite(sub.remaining_seconds)) badge.dataset.termDeadline = String(performance.now() + sub.remaining_seconds * 1000);
+    badge.dataset.expired = String(!!sub.is_expired); return badge;
+  }
+  function refreshTermBadges() {
+    document.querySelectorAll('[data-term-deadline]').forEach(badge => {
+      const seconds = Math.max(0, Math.ceil((Number(badge.dataset.termDeadline) - performance.now()) / 1000)); const text = termText({ term_kind: 'fixed' }, seconds); if (badge.textContent !== text) badge.textContent = text; badge.dataset.expired = String(seconds <= 0);
+      const card = badge.closest('.subscription-card'); if (seconds <= 0 && card) {
+        const link = card.querySelector('.subscription-link[data-hide-expired=true]'); if (link) { link.remove(); if (!card.querySelector('.subscription-expired-note')) card.append(el('p', 'Срок подписки истёк. Для продления выберите тариф или напишите в поддержку.', 'account-note subscription-expired-note')); }
+      }
+    });
+  }
+  setInterval(() => { if (!document.hidden) refreshTermBadges(); }, 15000); document.addEventListener('visibilitychange', refreshTermBadges);
+  function termDateInput(value) {
+    if (!value) return ''; const d = new Date(value.replace(' ', 'T') + 'Z'), two = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) + 'T' + two(d.getHours()) + ':' + two(d.getMinutes());
+  }
+  $('terms-search').onsubmit = e => { e.preventDefault(); pages.terms = 0; run(e.submitter, loadAdminTerms); };
+  async function chooseSubscriptionTerm(sub) { $('terms-query').value = sub.name; pages.terms = 0; await selectAdmin('terms'); $('admin-terms').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  async function loadAdminTerms() {
+    const data = await api('admin_subscription_terms', undefined, { q: $('terms-query').value.trim(), page: pages.terms }), target = $('admin-terms'); target.replaceChildren();
+    if (!data.subscriptions.length) target.append(el('p', 'Подписки не найдены.', 'account-muted'));
+    for (const sub of data.subscriptions) {
+      const card = el('article', null, 'subscription-card term-editor'); card.dataset.termSubscriptionId = sub.id;
+      card.append(el('h3', sub.name), el('p', sub.user_id ? sub.first_name + ' ' + sub.last_name + ' · ' + sub.email : 'Свободная подписка', 'account-muted'), subscriptionTermBadge(sub));
+      if (sub.expires_at) card.append(el('p', 'Окончание: ' + date(sub.expires_at), 'account-muted'));
+      const form = el('form'), modeLabel = el('label', 'Настройка срока'), mode = el('select'); mode.name = 'mode'; for (const [value, label] of [['lifetime', 'Бессрочная'], ['until', 'До указанной даты'], ['extend', 'Продлить на несколько месяцев']]) mode.append(new Option(label, value)); modeLabel.append(mode); mode.value = sub.term_kind === 'fixed' ? 'until' : 'lifetime';
+      const dateLabel = el('label', 'Дата и время окончания'), input = el('input'); input.type = 'datetime-local'; input.name = 'expires_at'; input.value = termDateInput(sub.expires_at); dateLabel.append(input);
+      const monthsLabel = el('label', 'Количество месяцев'), months = el('select'); months.name = 'months'; for (let n = 1; n <= 12; n++) months.append(new Option(String(n), String(n))); monthsLabel.append(months);
+      const sync = () => { dateLabel.hidden = mode.value !== 'until'; input.required = mode.value === 'until'; monthsLabel.hidden = mode.value !== 'extend'; }; mode.onchange = sync; sync();
+      const submit = el('button', 'Сохранить срок', 'account-primary'); submit.type = 'submit'; form.append(modeLabel, dateLabel, monthsLabel, submit);
+      form.onsubmit = e => { e.preventDefault(); run(submit, async () => {
+        const body = { id: Number(sub.id), user_id: sub.user_id === null ? null : Number(sub.user_id), mode: mode.value };
+        if (mode.value === 'until') { const parsed = new Date(input.value); if (!Number.isFinite(parsed.getTime())) throw Error('Укажите дату и время окончания.'); body.expires_at = parsed.toISOString().replace(/\.\d{3}Z$/, 'Z'); }
+        if (mode.value === 'extend') body.months = Number(months.value);
+        await api('admin_subscription_term_save', body); await loadAdminTerms(); message('Срок подписки «' + sub.name + '» сохранён.');
+      }); }; card.append(form); target.append(card);
+    }
+    pager('terms-pager', 'terms', data.subscriptions.length, data.total);
+  }
+  function clearRouterHostPreview() {
+    routerHostPreview = null; $('router-host-preview').hidden = true; $('router-host-items').replaceChildren(); $('router-host-summary').textContent = '';
+  }
+  $('router-host-form').oninput = clearRouterHostPreview;
+  $('router-host-form').onsubmit = e => {
+    e.preventDefault(); run(e.submitter, async () => {
+      clearRouterHostPreview(); const input = Object.fromEntries(new FormData(e.target)), data = await api('admin_router_host_preview', input);
+      if (!user?.is_admin || JSON.stringify(input) !== JSON.stringify(Object.fromEntries(new FormData(e.target)))) return;
+      routerHostPreview = data; $('router-host-preview').hidden = false;
+      $('router-host-summary').textContent = 'К замене: ' + data.changed + '. Уже указан этот адрес: ' + data.already_same + '. Пропущено: ' + data.skipped + '. Новый адрес: ' + data.new_host + '.';
+      for (const item of data.items) {
+        const box = el('div', null, 'router-host-preview-item'); box.append(el('strong', '#' + item.id + ' · ' + item.label), el('p', item.owner || (item.user_id ? 'Клиент #' + item.user_id : 'Свободный ключ'), 'account-muted'), el('p', item.old_host + ' → ' + item.new_host)); $('router-host-items').append(box);
+      }
+      if (data.changed > data.items.length) $('router-host-items').append(el('p', 'Показаны первые ' + data.items.length + ' из ' + data.changed + ' изменений.', 'account-muted'));
+      $('router-host-apply').hidden = !data.changed;
+      if (!data.changed) message('Подходящих ключей для изменения нет. Проверьте адрес и фильтр.');
+    });
+  };
+  $('router-host-apply').onclick = e => run(e.target, async () => {
+    const preview = routerHostPreview; if (!preview) throw Error('Сначала выполните предпросмотр замены.');
+    if (!confirm('Заменить адрес на «' + preview.new_host + '» в ' + preview.changed + ' VLESS-ключах?')) return;
+    const data = await api('admin_router_host_apply', { preview_token: preview.preview_token }); clearRouterHostPreview(); await loadAdminRouterKeys(); message('Адрес обновлён. Изменено ключей: ' + data.changed + '. Клиенты получат обновлённые ключи после обновления раздела в кабинете.');
+  });
   function renderServiceNoticeSettings(data) {
-    const form = $('service-notice-form'); form.elements.enabled.checked = data.enabled; form.elements.message.value = data.message;
+    const form = $('service-notice-form'); form.elements.enabled.checked = data.enabled; form.elements.message.value = data.message; form.elements.level.value = data.level || 'warning';
     $('service-notice-preview').textContent = data.message || 'Текст не задан.';
-    $('service-notice-saved').textContent = (data.enabled ? 'Объявление показывается.' : 'Объявление скрыто.') + (data.updated_at ? ' Сохранено: ' + date(data.updated_at) : '');
+    $('service-notice-saved').textContent = (data.enabled ? 'Статус показывается.' : 'Статус скрыт.') + (data.updated_at ? ' Сохранено: ' + date(data.updated_at) : '');
   }
   async function loadServiceNotice() { const data = await api('admin_service_notice'); if (user?.is_admin) renderServiceNoticeSettings(data); }
   $('service-notice-form').onsubmit = e => {
     e.preventDefault(); run(e.submitter, async () => {
-      const form = e.target, data = await api('admin_service_notice_save', { enabled: form.elements.enabled.checked, message: form.elements.message.value });
+      const form = e.target, data = await api('admin_service_notice_save', { enabled: form.elements.enabled.checked, message: form.elements.message.value, level: form.elements.level.value });
       if (!user?.is_admin) return; renderServiceNoticeSettings(data); window.MKRServiceNotice?.refresh();
-      message(data.enabled ? 'Объявление сохранено и включено. Открытые страницы обновят его в течение минуты.' : 'Объявление скрыто. Текст сохранён для следующего включения.');
+      message(data.enabled ? 'Статус сохранён. Цвет и текст обновятся на открытых страницах в течение минуты.' : 'Статус скрыт. Текст и цвет сохранены для следующего включения.');
     });
   };
   async function loadMonitoring() {
