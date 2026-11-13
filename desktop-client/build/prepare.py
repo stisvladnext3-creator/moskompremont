@@ -46,6 +46,14 @@ edit(vm,'    #region core job','''    public async Task RefreshForLauncherAsync(
     }
 
     #region core job''')
+# The launcher server picker includes every subscription and must not inherit the tray's limit.
+edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', '''        var lstModel = await AppManager.Instance.ProfileModels(_config.SubIndexId, "");
+
+        if (lstModel?.Count > _config.GuiItem.TrayMenuServersLimit)
+        {
+            BlServers = false;
+            return;
+        }''', '''        var lstModel = await AppManager.Instance.ProfileModels("", "") ?? [];''')
 # No unattended upstream updater may replace the branded application or bundled rules.
 edit('v2rayN/ServiceLib/Manager/TaskManager.cs','        Task.Run(ScheduledTasks);','        // Updates are explicit in the launcher; binary updates are versioned installer releases.')
 app='v2rayN/v2rayN.Desktop/App.axaml.cs'

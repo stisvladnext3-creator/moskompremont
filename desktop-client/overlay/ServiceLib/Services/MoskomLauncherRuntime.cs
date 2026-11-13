@@ -27,6 +27,7 @@ public static class MoskomLauncherRuntime
         config.TunModeItem.EnableTun = false;
         config.GuiItem.AutoUpdateInterval = 0;
         config.UiItem.CurrentLanguage = "ru";
+        config.UiItem.CurrentTheme = "Dark";
         config.UiItem.AutoHideStartup = false;
         CultureInfo.CurrentUICulture = new("ru-RU");
         CultureInfo.DefaultThreadCurrentUICulture = new("ru-RU");
@@ -150,14 +151,22 @@ public static class MoskomLauncherRuntime
             if (text.IsNullOrEmpty() || text.Length > 1024 * 1024) throw new InvalidOperationException("Скопируйте ссылку-подписку или ключ подключения.");
             var vm = ViewModel ?? throw new InvalidOperationException("Приложение ещё запускается.");
             var config = AppManager.Instance.Config;
+            var wasOn = Connection?.IsConnected == true;
+            if (wasOn) await Connection!.DisconnectAsync();
             var before = (await AppManager.Instance.SubItems() ?? []).Select(s => s.Id).ToHashSet();
-            var count = await ConfigHandler.AddBatchServers(config, text.Trim(), config.SubIndexId, false);
+            var count = await ConfigHandler.AddBatchServers(config, text.Trim(), "", false);
             if (count <= 0) throw new InvalidOperationException("В буфере нет поддерживаемой ссылки.");
             var url = text.Trim();
+            var subs = await AppManager.Instance.SubItems() ?? [];
+            var refresh = subs.Where(s => !before.Contains(s.Id) && !s.Url.IsNullOrEmpty()).ToList();
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
             {
-                var sub = (await AppManager.Instance.SubItems() ?? []).FirstOrDefault(s => s.Url == url);
+                var sub = subs.FirstOrDefault(s => s.Url == url);
                 if (sub == null) throw new InvalidOperationException("Не удалось добавить подписку.");
+                if (!refresh.Any(s => s.Id == sub.Id)) refresh.Add(sub);
+            }
+            foreach (var sub in refresh)
+            {
                 await vm.UpdateSubscriptionProcess(sub.Id, false);
                 var profiles = await AppManager.Instance.ProfileItems(sub.Id) ?? [];
                 if (profiles.Count == 0) throw new InvalidOperationException("Подписка добавлена, но список серверов не получен. Проверьте ссылку и нажмите «Обновить».");
@@ -166,7 +175,7 @@ public static class MoskomLauncherRuntime
             }
             await vm.RefreshForLauncherAsync();
             await EnsureServerAsync(); ListsChanged?.Invoke();
-            if (Connection?.IsConnected == true) { await Connection.DisconnectAsync(); await Connection.ConnectAsync(); }
+            if (wasOn) await Connection!.ConnectAsync();
         }
         finally { Operations.Release(); }
     }
@@ -174,7 +183,13 @@ public static class MoskomLauncherRuntime
     {
         var vm = ViewModel ?? throw new InvalidOperationException("Приложение ещё запускается.");
         if (!await Operations.WaitAsync(0)) return;
-        try { await vm.UpdateSubscriptionProcess("", false); await vm.RefreshForLauncherAsync(); await EnsureServerAsync(); ListsChanged?.Invoke(); }
+        try
+        {
+            var wasOn = Connection?.IsConnected == true;
+            if (wasOn) await Connection!.DisconnectAsync();
+            await vm.UpdateSubscriptionProcess("", false); await vm.RefreshForLauncherAsync(); await EnsureServerAsync(); ListsChanged?.Invoke();
+            if (wasOn) await Connection!.ConnectAsync();
+        }
         finally { Operations.Release(); }
     }
     private static async Task EnsureServerAsync()

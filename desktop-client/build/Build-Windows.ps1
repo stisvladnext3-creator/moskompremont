@@ -81,20 +81,56 @@ Get-ChildItem $Payload -Recurse -File | ForEach-Object {
     '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $Rel
 } | Set-Content "$Payload/SHA256SUMS.txt" -Encoding utf8
 # UI smoke check uses a disposable profile and cannot acquire the real Windows proxy.
-$Smoke = Join-Path $Output 'smoke'
-New-Item -ItemType Directory $Smoke -Force | Out-Null
-$env:MOSKOM_SMOKE_TEST = '1'; $env:MOSKOM_SMOKE_HOME = Join-Path $Work 'smoke-profile'; $env:MOSKOM_SMOKE_OUTPUT = $Smoke
-$Process = Start-Process "$Payload/MoskomVPN.exe" -PassThru
-if (!$Process.WaitForExit(60000)) { $Process.Kill(); throw 'UI smoke check timed out.' }
-$Process.Refresh()
-if ($Process.ExitCode -ne 0) { throw "UI smoke check failed: $($Process.ExitCode)" }
-$Report = Get-Content "$Smoke/smoke.json" -Raw | ConvertFrom-Json
-if ($Report.status -ne 'Disconnected' -or !$Report.proxyUnchanged -or !$Report.tunDisabled -or $Report.routing.Count -lt 3) { throw 'Invalid initial state.' }
-foreach ($Name in @('MoskomPower','MoskomAdd','MoskomServers','MoskomRouting')) { if ($Report.controls -notcontains $Name) { throw "UI missing $Name" } }
-Remove-Item Env:MOSKOM_SMOKE_TEST,Env:MOSKOM_SMOKE_HOME,Env:MOSKOM_SMOKE_OUTPUT
+function ProxyState {
+    $Key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Internet Settings')
+    $Values = [ordered]@{}
+    foreach ($Name in @('ProxyEnable','ProxyServer','ProxyOverride','AutoConfigURL')) { $Values[$Name] = if ($Key) { $Key.GetValue($Name,$null) } else { $null } }
+    if ($Key) { $Key.Dispose() }
+    return ($Values | ConvertTo-Json -Compress)
+}
+function SmokeCheck([string]$Exe, [string]$Profile, [string]$Destination) {
+    New-Item -ItemType Directory $Destination -Force | Out-Null
+    $env:MOSKOM_SMOKE_TEST = '1'; $env:MOSKOM_SMOKE_HOME = $Profile; $env:MOSKOM_SMOKE_OUTPUT = $Destination
+    $BeforeProxy = ProxyState
+    try {
+        $Process = Start-Process $Exe -PassThru
+        if (!$Process.WaitForExit(60000)) { $Process.Kill(); throw 'UI smoke check timed out.' }
+        $Process.Refresh()
+        if ((ProxyState) -ne $BeforeProxy) { throw 'Smoke test modified real Windows proxy.' }
+        if ($Process.ExitCode -ne 0) { throw "UI smoke check failed: $($Process.ExitCode)" }
+        $Report = Get-Content "$Destination/smoke.json" -Raw | ConvertFrom-Json
+        if ($Report.status -ne 'Disconnected' -or !$Report.proxyUnchanged -or !$Report.tunDisabled -or $Report.routing.Count -lt 3 -or !$Report.subscriptionImported -or !$Report.allServersVisible -or !$Report.smokeConnectionBlocked -or !$Report.routingRulesLoaded) { throw 'Invalid launcher state.' }
+        foreach ($Name in @('MoskomPower','MoskomAdd','MoskomServers','MoskomRouting')) { if ($Report.controls -notcontains $Name) { throw "UI missing $Name" } }
+    }
+    finally {
+        $ProfileLogs = Join-Path $Profile 'guiLogs'
+        if (Test-Path $ProfileLogs) { Copy-Item $ProfileLogs "$Destination/logs" -Recurse -Force }
+        Remove-Item Env:MOSKOM_SMOKE_TEST,Env:MOSKOM_SMOKE_HOME,Env:MOSKOM_SMOKE_OUTPUT
+    }
+}
+SmokeCheck "$Payload/MoskomVPN.exe" (Join-Path $Work 'smoke-profile') (Join-Path $Output 'smoke')
 $Compiler = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
 if (!(Test-Path $Compiler)) { throw 'Inno Setup compiler not found.' }
 Run { & $Compiler "/DAppVersion=$Version" "/DPayloadDir=$Payload" "/DOutputDir=$Output" "$Client/installer/MoskomVPN.iss" }
+# Install the actual package, launch it, then uninstall on this disposable Windows runner.
+$Install = Join-Path $Work 'Installed App'
+$Setup = Join-Path $Output "MoskomVPN-Setup-$Version.exe"
+$InstallLog = Join-Path $Output 'smoke/install.log'
+$Installed = Start-Process $Setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $Install),('"/LOG={0}"' -f $InstallLog)) -Wait -PassThru
+if ($Installed.ExitCode -ne 0) { throw "Installer failed: $($Installed.ExitCode)" }
+foreach ($File in @('MoskomVPN.exe','preset-russia/route-0.json','preset-russia/route-1.json','preset-russia/route-2.json','bin/geosite.dat','bin/geoip.dat','LICENSE-v2rayN-GPL-3.0.txt')) {
+    if (!(Test-Path (Join-Path $Install $File))) { throw "Installer omitted $File" }
+}
+if ((Get-FileHash "$Install/MoskomVPN.exe").Hash -ne (Get-FileHash "$Payload/MoskomVPN.exe").Hash) { throw 'Installed binary differs from payload.' }
+$DesktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'МосКомпРемонт VPN.lnk'
+$StartLink = Join-Path ([Environment]::GetFolderPath('Programs')) 'МосКомпРемонт VPN.lnk'
+if (!(Test-Path $DesktopLink) -or !(Test-Path $StartLink)) { throw 'Installer did not create shortcuts.' }
+SmokeCheck "$Install/MoskomVPN.exe" (Join-Path $Work 'installed-smoke-profile') (Join-Path $Output 'smoke/installed')
+$Uninstalled = Start-Process "$Install/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+if ($Uninstalled.ExitCode -ne 0) { throw "Uninstaller failed: $($Uninstalled.ExitCode)" }
+if ((Test-Path "$Install/MoskomVPN.exe") -or (Test-Path $DesktopLink) -or (Test-Path $StartLink)) { throw 'Uninstaller left binaries or shortcuts.' }
+@{installed=$true;installedAppLaunched=$true;shortcutsVerified=$true;uninstalled=$true;realProxyUnchanged=$true} | ConvertTo-Json | Set-Content "$Output/smoke/installer-validation.json" -Encoding utf8
+Copy-Item "$Output/smoke/launcher.png" "$Output/MoskomVPN-Preview.png"
 # Corresponding modified application source and build instructions, without secrets/cache/output.
 $SourceBundle = Join-Path $Work 'source-bundle'
 Run { python "$PSScriptRoot/source-bundle.py" $Upstream $Client $SourceBundle }
