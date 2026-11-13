@@ -2,8 +2,10 @@
 
 Кабинет на PHP/MySQL: подписки и отдельные ключи для роутеров клиентов, ручная выдача с оплатой и без неё, переписка с фотографиями и разделы администратора.
 
-- [Скачать обновление кабинета v17](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v17-update.zip)
+- [Скачать обновление кабинета v17.1](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v17.1-update.zip)
 - [Полный комплект раздела и кабинета](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-account-php.zip)
+- [Исправление обрезки объявления: маленький ZIP с CSS](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-announcement-fix.zip)
+- [Установка v17.1: полный текст объявления](downloads/UPDATE-CABINET-V17-1.md)
 - [Установка v17: замена домена / IP в базе подписок](downloads/UPDATE-CABINET-V17.md)
 - [Установка v16: уведомления, аккаунты, шаблоны и архив](downloads/UPDATE-CABINET-V16.md)
 - [Установка v15: статус сервиса, удаление, адреса ключей и сроки подписок](downloads/UPDATE-CABINET-V15.md)
@@ -26,6 +28,10 @@
 - [Исходники модуля](module/)
 - [Предпросмотр клиента](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=client)
 - [Предпросмотр администратора](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=admin)
+
+## Полный текст объявления (v17.1)
+
+Блок статуса в шапке кабинета теперь растёт по высоте и показывает объявление целиком: убрано ограничение в три строки. Сохраняются переносы строк, длинные слова и ссылки переносятся внутри блока. Для быстрого исправления замените `assets/account.css` из `moskompremont-announcement-fix.zip` и нажмите Ctrl+F5. Импорт SQL не нужен. В полном архиве v17.1 также обновлён адрес подключения CSS для сброса кеша. [Инструкция](downloads/UPDATE-CABINET-V17-1.md).
 
 ## Замена домена / IP в базе подписок (v17)
 
