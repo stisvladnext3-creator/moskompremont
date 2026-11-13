@@ -31,6 +31,7 @@ public sealed class MoskomLauncherView : UserControl
     private readonly TextBlock _powerLabel = new() { Text = "Включить VPN", Foreground = Brushes.White, FontSize = 13, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
     private bool _refreshing;
     private bool _operation;
+    private string? _checkedServer;
 
     private static TextBlock Label(string text) => new() { Text = text, FontSize = 12, Foreground = Brush.Parse("#A7B7D0"), Margin = new(0, 0, 0, 7) };
     public MoskomLauncherView(Window owner, MainWindowViewModel vm)
@@ -87,13 +88,14 @@ public sealed class MoskomLauncherView : UserControl
         {
             _availabilityResult.Text = "Проверяем выбранный сервер…";
             var check = await MoskomLauncherRuntime.CheckAvailabilityAsync();
-            _availabilityResult.Text = check.Milliseconds is > 0 ? $"Доступен · {check.Milliseconds} мс · {check.CheckedAt:HH:mm}" : $"Выбранный сервер не отвечает · {check.CheckedAt:HH:mm}";
+            _checkedServer = AppManager.Instance.Config.IndexId;
+            _availabilityResult.Text = check.Server + "\n" + (check.Milliseconds is > 0 ? $"Доступен · {check.Milliseconds} мс · {check.CheckedAt:HH:mm}" : $"Не отвечает · {check.CheckedAt:HH:mm}");
             _availabilityResult.Foreground = Brush.Parse(check.Milliseconds is > 0 ? "#55D6AC" : "#F49A9A");
             await MoskomLauncherRuntime.RefreshServiceAsync();
         });
         _websiteStatus.Click += async (_, _) => await MoskomWebsiteViews.ShowStatusAsync(_owner);
         _account.Click += async (_, _) => await MoskomWebsiteViews.ShowAccountAsync(_owner);
-        _servers.SelectionChanged += async (_, _) => { if (!_refreshing && _servers.SelectedItem is ComboItem item) await RunAsync(() => MoskomLauncherRuntime.SelectServerAsync(item)); };
+        _servers.SelectionChanged += async (_, _) => { if (!_refreshing && _servers.SelectedItem is ComboItem item) { ResetAvailability(); await RunAsync(() => MoskomLauncherRuntime.SelectServerAsync(item)); } };
         _routing.SelectionChanged += async (_, _) => { if (!_refreshing && _routing.SelectedItem is RoutingItem item) await RunAsync(() => MoskomLauncherRuntime.SelectRoutingAsync(item)); };
         help.Click += (_, _) => { var file = System.IO.Path.Combine(Utils.GetBaseDirectory(), "КАК-ПОЛЬЗОВАТЬСЯ.txt"); if (File.Exists(file)) Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); };
         exit.Click += async (_, _) => await RunAsync(() => AppManager.Instance.AppExitAsync(true));
@@ -112,11 +114,16 @@ public sealed class MoskomLauncherView : UserControl
         _refreshing = true;
         try
         {
+            if (_checkedServer != null && _checkedServer != AppManager.Instance.Config.IndexId) ResetAvailability();
             _servers.SelectedItem = _vm.StatusBarViewModel.Servers.FirstOrDefault(x => x.ID == AppManager.Instance.Config.IndexId);
             var active = (await AppManager.Instance.RoutingItems()).FirstOrDefault(x => x.IsActive);
             _routing.SelectedItem = _vm.StatusBarViewModel.RoutingItems.FirstOrDefault(x => x.Id == active?.Id);
         }
         finally { _refreshing = false; }
+    }
+    private void ResetAvailability()
+    {
+        _checkedServer = null; _availabilityResult.Text = "Проверка выбранного сервера ещё не выполнялась."; _availabilityResult.Foreground = Brush.Parse("#A7B7D0");
     }
     private async Task RunAsync(Func<Task> action)
     {
