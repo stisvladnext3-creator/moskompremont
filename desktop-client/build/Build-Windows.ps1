@@ -151,8 +151,25 @@ $DesktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'МосКом
 $StartLink = Join-Path ([Environment]::GetFolderPath('Programs')) 'МосКомпРемонт VPN.lnk'
 if (!(Test-Path $DesktopLink) -or !(Test-Path $StartLink)) { throw 'Installer did not create shortcuts.' }
 $Shell = New-Object -ComObject WScript.Shell
-$Shortcut = $Shell.CreateShortcut($DesktopLink)
-if ($Shortcut.TargetPath -ne "$Install\MoskomVPN.exe" -or $Shortcut.IconLocation -notlike '*brand\moskom-vpn.ico*') { throw 'Desktop shortcut target or branding is wrong.' }
+function VerifyInstallerShortcuts([string]$Label) {
+    $ExpectedTargetHash = (Get-FileHash "$Install/MoskomVPN.exe").Hash
+    $ExpectedIconHash = (Get-FileHash "$Client/branding/moskom-vpn.ico").Hash
+    $Details = foreach ($Link in @($DesktopLink, $StartLink)) {
+        if (!(Test-Path -LiteralPath $Link)) { throw "Installer did not create $Link" }
+        $Shortcut = $Shell.CreateShortcut($Link)
+        # Windows can return short DOS paths from a shell link. Verify the actual
+        # linked files, rather than requiring one spelling of the installation path.
+        $Target = [Environment]::ExpandEnvironmentVariables($Shortcut.TargetPath).Trim('"')
+        $Icon = [Environment]::ExpandEnvironmentVariables(($Shortcut.IconLocation -replace ',\s*-?\d+\s*$', '')).Trim('"')
+        [ordered]@{link=$Link;target=$Target;icon=$Icon;expectedTarget="$Install/MoskomVPN.exe"}
+    }
+    $Details | ConvertTo-Json | Tee-Object -FilePath "$Output/smoke/shortcuts-$Label.json" | Write-Host
+    foreach ($Detail in $Details) {
+        if (!(Test-Path -LiteralPath $Detail.target -PathType Leaf) -or (Get-FileHash -LiteralPath $Detail.target).Hash -ne $ExpectedTargetHash) { throw "Shortcut does not launch the installed application: $($Detail.link)" }
+        if (!(Test-Path -LiteralPath $Detail.icon -PathType Leaf) -or (Get-FileHash -LiteralPath $Detail.icon).Hash -ne $ExpectedIconHash) { throw "Shortcut does not use the website logo: $($Detail.link)" }
+    }
+}
+VerifyInstallerShortcuts 'upgrade'
 if ((Get-FileHash "$Install/brand/moskom-vpn.ico").Hash -ne (Get-FileHash "$Client/branding/moskom-vpn.ico").Hash) { throw 'Installed icon differs from website branding.' }
 SmokeCheck "$Install/MoskomVPN.exe" (Join-Path $Work 'installed-smoke-profile') (Join-Path $Output 'smoke/installed')
 # Exercise the same parent-wait + silent install + automatic relaunch used by the app updater.
@@ -176,7 +193,7 @@ if ((Test-Path "$Install/MoskomVPN.exe") -or (Test-Path $DesktopLink) -or (Test-
 # Verify the desktop icon also appears when there is no previous installation.
 $Fresh=Start-Process $Setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $Install)) -Wait -PassThru
 if($Fresh.ExitCode -ne 0 -or !(Test-Path $DesktopLink)){throw 'Fresh install did not create the desktop shortcut.'}
-if($Shell.CreateShortcut($DesktopLink).IconLocation -notlike '*brand\moskom-vpn.ico*'){throw 'Fresh desktop shortcut is not branded.'}
+VerifyInstallerShortcuts 'fresh'
 $Removed=Start-Process "$Install/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
 if($Removed.ExitCode -ne 0){throw 'Fresh installation could not be uninstalled.'}
 @{installed=$true;upgradedFrom027=$true;automaticRelaunch=$true;freshDesktopShortcut=$true;installedAppLaunched=$true;shortcutsVerified=$true;uninstalled=$true;realProxyUnchanged=$true} | ConvertTo-Json | Set-Content "$Output/smoke/installer-validation.json" -Encoding utf8
