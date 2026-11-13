@@ -47,7 +47,7 @@ edit(vm,'    #region core job','''    public async Task RefreshForLauncherAsync(
 
     #region core job''')
 # No unattended upstream updater may replace the branded application or bundled rules.
-edit('v2rayN/ServiceLib/Manager/TaskManager.cs','        Task.Run(ScheduledTasks);','        // Updates are explicit in the launcher; binary updates are signed/versioned installer releases.')
+edit('v2rayN/ServiceLib/Manager/TaskManager.cs','        Task.Run(ScheduledTasks);','        // Updates are explicit in the launcher; binary updates are versioned installer releases.')
 app='v2rayN/v2rayN.Desktop/App.axaml.cs'
 edit(app,'            desktop.MainWindow = mainWindow;','            mainWindow.EnableMoskomLauncher(mainWindowViewModel);\n            desktop.MainWindow = mainWindow;')
 main='v2rayN/v2rayN.Desktop/Views/MainWindow.axaml.cs'
@@ -69,5 +69,5 @@ a=s.index('                    <NativeMenu>');b=s.index('                    </N
 s=s[:a]+'''                    <NativeMenu>
                         <NativeMenuItem Command="{Binding ShowWindowCmd}" Header="Открыть МосКомпРемонт VPN" />
                         <NativeMenuItem Click="MenuExit_Click" Header="Выход" />
-                    </NativeMenu>'''+s[b:];p.write_text(s,encoding='utf-8')
+                    </NativeMenu>'''+s[b:];s=s.replace('ToolTipText="{Binding RunningServerToolTipText}"','ToolTipText="МосКомпРемонт VPN"');p.write_text(s,encoding='utf-8')
 print('Prepared MosKomRemont VPN launcher over upstream 7.25.6.')

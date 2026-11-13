@@ -1,4 +1,5 @@
 using System.Net;
+using ServiceLib.ViewModels;
 using System.Net.Sockets;
 using System.Globalization;
 using ServiceLib.Handler.SysProxy;
@@ -26,6 +27,7 @@ public static class MoskomLauncherRuntime
         config.TunModeItem.EnableTun = false;
         config.GuiItem.AutoUpdateInterval = 0;
         config.UiItem.CurrentLanguage = "ru";
+        config.UiItem.AutoHideStartup = false;
         CultureInfo.CurrentUICulture = new("ru-RU");
         CultureInfo.DefaultThreadCurrentUICulture = new("ru-RU");
         var stamp = Utils.GetConfigPath("moskom-preset-v1.json");

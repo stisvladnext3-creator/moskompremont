@@ -86,6 +86,7 @@ New-Item -ItemType Directory $Smoke -Force | Out-Null
 $env:MOSKOM_SMOKE_TEST = '1'; $env:MOSKOM_SMOKE_HOME = Join-Path $Work 'smoke-profile'; $env:MOSKOM_SMOKE_OUTPUT = $Smoke
 $Process = Start-Process "$Payload/MoskomVPN.exe" -PassThru
 if (!$Process.WaitForExit(60000)) { $Process.Kill(); throw 'UI smoke check timed out.' }
+$Process.Refresh()
 if ($Process.ExitCode -ne 0) { throw "UI smoke check failed: $($Process.ExitCode)" }
 $Report = Get-Content "$Smoke/smoke.json" -Raw | ConvertFrom-Json
 if ($Report.status -ne 'Disconnected' -or !$Report.proxyUnchanged -or !$Report.tunDisabled -or $Report.routing.Count -lt 3) { throw 'Invalid initial state.' }

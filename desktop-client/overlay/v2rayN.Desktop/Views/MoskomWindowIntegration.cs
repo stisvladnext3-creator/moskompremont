@@ -10,7 +10,7 @@ public partial class MainWindow
         MoskomLauncherRuntime.Attach(vm);
         var advanced = Content; Content = null;
         var root = new Grid();
-        if (advanced is Control control) root.Children.Add(new ContentControl { Content = control, IsVisible = false });
+        if (advanced is Control control) root.Children.Add(new ContentControl { Content = control, IsVisible = false, IsEnabled = false });
         root.Children.Add(new MoskomLauncherView(this, vm)); Content = root;
         Title = MoskomLauncherRuntime.DisplayName;
         Background = Brush.Parse("#0A1020"); Width = 480; Height = 790; MinWidth = 420; MinHeight = 650;
