@@ -29,3 +29,6 @@
 
 /* v17: bulk host replacement for subscription URLs */
 #subscription-host-items{max-height:360px;overflow-y:auto;margin-bottom:18px}#subscription-host-replacement input{min-width:0}#subscription-host-replacement .account-primary{margin-top:18px}
+
+/* App downloads action in the cabinet heading. */
+.account-intro{display:flex;align-items:center;justify-content:space-between;gap:28px}.account-intro>div{min-width:0}.account-intro .account-lead{margin-bottom:0}.account-page .account-app-download{display:inline-flex;align-items:center;justify-content:center;gap:10px;flex-shrink:0;max-width:320px;padding:15px 18px;border:1px solid #6bcce9;border-radius:12px;background:linear-gradient(110deg,#2abed6,#7168dd);color:#fff;font:700 13px/1.5 Inter,Arial,sans-serif;box-shadow:0 6px 28px #2e9ed72b;text-align:center}.account-app-download svg{flex-shrink:0}.account-page .account-app-download:hover{box-shadow:0 8px 32px #5c79dc4d;filter:brightness(1.1)}@media(max-width:760px){.account-intro{align-items:flex-start;flex-direction:column;gap:20px}.account-page .account-app-download{max-width:none;width:100%}}

@@ -2,6 +2,8 @@
 
 Кабинет на PHP/MySQL: подписки и отдельные ключи для роутеров клиентов, ручная выдача с оплатой и без неё, переписка с фотографиями и разделы администратора.
 
+- [Кнопка и страница скачивания приложения — небольшое обновление v18](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-app-download-update.zip)
+- [Как загрузить обновление v18 на хостинг](downloads/UPDATE-CABINET-V18.md)
 - [Скачать обновление кабинета v17.1](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v17.1-update.zip)
 - [Полный комплект раздела и кабинета](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-account-php.zip)
 - [Исправление обрезки объявления: маленький ZIP с CSS](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-announcement-fix.zip)
@@ -28,6 +30,10 @@
 - [Исходники модуля](module/)
 - [Предпросмотр клиента](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=client)
 - [Предпросмотр администратора](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=admin)
+
+## Приложение сервиса (v18)
+
+В шапке кабинета появилась кнопка «Скачать приложение сервиса». Новая страница `download.html` содержит Windows-версию с определением последнего выпуска, Android с кнопкой «Скоро» и инструкции для обеих платформ. Небольшой архив меняет только HTML/CSS/JS и логотип; PHP, SQL, конфиги и данные не меняются. [Установка](downloads/UPDATE-CABINET-V18.md).
 
 ## Полный текст объявления (v17.1)
 
