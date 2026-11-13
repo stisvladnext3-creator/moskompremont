@@ -63,6 +63,7 @@ public static partial class MoskomLauncherRuntime
             await ConfigHandler.SaveConfig(config);
             await File.WriteAllTextAsync(stamp, "{\"preset\":\"Russia\",\"source\":\"runetfreedom\",\"schema\":1}");
         }
+        await InitializeLauncherSettingsAsync(config);
         await ConfigHandler.SaveConfig(config);
     }
     public static void Attach(MainWindowViewModel vm)
@@ -70,6 +71,7 @@ public static partial class MoskomLauncherRuntime
         ViewModel = vm;
         Connection = new MoskomConnection(new Engine(vm), SmokeTest ? new NoProxy() : new WindowsLease());
         _ = MonitorCoreAsync(Lifetime.Token);
+        _ = WatchApplicationUpdatesAsync();
     }
     private sealed class WindowsLease : IMoskomProxyLease
     {

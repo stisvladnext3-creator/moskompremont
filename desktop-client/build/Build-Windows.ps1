@@ -18,14 +18,15 @@ Run { git clone --quiet --depth 1 --branch $Sources.upstream.version https://git
 $Actual = (git -C $Upstream rev-parse HEAD).Trim()
 if ($Actual -ne $Sources.upstream.commit) { throw 'Upstream commit mismatch.' }
 Run { git -C $Upstream submodule update --init --recursive --depth 1 }
-Run { python "$PSScriptRoot/prepare.py" $Upstream }
+Run { python "$PSScriptRoot/prepare.py" $Upstream --version $Version }
 $Project = Join-Path $Upstream 'v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj'
 $Publish = Join-Path $Work 'publish'
-Run { dotnet publish $Project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:RestorePackagesWithLockFile=true -o $Publish }
+Run { dotnet publish $Project -c Release -r win-x64 --self-contained true -p:Version=$Version -p:PublishSingleFile=true -p:DebugType=None -p:RestorePackagesWithLockFile=true -o $Publish }
 $Payload = Join-Path $Work 'payload'
 New-Item -ItemType Directory $Payload | Out-Null
 Copy-Item "$Publish/*" $Payload -Recurse -Force
 Rename-Item "$Payload/v2rayN.exe" 'MoskomVPN.exe'
+Copy-Item "$Client/branding" "$Payload/brand" -Recurse -Force
 $StockZip = Join-Path $Work 'stock.zip'
 Download $Sources.upstream.url $StockZip $Sources.upstream.sha256
 $Stock = Join-Path $Work 'stock'
@@ -71,6 +72,7 @@ foreach ($Tag in $Tags) {
     $Url = "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/$($Sources.russia.rulesCommit)/sing-box/rule-set-$Type/$Tag.srs"
     Download $Url "$Srs/$Tag.srs"
 }
+@{routingCommit=$Sources.russia.routingCommit;rulesCommit=$Sources.russia.rulesCommit;geoRelease=$Sources.russia.geoRelease;fetchedAt=[DateTimeOffset]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content "$Preset/manifest.json" -Encoding utf8NoBOM
 Copy-Item "$Client/LICENSE" "$Payload/LICENSE-v2rayN-GPL-3.0.txt"
 Copy-Item "$Client/КАК-ПОЛЬЗОВАТЬСЯ.txt" $Payload
 Copy-Item "$Client/THIRD-PARTY-NOTICES.txt" $Payload
@@ -88,6 +90,20 @@ function ProxyState {
     if ($Key) { $Key.Dispose() }
     return ($Values | ConvertTo-Json -Compress)
 }
+function ValidateSmokeReport([string]$Destination, [string]$AppDirectory) {
+    if (Test-Path "$Destination/smoke-error.txt") { throw (Get-Content "$Destination/smoke-error.txt" -Raw) }
+    $Report = Get-Content "$Destination/smoke.json" -Raw | ConvertFrom-Json
+    if ($Report.status -ne 'Disconnected' -or !$Report.proxyUnchanged -or !$Report.tunDisabled -or $Report.routing.Count -lt 3 -or !$Report.subscriptionImported -or !$Report.allServersVisible -or !$Report.smokeConnectionBlocked -or !$Report.routingRulesLoaded) { throw 'Invalid launcher state.' }
+    foreach ($Name in @('MoskomPower','MoskomPowerIcon','MoskomAdd','MoskomServers','MoskomRouting','MoskomAvailability','MoskomWebsiteStatus','MoskomLogin','MoskomMenu','MoskomSiteLogo')) { if ($Report.controls -notcontains $Name) { throw "UI missing $Name" } }
+    if (!$Report.vectorIcon) { throw 'Power icon is not a vector.' }
+    foreach ($Name in @('LoginForm','MultipleSubscriptions','RotatedLink','ExpiredSkipped','RevokedRemoved','SessionEncrypted','LogoutPreservedManual','AvailabilityChecked')) { if (!$Report.website.$Name) { throw "Website smoke failed: $Name" } }
+    foreach ($Name in @('Burger','Brand','Dns','RulesApplied','RulesRollback','UpdatePrompt','LaterDefers')) { if (!$Report.settings.$Name) { throw "Settings smoke failed: $Name" } }
+    $Xray = Get-ChildItem "$AppDirectory/bin" -Recurse -File -Filter xray.exe | Select-Object -First 1
+    if (!$Xray) { throw 'Packaged Xray is missing.' }
+    $OldAsset = $env:XRAY_LOCATION_ASSET; $env:XRAY_LOCATION_ASSET = Join-Path $AppDirectory 'bin'
+    try { foreach ($ConfigFile in Get-ChildItem $Destination -File -Filter 'dns-*.json') { Run { & $Xray.FullName run -test -c $ConfigFile.FullName } } }
+    finally { if ($null -eq $OldAsset) { Remove-Item Env:XRAY_LOCATION_ASSET -ErrorAction SilentlyContinue } else { $env:XRAY_LOCATION_ASSET = $OldAsset } }
+}
 function SmokeCheck([string]$Exe, [string]$Profile, [string]$Destination) {
     New-Item -ItemType Directory $Destination -Force | Out-Null
     $env:MOSKOM_SMOKE_TEST = '1'; $env:MOSKOM_SMOKE_HOME = $Profile; $env:MOSKOM_SMOKE_OUTPUT = $Destination
@@ -102,11 +118,7 @@ function SmokeCheck([string]$Exe, [string]$Profile, [string]$Destination) {
             if (Test-Path "$Destination/smoke-error.txt") { Write-Host (Get-Content "$Destination/smoke-error.txt" -Raw) }
             throw "UI smoke check failed: $($Process.ExitCode)"
         }
-        $Report = Get-Content "$Destination/smoke.json" -Raw | ConvertFrom-Json
-        if ($Report.status -ne 'Disconnected' -or !$Report.proxyUnchanged -or !$Report.tunDisabled -or $Report.routing.Count -lt 3 -or !$Report.subscriptionImported -or !$Report.allServersVisible -or !$Report.smokeConnectionBlocked -or !$Report.routingRulesLoaded) { throw 'Invalid launcher state.' }
-        foreach ($Name in @('MoskomPower','MoskomPowerIcon','MoskomAdd','MoskomServers','MoskomRouting','MoskomAvailability','MoskomWebsiteStatus','MoskomLogin')) { if ($Report.controls -notcontains $Name) { throw "UI missing $Name" } }
-        if (!$Report.vectorIcon) { throw 'Power icon is not a vector.' }
-        foreach ($Name in @('LoginForm','MultipleSubscriptions','RotatedLink','ExpiredSkipped','RevokedRemoved','SessionEncrypted','LogoutPreservedManual','AvailabilityChecked')) { if (!$Report.website.$Name) { throw "Website smoke failed: $Name" } }
+        ValidateSmokeReport $Destination (Split-Path $Exe -Parent)
     }
     finally {
         $ProfileLogs = Join-Path $Profile 'guiLogs'
@@ -123,7 +135,7 @@ $Install = Join-Path $Work 'Installed App'
 $Setup = Join-Path $Output "MoskomVPN-Setup-$Version.exe"
 # Verify an in-place upgrade from the installer already delivered to clients.
 $Previous = Join-Path $Work 'previous-setup.exe'
-Download 'https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.1.3/MoskomVPN-Setup-0.1.3.exe' $Previous 'e515d91c961bb7865a764a2addc65711c9b5ffa2edce106887c6096dbc51051f'
+Download 'https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.2.7/MoskomVPN-Setup-0.2.7.exe' $Previous 'c6ecca74a00f0a0ab0da330edefd0f006174f834c2f4d8951bec6dbc18ce0760'
 $OldInstall = Start-Process $Previous -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $Install)) -Wait -PassThru
 if ($OldInstall.ExitCode -ne 0) { throw 'Previous version installation failed.' }
 $PreviousHash = (Get-FileHash "$Install/MoskomVPN.exe").Hash
@@ -138,13 +150,39 @@ if ((Get-FileHash "$Install/MoskomVPN.exe").Hash -eq $PreviousHash) { throw 'Upg
 $DesktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'МосКомпРемонт VPN.lnk'
 $StartLink = Join-Path ([Environment]::GetFolderPath('Programs')) 'МосКомпРемонт VPN.lnk'
 if (!(Test-Path $DesktopLink) -or !(Test-Path $StartLink)) { throw 'Installer did not create shortcuts.' }
+$Shell = New-Object -ComObject WScript.Shell
+$Shortcut = $Shell.CreateShortcut($DesktopLink)
+if ($Shortcut.TargetPath -ne "$Install\MoskomVPN.exe" -or $Shortcut.IconLocation -notlike '*brand\moskom-vpn.ico*') { throw 'Desktop shortcut target or branding is wrong.' }
+if ((Get-FileHash "$Install/brand/moskom-vpn.ico").Hash -ne (Get-FileHash "$Client/branding/moskom-vpn.ico").Hash) { throw 'Installed icon differs from website branding.' }
 SmokeCheck "$Install/MoskomVPN.exe" (Join-Path $Work 'installed-smoke-profile') (Join-Path $Output 'smoke/installed')
+# Exercise the same parent-wait + silent install + automatic relaunch used by the app updater.
+$UpdateSmoke = Join-Path $Output 'smoke/updater'; New-Item -ItemType Directory -Force $UpdateSmoke | Out-Null
+$env:MOSKOM_SMOKE_TEST='1'; $env:MOSKOM_SMOKE_HOME=Join-Path $Work 'updater-smoke-profile'; $env:MOSKOM_SMOKE_OUTPUT=$UpdateSmoke
+$BeforeUpdateProxy=ProxyState
+try {
+    $Parent=Start-Process powershell.exe -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 2') -PassThru
+    $Updated=Start-Process $Setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/MOSKOMUPDATE=1',("/MOSKOMPID="+$Parent.Id),('"/DIR={0}"' -f $Install)) -Wait -PassThru
+    if($Updated.ExitCode -ne 0){throw 'Automatic update installer failed.'}
+    $Deadline=[DateTime]::UtcNow.AddSeconds(90)
+    while(!(Test-Path "$UpdateSmoke/smoke.json") -and !(Test-Path "$UpdateSmoke/smoke-error.txt") -and [DateTime]::UtcNow -lt $Deadline){Start-Sleep -Milliseconds 250}
+    foreach($Running in Get-Process -Name MoskomVPN -ErrorAction SilentlyContinue){if($Running.Path -eq "$Install\MoskomVPN.exe"){if(!$Running.WaitForExit(10000)){throw 'Relaunched application did not finish its smoke check.'}}}
+    if((ProxyState) -ne $BeforeUpdateProxy){throw 'Updater smoke modified the Windows proxy.'}
+    ValidateSmokeReport $UpdateSmoke $Install
+}
+finally{Remove-Item Env:MOSKOM_SMOKE_TEST,Env:MOSKOM_SMOKE_HOME,Env:MOSKOM_SMOKE_OUTPUT}
 $Uninstalled = Start-Process "$Install/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
 if ($Uninstalled.ExitCode -ne 0) { throw "Uninstaller failed: $($Uninstalled.ExitCode)" }
 if ((Test-Path "$Install/MoskomVPN.exe") -or (Test-Path $DesktopLink) -or (Test-Path $StartLink)) { throw 'Uninstaller left binaries or shortcuts.' }
-@{installed=$true;upgradedFrom013=$true;installedAppLaunched=$true;shortcutsVerified=$true;uninstalled=$true;realProxyUnchanged=$true} | ConvertTo-Json | Set-Content "$Output/smoke/installer-validation.json" -Encoding utf8
+# Verify the desktop icon also appears when there is no previous installation.
+$Fresh=Start-Process $Setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $Install)) -Wait -PassThru
+if($Fresh.ExitCode -ne 0 -or !(Test-Path $DesktopLink)){throw 'Fresh install did not create the desktop shortcut.'}
+if($Shell.CreateShortcut($DesktopLink).IconLocation -notlike '*brand\moskom-vpn.ico*'){throw 'Fresh desktop shortcut is not branded.'}
+$Removed=Start-Process "$Install/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+if($Removed.ExitCode -ne 0){throw 'Fresh installation could not be uninstalled.'}
+@{installed=$true;upgradedFrom027=$true;automaticRelaunch=$true;freshDesktopShortcut=$true;installedAppLaunched=$true;shortcutsVerified=$true;uninstalled=$true;realProxyUnchanged=$true} | ConvertTo-Json | Set-Content "$Output/smoke/installer-validation.json" -Encoding utf8
 Copy-Item "$Output/smoke/launcher.png" "$Output/MoskomVPN-Preview.png"
 Copy-Item "$Output/smoke/login.png" "$Output/MoskomVPN-Login.png"
+foreach($Name in @('menu','dns','update')){Copy-Item "$Output/smoke/$Name.png" "$Output/MoskomVPN-$Name.png"}
 # Corresponding modified application source and build instructions, without secrets/cache/output.
 $SourceBundle = Join-Path $Work 'source-bundle'
 Run { python "$PSScriptRoot/source-bundle.py" $Upstream $Client $SourceBundle }

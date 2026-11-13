@@ -2,6 +2,8 @@
 from pathlib import Path
 import shutil,sys,re
 root=Path(sys.argv[1]).resolve();own=Path(__file__).resolve().parents[1]
+version=sys.argv[sys.argv.index('--version')+1] if '--version' in sys.argv else '0.3.0'
+if not re.fullmatch(r'\d+\.\d+\.\d+',version):raise SystemExit('Invalid application version')
 def edit(path,old,new,count=1):
  p=root/path;s=p.read_text(encoding='utf-8-sig')
  if s.count(old)!=count:raise SystemExit(f'Upstream anchor mismatch: {path}: {old[:70]!r}')
@@ -9,6 +11,10 @@ def edit(path,old,new,count=1):
 for f in (own/'overlay').rglob('*'):
  if f.is_file():
   p=root/'v2rayN'/f.relative_to(own/'overlay');p.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(f,p)
+info=root/'v2rayN/ServiceLib/Services/MoskomBuildInfo.cs';info.write_text(info.read_text().replace('"0.3.0"',f'"{version}"'),encoding='utf-8')
+assets=root/'v2rayN/v2rayN.Desktop/Assets'
+for name in ['v2rayN.ico','moskom-vpn.ico']+[f'NotifyIcon{i}.ico' for i in range(1,6)]:shutil.copyfile(own/'branding/moskom-vpn.ico',assets/name)
+shutil.copyfile(own/'branding/app-logo.png',assets/'moskom-logo.png')
 utils='v2rayN/ServiceLib/Common/Utils.cs'
 a='''        if (Environment.GetEnvironmentVariable(Global.LocalAppData) == "1")
         {
@@ -22,6 +28,10 @@ b='''        var smoke = Environment.GetEnvironmentVariable("MOSKOM_SMOKE_HOME")
             : Path.GetFullPath(smoke);'''
 edit(utils,a,b)
 edit(utils,'var tempPath = Path.Combine(StartupPath(), "bin");','var tempPath = Path.Combine(GetBaseDirectory(), "bin");')
+edit('v2rayN/ServiceLib/Services/CoreConfig/Singbox/SingboxRulesetService.cs','Utils.GetBinPath("srss")','ServiceLib.Services.MoskomLauncherRuntime.RoutingSrsDirectory')
+edit('v2rayN/ServiceLib/Manager/CoreManager.cs','''        var procService = new ProcessService(''','''        if (environmentVars.ContainsKey(Global.XrayLocalAsset)) environmentVars[Global.XrayLocalAsset] = ServiceLib.Services.MoskomLauncherRuntime.RoutingAssetDirectory;
+        if (environmentVars.ContainsKey(Global.V2RayLocalAsset)) environmentVars[Global.V2RayLocalAsset] = ServiceLib.Services.MoskomLauncherRuntime.RoutingAssetDirectory;
+        var procService = new ProcessService(''')
 manager='v2rayN/ServiceLib/Manager/AppManager.cs'
 edit(manager,'        return true;\n    }\n\n    public bool InitComponents()', '        ServiceLib.Services.MoskomLauncherRuntime.PrepareAsync(_config).GetAwaiter().GetResult();\n        Thread.CurrentThread.CurrentUICulture = new(_config.UiItem.CurrentLanguage);\n        return true;\n    }\n\n    public bool InitComponents()')
 edit(manager,'            await SysProxyHandler.UpdateSysProxy(_config, true);','            await ServiceLib.Services.MoskomLauncherRuntime.ExitAsync();\n            await SysProxyHandler.UpdateSysProxy(_config, true);')
@@ -71,6 +81,8 @@ edit(program,'        if (OnStartup(args) == false)','''        if (OperatingSys
         if (OnStartup(args) == false)''')
 edit(program, 'var exePathKey = Utils.GetMd5(Utils.GetExePath());', 'var exePathKey = Utils.GetMd5(Utils.StartupPath() + "|MoskomVPN");')
 edit(program, '    public static EventWaitHandle ProgramStarted;', '    public static EventWaitHandle ProgramStarted;\n    private static Mutex? MoskomAppMutex;')
+edit(program,'        BuildAvaloniaApp()','        if (OperatingSystem.IsWindows()) SetCurrentProcessExplicitAppUserModelID("MosKomRemont.VPN");\n        BuildAvaloniaApp()')
+edit(program,'    public static EventWaitHandle ProgramStarted;','    [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]\n    private static extern int SetCurrentProcessExplicitAppUserModelID(string id);\n    public static EventWaitHandle ProgramStarted;')
 edit(program, '        if (OnStartup(args) == false)', '        if (OperatingSystem.IsWindows())\n        {\n            MoskomAppMutex = new Mutex(true, @"Local\\MosKomRemontVPN.App", out var first);\n            if (!first)\n            {\n                var key = Utils.GetMd5(Utils.StartupPath() + "|MoskomVPN");\n                for (var i = 0; i < 30; i++)\n                {\n                    try { using var signal = EventWaitHandle.OpenExisting(key); signal.Set(); break; }\n                    catch (WaitHandleCannotBeOpenedException) { Thread.Sleep(100); }\n                }\n                return;\n            }\n        }\n        if (OnStartup(args) == false)')
 # Keep the original safe tray/show/exit behavior, without unmanaged proxy/TUN toggles.
 p=root/'v2rayN/v2rayN.Desktop/App.axaml';s=p.read_text(encoding='utf-8-sig')

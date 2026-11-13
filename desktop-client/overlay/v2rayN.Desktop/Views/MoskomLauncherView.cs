@@ -21,6 +21,7 @@ public sealed class MoskomLauncherView : UserControl
     private readonly Button _power = new() { Name = "MoskomPower", Width = 154, Height = 154, CornerRadius = new(77), HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
     private readonly Button _plus = new() { Name = "MoskomAdd", Content = "+", Width = 46, Height = 48, FontSize = 26, HorizontalContentAlignment = HorizontalAlignment.Center };
     private readonly Button _update = new() { Name = "MoskomUpdate", Content = "Обновить серверы", MinHeight = 40, HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly Button _menu = new() { Name = "MoskomMenu", Width = 46, Height = 44, HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
     private readonly Button _availability = new() { Name = "MoskomAvailability", Content = "Проверить доступность", MinHeight = 40, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly Button _websiteStatus = new() { Name = "MoskomWebsiteStatus", Content = "Статус сервиса", MinHeight = 40, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly Button _account = new() { Name = "MoskomLogin", Content = "Войти в кабинет", MinHeight = 40, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -37,11 +38,28 @@ public sealed class MoskomLauncherView : UserControl
     public MoskomLauncherView(Window owner, MainWindowViewModel vm)
     {
         _owner = owner; _vm = vm;
-        Background = Brush.Parse("#0A1020"); Foreground = Brush.Parse("#ECF3FF");
+        Background = MoskomBrand.Background; Foreground = Brush.Parse("#ECF3FF"); MoskomBrand.Style(Styles);
         var shell = new StackPanel { Margin = new(30, 24), Spacing = 10, MaxWidth = 450, HorizontalAlignment = HorizontalAlignment.Stretch };
-        shell.Children.Add(new TextBlock { Text = "МОСКОМПРЕМОНТ", FontSize = 11, Foreground = Brush.Parse("#65DCEC"), FontWeight = FontWeight.Bold, LetterSpacing = 2 });
-        shell.Children.Add(new TextBlock { Text = "Мировой интернет", FontSize = 27, FontWeight = FontWeight.Bold });
-        shell.Children.Add(new TextBlock { Text = "Быстрое подключение на Windows", FontSize = 12, Foreground = Brush.Parse("#8D9DB6") });
+        var header = new Grid { ColumnDefinitions = new("60,*,46"), ColumnSpacing = 10 };
+        header.Children.Add(new Image { Name = "MoskomSiteLogo", Source = MoskomBrand.Logo(), Width = 58, Height = 64 });
+        var title = new StackPanel { Spacing = 5, VerticalAlignment = VerticalAlignment.Center };
+        title.Children.Add(new TextBlock { Text = "МОСКОМПРЕМОНТ", FontSize = 10, Foreground = Brush.Parse("#55D8F1"), FontWeight = FontWeight.Bold, LetterSpacing = 1.4 });
+        title.Children.Add(new TextBlock { Text = "Мировой интернет", FontSize = 22, FontWeight = FontWeight.Bold, TextWrapping = TextWrapping.Wrap });
+        Grid.SetColumn(title, 1); header.Children.Add(title);
+        _menu.Content = new Avalonia.Controls.Shapes.Path { Data = Geometry.Parse("M 2,4 L 24,4 M 2,12 L 24,12 M 2,20 L 24,20"), Stroke = Brush.Parse("#90E6FA"), StrokeThickness = 2, StrokeLineCap = PenLineCap.Round, Width = 26, Height = 24 };
+        AutomationProperties.SetName(_menu, "Меню приложения"); Grid.SetColumn(_menu, 2); header.Children.Add(_menu); shell.Children.Add(header);
+        var context = new ContextMenu { MinWidth = 300 };
+        MenuItem Entry(string text, string name, Func<Task> action)
+        {
+            var item = new MenuItem { Header = text, Name = name }; item.Click += async (_, _) => await action(); context.Items.Add(item); return item;
+        }
+        Entry("Обновить правила Russia", "MoskomRulesUpdate", () => MoskomSettingsViews.ShowRoutingAsync(owner));
+        Entry("Проверить обновления приложения", "MoskomAppUpdates", () => MoskomSettingsViews.CheckApplicationAsync(owner));
+        Entry("DNS", "MoskomDns", () => MoskomSettingsViews.ShowDnsAsync(owner));
+        context.Items.Add(new Separator());
+        Entry("Справка", "MoskomMenuHelp", () => { var file = System.IO.Path.Combine(Utils.GetBaseDirectory(), "КАК-ПОЛЬЗОВАТЬСЯ.txt"); Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); return Task.CompletedTask; });
+        Entry("Выход", "MoskomMenuExit", () => AppManager.Instance.AppExitAsync(true));
+        _menu.ContextMenu = context; _menu.Click += (_, _) => context.Open(_menu);
         var siteRow = new Grid { ColumnDefinitions = new("*,*"), ColumnSpacing = 8, Margin = new(0, 4, 0, 0) };
         siteRow.Children.Add(_websiteStatus); Grid.SetColumn(_account, 1); siteRow.Children.Add(_account); shell.Children.Add(siteRow); shell.Children.Add(_accountInfo);
         var powerContent = new StackPanel { Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
@@ -63,7 +81,7 @@ public sealed class MoskomLauncherView : UserControl
         var help = new Button { Content = "Справка", HorizontalAlignment = HorizontalAlignment.Stretch };
         var exit = new Button { Content = "Выход", HorizontalAlignment = HorizontalAlignment.Stretch };
         foot.Children.Add(help); Grid.SetColumn(exit, 1); foot.Children.Add(exit); shell.Children.Add(foot);
-        shell.Children.Add(new TextBlock { Text = "На основе v2rayN 7.25.6 · GPL-3.0", FontSize = 10, Foreground = Brush.Parse("#6E7F9B"), TextAlignment = TextAlignment.Center });
+        shell.Children.Add(new TextBlock { Text = "МосКомпРемонт VPN " + MoskomBuildInfo.Version + " · v2rayN 7.25.6 · GPL-3.0", FontSize = 10, Foreground = Brush.Parse("#7D89A5"), TextAlignment = TextAlignment.Center });
         Content = new ScrollViewer { Content = shell, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
         _servers.ItemTemplate = new FuncDataTemplate<ComboItem>((x, _) => new TextBlock { Text = x?.Text, TextTrimming = TextTrimming.CharacterEllipsis });
         _routing.ItemTemplate = new FuncDataTemplate<RoutingItem>((x, _) => new TextBlock { Text = x?.Remarks?.Replace("RUv1-", ""), TextTrimming = TextTrimming.CharacterEllipsis });
@@ -95,6 +113,7 @@ public sealed class MoskomLauncherView : UserControl
         });
         _websiteStatus.Click += async (_, _) => await MoskomWebsiteViews.ShowStatusAsync(_owner);
         _account.Click += async (_, _) => await MoskomWebsiteViews.ShowAccountAsync(_owner);
+        MoskomSettingsViews.AttachUpdates(owner);
         _servers.SelectionChanged += async (_, _) => { if (!_refreshing && _servers.SelectedItem is ComboItem item) { ResetAvailability(); await RunAsync(() => MoskomLauncherRuntime.SelectServerAsync(item)); } };
         _routing.SelectionChanged += async (_, _) => { if (!_refreshing && _routing.SelectedItem is RoutingItem item) await RunAsync(() => MoskomLauncherRuntime.SelectRoutingAsync(item)); };
         help.Click += (_, _) => { var file = System.IO.Path.Combine(Utils.GetBaseDirectory(), "КАК-ПОЛЬЗОВАТЬСЯ.txt"); if (File.Exists(file)) Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); };
@@ -138,13 +157,14 @@ public sealed class MoskomLauncherView : UserControl
     {
         var state = MoskomLauncherRuntime.Connection?.State ?? MoskomConnectionState.Disconnected;
         var busy = _operation || state is MoskomConnectionState.Connecting or MoskomConnectionState.Disconnecting;
-        _servers.IsEnabled = _routing.IsEnabled = _plus.IsEnabled = _update.IsEnabled = _availability.IsEnabled = _account.IsEnabled = !busy;
+        _servers.IsEnabled = _routing.IsEnabled = _plus.IsEnabled = _update.IsEnabled = _availability.IsEnabled = _account.IsEnabled = _menu.IsEnabled = !busy;
         _power.IsEnabled = state == MoskomConnectionState.Connecting || !busy;
     }
     private void RenderState(MoskomConnectionState state)
     {
         var on = state == MoskomConnectionState.Connected;
-        _power.Background = Brush.Parse(on ? "#157D6A" : "#335FD6");
+        _power.Background = on ? Brush.Parse("#157D6A") : MoskomBrand.Power;
+        _power.BorderBrush = Brush.Parse(on ? "#51DFC0" : "#59CFEF"); _power.BorderThickness = new(2);
         _powerLabel.Text = state switch { MoskomConnectionState.Connecting => "Отменить", MoskomConnectionState.Connected => "Выключить VPN", _ => "Включить VPN" };
         _status.Text = state switch { MoskomConnectionState.Connecting => "Проверяем подключение…", MoskomConnectionState.Connected => "VPN включён", MoskomConnectionState.Disconnecting => "Выключаем…", MoskomConnectionState.Failed => "Не удалось подключиться", _ => "VPN выключен" };
         if (on) _hint.Text = "Системный прокси включён. Используется выбранная маршрутизация.";

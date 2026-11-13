@@ -27,19 +27,53 @@ CloseApplications=yes
 RestartApplications=no
 AppMutex=Local\MosKomRemontVPN.App
 SetupLogging=yes
+SetupIconFile={#PayloadDir}\brand\moskom-vpn.ico
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 [Files]
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 [Icons]
-Name: "{autodesktop}\МосКомпРемонт VPN"; Filename: "{app}\MoskomVPN.exe"
-Name: "{autoprograms}\МосКомпРемонт VPN"; Filename: "{app}\MoskomVPN.exe"
+Name: "{autodesktop}\МосКомпРемонт VPN"; Filename: "{app}\MoskomVPN.exe"; IconFilename: "{app}\brand\moskom-vpn.ico"; AppUserModelID: "MosKomRemont.VPN"
+Name: "{autoprograms}\МосКомпРемонт VPN"; Filename: "{app}\MoskomVPN.exe"; IconFilename: "{app}\brand\moskom-vpn.ico"; AppUserModelID: "MosKomRemont.VPN"
 [Run]
-Filename: "{app}\MoskomVPN.exe"; Description: "Открыть МосКомпРемонт VPN"; Flags: nowait skipifsilent
+Filename: "{app}\MoskomVPN.exe"; Description: "Открыть МосКомпРемонт VPN"; Flags: nowait; Check: LaunchAfterInstall
 [Messages]
 WelcomeLabel1=МосКомпРемонт VPN
 WelcomeLabel2=Приложение для подключения к вашему VPN.%n%nRussia уже в комплекте. После установки скопируйте ссылку из личного кабинета и нажмите «+».%n%nНажмите «Установить» — приложение установится и откроется автоматически.
 [Code]
+function OpenProcess(Access: LongWord; Inherit: LongWord; PID: LongWord): THandle;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WaitForSingleObject(Handle: THandle; Milliseconds: LongWord): LongWord;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+function CloseHandle(Handle: THandle): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+
+function InitializeSetup(): Boolean;
+var
+  PID: Integer;
+  Handle: THandle;
+  WaitResult: LongWord;
+begin
+  Result := True;
+  PID := StrToIntDef(ExpandConstant('{param:MOSKOMPID|0}'), 0);
+  if PID > 0 then begin
+    Handle := OpenProcess($00100000, 0, PID);
+    if Handle <> 0 then begin
+      WaitResult := WaitForSingleObject(Handle, 30000);
+      CloseHandle(Handle);
+      if WaitResult <> 0 then begin
+        MsgBox('Завершите МосКомпРемонт VPN и повторите обновление.', mbError, MB_OK);
+        Result := False;
+      end;
+    end;
+  end;
+end;
+
+function LaunchAfterInstall(): Boolean;
+begin
+  Result := (not WizardSilent) or (ExpandConstant('{param:MOSKOMUPDATE|0}') = '1');
+end;
+
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = wpWelcome then

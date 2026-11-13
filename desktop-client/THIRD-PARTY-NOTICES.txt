@@ -7,3 +7,4 @@ Engine source projects: https://github.com/XTLS/Xray-core ; https://github.com/S
 Russia routing/DNS data: https://github.com/runetfreedom/russia-v2ray-custom-routing-list and https://github.com/runetfreedom/russia-v2ray-rules-dat . Exact revisions and geo-data release are recorded in sources.json. Files were downloaded when building, not fetched silently during installation.
 System proxy changes are local to the signed-in Windows user. No telemetry or remote account database is added by this launcher.
 This software is not an official release by 2dust and does not claim endorsement by v2rayN or runetfreedom.
+MosKomRemont branding uses the website owner's original logo from https://moskompremont.ru/images/logotipmain.png, with attribution and source hash in brand/source.json. Artwork was resized/converted for Windows icon formats; no new logo was substituted.

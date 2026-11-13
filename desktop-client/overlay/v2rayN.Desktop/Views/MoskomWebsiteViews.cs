@@ -10,7 +10,11 @@ public static class MoskomWebsiteViews
 {
     private static TextBlock Text(string value, double size = 14) => new() { Text = value, FontSize = size, TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#E5EEFF") };
     private static Button Button(string value) => new() { Content = value, MinHeight = 40, HorizontalAlignment = HorizontalAlignment.Stretch };
-    private static Window Window(string title, double height) => new() { Title = title, Width = 470, Height = height, MinWidth = 400, MinHeight = 350, Background = Brush.Parse("#0A1020"), WindowStartupLocation = WindowStartupLocation.CenterOwner };
+    private static Window Window(string title, double height)
+    {
+        var window = new Window { Title = title, Icon = MoskomBrand.Icon(), Width = 470, Height = height, MinWidth = 400, MinHeight = 350, Background = MoskomBrand.Background, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        MoskomBrand.Style(window.Styles); return window;
+    }
     private static void OpenCabinet() => Process.Start(new ProcessStartInfo(new Uri(MoskomWebsiteClient.Site, "account.html").AbsoluteUri) { UseShellExecute = true });
 
     public static async Task ShowAccountAsync(Window owner)
@@ -18,7 +22,7 @@ public static class MoskomWebsiteViews
         var window = Window("Личный кабинет · МосКомпРемонт", 550);
         var panel = new StackPanel { Margin = new(24), Spacing = 12 };
         window.Content = new ScrollViewer { Content = panel };
-        panel.Children.Add(Text("Личный кабинет", 24)); panel.Children.Add(Text("moskompremont.ru", 12));
+        panel.Children.Add(MoskomBrand.Heading("Личный кабинет")); panel.Children.Add(Text("moskompremont.ru", 12));
         var message = Text(MoskomLauncherRuntime.CabinetMessage, 12);
         if (MoskomLauncherRuntime.CabinetUser is { } user)
         {

@@ -7,18 +7,18 @@
   },
   "russia": {
     "routingCommit": "ecd88540aa9472ee96dbb8b10df008f57fc75555",
-    "rulesCommit": "6ea3ddf0583a347bf84d61a6c7e3cfe5bf102c85",
-    "geoRelease": "202611131125",
+    "rulesCommit": "934f38aeecf88459ab4564dfe134cb0d90460344",
+    "geoRelease": "202611132130",
     "files": [
       {
         "name": "geoip.dat",
-        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611131125/geoip.dat",
+        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611132130/geoip.dat",
         "sha256": "8ac702eb63ba09f315fc50036ff9955ec6d8ed0ce5b89bf7135ba1c547bd51ae"
       },
       {
         "name": "geosite.dat",
-        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611131125/geosite.dat",
-        "sha256": "201b10dfeb203e958e4e2783777283ff3abb75651473d7c38e2197e887d8e0ba"
+        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611132130/geosite.dat",
+        "sha256": "986fecc3f01f85bd1e319b4d895e7a0d7e77a2bc28a94b5ac3238a916061cda6"
       }
     ]
   }
