@@ -94,7 +94,8 @@ internal static class MoskomWebsiteSmoke
             Find<Button>("MoskomLoginSubmit").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             await dialogTask.WaitAsync(TimeSpan.FromSeconds(25));
             var groups = (await AppManager.Instance.SubItems()).Where(g => g.Memo?.StartsWith("moskom-cabinet:", StringComparison.Ordinal) == true).ToList();
-            var multiple = MoskomLauncherRuntime.CabinetUser?.Id == 41 && groups.Count == 2 && vm.StatusBarViewModel.Servers.Count == initial + 2;
+            var selectedCabinet = await ConfigHandler.GetDefaultServer(AppManager.Instance.Config);
+            var multiple = MoskomLauncherRuntime.CabinetUser?.Id == 41 && groups.Count == 2 && vm.StatusBarViewModel.Servers.Count == initial + 2 && groups.Any(g => g.Id == selectedCabinet?.Subid);
             var expired = groups.All(g => !g.Memo!.EndsWith(":803", StringComparison.Ordinal));
             var bId = groups.First(g => g.Memo!.EndsWith(":802", StringComparison.Ordinal)).Id;
             var sealedFile = File.ReadAllBytes(Path.Combine(Utils.StartupPath(), "cabinet-session.dat"));
@@ -102,7 +103,8 @@ internal static class MoskomWebsiteSmoke
             var encrypted = !Encoding.UTF8.GetString(sealedFile).Contains("smoke-session-opaque", StringComparison.Ordinal) && saved.Cookies.GetCookies(root)["internet_account"]?.Value == "smoke-session-opaque";
             revision = 1; await MoskomLauncherRuntime.SyncCabinetAsync(false);
             groups = (await AppManager.Instance.SubItems()).Where(g => g.Memo?.StartsWith("moskom-cabinet:", StringComparison.Ordinal) == true).ToList();
-            var rotated = groups.Count == 2 && groups.Any(g => g.Url.EndsWith("/a2", StringComparison.Ordinal)) && groups.Any(g => g.Id == bId);
+            var current = await ConfigHandler.GetDefaultServer(AppManager.Instance.Config);
+            var rotated = groups.Count == 2 && groups.Any(g => g.Url.EndsWith("/a2", StringComparison.Ordinal)) && groups.Any(g => g.Id == bId) && current?.Subid == selectedCabinet?.Subid && current?.Port == 6543;
             revision = 2; await MoskomLauncherRuntime.SyncCabinetAsync(false);
             var revoked = !(await AppManager.Instance.SubItems()).Any(g => g.Memo?.StartsWith("moskom-cabinet:", StringComparison.Ordinal) == true) && vm.StatusBarViewModel.Servers.Count == initial;
             await MoskomLauncherRuntime.LogoutCabinetAsync();

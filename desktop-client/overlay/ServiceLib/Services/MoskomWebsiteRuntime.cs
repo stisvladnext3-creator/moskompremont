@@ -65,7 +65,7 @@ public static partial class MoskomLauncherRuntime
             var session = await Website.LoginAsync(email, password, Lifetime.Token);
             CabinetUser = session.User; _restorePending = false; MoskomSessionVault.Save(Website);
             CabinetMessage = "Вход выполнен. Получаем подписки…"; WebsiteChanged?.Invoke();
-            try { await SyncCabinetCoreAsync(true); }
+            try { await SyncCabinetCoreAsync(true, true); }
             catch { CabinetMessage = "Вход выполнен. Подписки пока не синхронизированы; нажмите «Обновить серверы»."; }
         }
         finally { Operations.Release(); WebsiteChanged?.Invoke(); }
@@ -101,7 +101,7 @@ public static partial class MoskomLauncherRuntime
         }
         finally { Operations.Release(); WebsiteChanged?.Invoke(); }
     }
-    private static async Task SyncCabinetCoreAsync(bool force)
+    private static async Task SyncCabinetCoreAsync(bool force, bool preferCabinet = false)
     {
         var user = CabinetUser ?? throw new InvalidOperationException("Сначала войдите в кабинет.");
         // Only a complete, authenticated response is authoritative; HTTP/parse errors never clear data.
@@ -132,6 +132,14 @@ public static partial class MoskomLauncherRuntime
                     await SubscriptionHandler.UpdateProcess(config, group.Id, false, (ok, _) => { success |= ok; return Task.CompletedTask; });
                     if (success && (await AppManager.Instance.ProfileItems(group.Id))?.Count > 0) CabinetRevisions[Tag(sub)] = sub.ContentUpdatedAt;
                     else failed++;
+                }
+                if (preferCabinet || await ConfigHandler.GetDefaultServer(config) == null)
+                {
+                    var currentGroups = await AppManager.Instance.SubItems() ?? [];
+                    var preferredId = !preferCabinet && selected != null && !activeRemoved ? selected.Subid
+                        : currentGroups.FirstOrDefault(g => active.Any(s => g.Memo == Tag(s)))?.Id;
+                    var candidates = string.IsNullOrEmpty(preferredId) ? null : await AppManager.Instance.ProfileItems(preferredId);
+                    if (candidates?.FirstOrDefault() is { } candidate) await ConfigHandler.SetDefaultServerIndex(config, candidate.IndexId);
                 }
                 await vm.RefreshForLauncherAsync(); await EnsureServerAsync(); await ConfigHandler.SaveConfig(config); ListsChanged?.Invoke();
             }

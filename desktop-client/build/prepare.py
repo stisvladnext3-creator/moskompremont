@@ -54,6 +54,7 @@ edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', '''        var lstMod
             BlServers = false;
             return;
         }''', '''        var lstModel = await AppManager.Instance.ProfileModels("", "") ?? [];''')
+edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'Text = it.GetSummary()', 'Text = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary()')
 # No unattended upstream updater may replace the branded application or bundled rules.
 edit('v2rayN/ServiceLib/Manager/TaskManager.cs','        Task.Run(ScheduledTasks);','        // Updates are explicit in the launcher; binary updates are versioned installer releases.')
 app='v2rayN/v2rayN.Desktop/App.axaml.cs'
