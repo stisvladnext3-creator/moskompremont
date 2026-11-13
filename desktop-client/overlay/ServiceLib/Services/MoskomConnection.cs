@@ -22,9 +22,10 @@ public sealed class MoskomConnection(IMoskomEngine engine, IMoskomProxyLease pro
     private readonly SemaphoreSlim _gate = new(1, 1);
     private CancellationTokenSource? _connecting;
     public MoskomConnectionState State { get; private set; }
+    public long Revision { get; private set; }
     public event Action<MoskomConnectionState>? Changed;
     public bool IsConnected => State == MoskomConnectionState.Connected;
-    private void SetState(MoskomConnectionState state) { State = state; Changed?.Invoke(state); }
+    private void SetState(MoskomConnectionState state) { State = state; Revision++; Changed?.Invoke(state); }
 
     public void Cancel() => _connecting?.Cancel();
     public async Task ConnectAsync()
@@ -61,6 +62,18 @@ public sealed class MoskomConnection(IMoskomEngine engine, IMoskomProxyLease pro
     {
         Cancel(); await _gate.WaitAsync();
         try { SetState(MoskomConnectionState.Disconnecting); await CleanupAsync(); SetState(MoskomConnectionState.Disconnected); }
+        catch { SetState(MoskomConnectionState.Failed); throw; }
+        finally { _gate.Release(); }
+    }
+    // A health probe from the old core must not disconnect a newly reconnected subscription.
+    public async Task DisconnectIfCurrentAsync(long expectedRevision)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (!IsConnected || Revision != expectedRevision) return;
+            SetState(MoskomConnectionState.Disconnecting); await CleanupAsync(); SetState(MoskomConnectionState.Disconnected);
+        }
         catch { SetState(MoskomConnectionState.Failed); throw; }
         finally { _gate.Release(); }
     }

@@ -47,11 +47,15 @@ public static partial class MoskomLauncherRuntime
     }
     private static async Task RestoreCabinetAsync()
     {
-        var session = await Website.MeAsync(Lifetime.Token);
-        CabinetUser = session.User; _restorePending = false;
-        if (CabinetUser != null) { MoskomSessionVault.Save(Website); await SyncCabinetAsync(false); }
-        else { await ClearCabinetGroupsAsync(); MoskomSessionVault.Delete(); CabinetMessage = "Войдите, чтобы получить свои подписки с сайта."; }
-        WebsiteChanged?.Invoke();
+        await Operations.WaitAsync(Lifetime.Token);
+        try
+        {
+            var session = await Website.MeAsync(Lifetime.Token);
+            CabinetUser = session.User; _restorePending = false;
+            if (CabinetUser != null) { MoskomSessionVault.Save(Website); await SyncCabinetCoreAsync(false); }
+            else { await ClearCabinetGroupsCoreAsync(); MoskomSessionVault.Delete(); CabinetMessage = "Войдите, чтобы получить свои подписки с сайта."; }
+        }
+        finally { Operations.Release(); WebsiteChanged?.Invoke(); }
     }
     public static async Task LoginCabinetAsync(string email, string password)
     {

@@ -137,7 +137,8 @@ public static partial class MoskomLauncherRuntime
             while (await timer.WaitForNextTickAsync(token))
             {
                 if (Connection?.IsConnected != true) continue;
-                if (!await HasSocksAsync(AppManager.Instance.GetLocalPort(EInboundProtocol.socks), token)) await Connection.DisconnectAsync();
+                var revision = Connection.Revision;
+                if (!await HasSocksAsync(AppManager.Instance.GetLocalPort(EInboundProtocol.socks), token)) await Connection.DisconnectIfCurrentAsync(revision);
             }
         }
         catch (OperationCanceledException) { }

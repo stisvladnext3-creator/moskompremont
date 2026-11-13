@@ -57,4 +57,12 @@ public sealed class ConnectionTests
         await c.ConnectAsync(); p.FailRestore = true; await Assert.ThrowsAsync<IOException>(c.DisconnectAsync);
         Assert.Equal(1,e.Stops); Assert.Equal(MoskomConnectionState.Failed,c.State);
     }
+    [Fact] public async Task OldHealthProbeCannotDisconnectNewlySyncedConnection()
+    {
+        var e = new Engine(); var p = new Proxy(); var c = new MoskomConnection(e,p);
+        await c.ConnectAsync(); var old = c.Revision;
+        await c.DisconnectAsync(); await c.ConnectAsync();
+        await c.DisconnectIfCurrentAsync(old); Assert.True(c.IsConnected); Assert.Equal(1,e.Stops);
+        await c.DisconnectIfCurrentAsync(c.Revision); Assert.False(c.IsConnected); Assert.Equal(2,e.Stops);
+    }
 }

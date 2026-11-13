@@ -97,6 +97,7 @@ function SmokeCheck([string]$Exe, [string]$Profile, [string]$Destination) {
         if (!$Process.WaitForExit(90000)) { $Process.Kill(); throw 'UI smoke check timed out.' }
         $Process.Refresh()
         if ((ProxyState) -ne $BeforeProxy) { throw 'Smoke test modified real Windows proxy.' }
+        if (Test-Path "$Destination/smoke-error.txt") { throw (Get-Content "$Destination/smoke-error.txt" -Raw) }
         if ($Process.ExitCode -ne 0) {
             if (Test-Path "$Destination/smoke-error.txt") { Write-Host (Get-Content "$Destination/smoke-error.txt" -Raw) }
             throw "UI smoke check failed: $($Process.ExitCode)"

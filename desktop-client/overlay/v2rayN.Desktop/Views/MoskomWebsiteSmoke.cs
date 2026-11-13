@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.VisualTree;
 
 namespace v2rayN.Desktop.Views;
 
@@ -84,12 +85,13 @@ internal static class MoskomWebsiteSmoke
             await Task.Delay(150);
             var desktop = (IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!;
             var dialog = desktop.Windows.First(w => w != owner && w.Title!.StartsWith("Личный кабинет", StringComparison.Ordinal));
-            var email = dialog.FindControl<TextBox>("MoskomEmail")!; var password = dialog.FindControl<TextBox>("MoskomPassword")!;
+            T Find<T>(string name) where T : Control => dialog.GetVisualDescendants().OfType<T>().First(c => c.Name == name);
+            var email = Find<TextBox>("MoskomEmail"); var password = Find<TextBox>("MoskomPassword");
             email.Text = "client@example.test"; password.Text = "fixture-password";
-            var form = password.PasswordChar == '*' && dialog.FindControl<Button>("MoskomLoginSubmit") != null;
+            var form = password.PasswordChar == '*' && Find<Button>("MoskomLoginSubmit") != null;
             var folder = Environment.GetEnvironmentVariable("MOSKOM_SMOKE_OUTPUT")!;
             using (var bitmap = new RenderTargetBitmap(new PixelSize((int)dialog.Bounds.Width, (int)dialog.Bounds.Height))) { bitmap.Render(dialog); bitmap.Save(Path.Combine(folder, "login.png")); }
-            dialog.FindControl<Button>("MoskomLoginSubmit")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Find<Button>("MoskomLoginSubmit").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             await dialogTask.WaitAsync(TimeSpan.FromSeconds(25));
             var groups = (await AppManager.Instance.SubItems()).Where(g => g.Memo?.StartsWith("moskom-cabinet:", StringComparison.Ordinal) == true).ToList();
             var multiple = MoskomLauncherRuntime.CabinetUser?.Id == 41 && groups.Count == 2 && vm.StatusBarViewModel.Servers.Count == initial + 2;

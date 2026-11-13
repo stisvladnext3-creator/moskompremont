@@ -22,7 +22,7 @@ public sealed class MoskomWebsiteException(string message, HttpStatusCode status
 public sealed class MoskomWebsiteClient : IDisposable
 {
     public static readonly Uri Site = new("https://moskompremont.ru/");
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString };
     private readonly HttpClient _http;
     private string _csrf = "";
     public Uri Root { get; }
