@@ -140,7 +140,7 @@ public sealed class MoskomLauncherView : UserControl
     private async Task RefreshAsync()
     {
         if (_refreshing) { _refreshQueued = true; return; }
-        _refreshing = true;
+        _refreshing = true; RefreshEnabled();
         try
         {
             do
@@ -176,7 +176,7 @@ public sealed class MoskomLauncherView : UserControl
     private void RefreshEnabled()
     {
         var state = MoskomLauncherRuntime.Connection?.State ?? MoskomConnectionState.Disconnected;
-        var busy = _operation || state is MoskomConnectionState.Connecting or MoskomConnectionState.Disconnecting;
+        var busy = _operation || _refreshing || state is MoskomConnectionState.Connecting or MoskomConnectionState.Disconnecting;
         _routing.IsEnabled = _plus.IsEnabled = _update.IsEnabled = _account.IsEnabled = _menu.IsEnabled = !busy;
         _subscriptions.IsEnabled = !busy && _subscriptions.Items.Count > 0;
         _servers.IsEnabled = !busy && _servers.Items.Count > 0;
