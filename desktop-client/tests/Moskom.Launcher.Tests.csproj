@@ -5,5 +5,6 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2"><PrivateAssets>all</PrivateAssets></PackageReference>
     <Compile Include="../overlay/ServiceLib/Services/MoskomConnection.cs" Link="MoskomConnection.cs" />
+    <Compile Include="../overlay/ServiceLib/Services/MoskomWebsiteClient.cs" Link="MoskomWebsiteClient.cs" />
   </ItemGroup>
 </Project>

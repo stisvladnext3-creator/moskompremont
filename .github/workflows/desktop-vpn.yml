@@ -11,13 +11,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     env:
-      MOSKOM_VERSION: 0.1.${{ github.run_number }}
+      MOSKOM_VERSION: 0.2.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Test connection state, rollback and cancellation
+      - name: Test connection, website authentication and monitoring
         shell: pwsh
         run: dotnet test desktop-client/tests/Moskom.Launcher.Tests.csproj -c Release --logger 'trx;LogFileName=connection.trx'
       - name: Build and inspect installer
@@ -43,5 +43,5 @@ jobs:
             gh release create $tag --repo $env:GITHUB_REPOSITORY --prerelease --title "МосКомпРемонт VPN $env:MOSKOM_VERSION — Windows x64" --notes-file desktop-client/RELEASE-NOTES.md --target $env:GITHUB_SHA
             if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
           }
-          gh release upload $tag "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Setup-$env:MOSKOM_VERSION.exe" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Source-$env:MOSKOM_VERSION.zip" "$env:RUNNER_TEMP/moskom-output/SHA256SUMS.txt" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Preview.png" --repo $env:GITHUB_REPOSITORY --clobber
+          gh release upload $tag "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Setup-$env:MOSKOM_VERSION.exe" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Source-$env:MOSKOM_VERSION.zip" "$env:RUNNER_TEMP/moskom-output/SHA256SUMS.txt" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Preview.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Login.png" --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }

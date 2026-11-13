@@ -13,7 +13,7 @@ public partial class MainWindow
         if (advanced is Control control) root.Children.Add(new ContentControl { Content = control, IsVisible = false, IsEnabled = false });
         root.Children.Add(new MoskomLauncherView(this, vm)); Content = root;
         Title = MoskomLauncherRuntime.DisplayName;
-        Background = Brush.Parse("#0A1020"); Width = 480; Height = 790; MinWidth = 420; MinHeight = 650;
+        Background = Brush.Parse("#0A1020"); Width = 500; Height = 900; MinWidth = 420; MinHeight = 720;
         if (MoskomLauncherRuntime.SmokeTest)
         {
             Opened += (_, _) => DispatcherTimer.RunOnce(async () =>
@@ -44,6 +44,8 @@ public partial class MainWindow
                     var blocked = false;
                     try { await MoskomLauncherRuntime.Connection!.ConnectAsync(); } catch (InvalidOperationException) { blocked = true; }
                     await MoskomLauncherRuntime.Connection!.DisconnectAsync();
+                    var website = await MoskomWebsiteSmoke.RunAsync(this, vm);
+                    await Task.Delay(200);
                     var report = new
                     {
                         title = Title,
@@ -57,13 +59,20 @@ public partial class MainWindow
                         proxyUnchanged = AppManager.Instance.Config.SystemProxyItem.SysProxyType == ESysProxyType.Unchanged,
                         tunDisabled = !AppManager.Instance.Config.TunModeItem.EnableTun,
                         status = MoskomLauncherRuntime.Connection?.State.ToString()
+                        , website
+                        , vectorIcon = this.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any(p => p.Name == "MoskomPowerIcon" && p.Data != null)
                     };
                     var folder = Environment.GetEnvironmentVariable("MOSKOM_SMOKE_OUTPUT") ?? Utils.StartupPath(); Directory.CreateDirectory(folder);
                     await File.WriteAllTextAsync(System.IO.Path.Combine(folder, "smoke.json"), System.Text.Json.JsonSerializer.Serialize(report));
                     using var bitmap = new RenderTargetBitmap(new PixelSize((int)Bounds.Width, (int)Bounds.Height)); bitmap.Render(this); bitmap.Save(System.IO.Path.Combine(folder, "launcher.png"));
-                    if (report.routing.Length < 3 || !report.proxyUnchanged || !report.tunDisabled || report.status != "Disconnected" || !report.subscriptionImported || !report.allServersVisible || !report.smokeConnectionBlocked || !report.routingRulesLoaded) Environment.ExitCode = 3;
+                    if (report.routing.Length < 3 || !report.proxyUnchanged || !report.tunDisabled || report.status != "Disconnected" || !report.subscriptionImported || !report.allServersVisible || !report.smokeConnectionBlocked || !report.routingRulesLoaded || !report.vectorIcon || !website.LoginForm || !website.MultipleSubscriptions || !website.RotatedLink || !website.ExpiredSkipped || !website.RevokedRemoved || !website.SessionEncrypted || !website.LogoutPreservedManual || !website.AvailabilityChecked) Environment.ExitCode = 3;
                 }
-                catch (Exception ex) { Environment.ExitCode = 4; Console.Error.WriteLine(ex.GetType().Name); }
+                catch (Exception ex)
+                {
+                    Environment.ExitCode = 4;
+                    var folder = Environment.GetEnvironmentVariable("MOSKOM_SMOKE_OUTPUT") ?? Utils.StartupPath();
+                    Directory.CreateDirectory(folder); await File.WriteAllTextAsync(System.IO.Path.Combine(folder, "smoke-error.txt"), ex.ToString());
+                }
                 await AppManager.Instance.AppExitAsync(true);
             }, TimeSpan.FromSeconds(4));
         }

@@ -6,7 +6,7 @@ using ServiceLib.Handler.SysProxy;
 
 namespace ServiceLib.Services;
 
-public static class MoskomLauncherRuntime
+public static partial class MoskomLauncherRuntime
 {
     public const string DisplayName = "МосКомпРемонт VPN";
     public static bool AllowCoreReload { get; set; }
@@ -181,13 +181,17 @@ public static class MoskomLauncherRuntime
     }
     public static async Task UpdateAsync()
     {
+        if (CabinetUser != null) await SyncCabinetAsync(true);
         var vm = ViewModel ?? throw new InvalidOperationException("Приложение ещё запускается.");
-        if (!await Operations.WaitAsync(0)) return;
+        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
         try
         {
+            var manual = (await AppManager.Instance.SubItems() ?? []).Where(g => !string.IsNullOrEmpty(g.Url) && g.Memo?.StartsWith(CabinetPrefix, StringComparison.Ordinal) != true).ToList();
+            if (manual.Count == 0) return;
             var wasOn = Connection?.IsConnected == true;
             if (wasOn) await Connection!.DisconnectAsync();
-            await vm.UpdateSubscriptionProcess("", false); await vm.RefreshForLauncherAsync(); await EnsureServerAsync(); ListsChanged?.Invoke();
+            foreach (var group in manual) await vm.UpdateSubscriptionProcess(group.Id, false);
+            await vm.RefreshForLauncherAsync(); await EnsureServerAsync(); ListsChanged?.Invoke();
             if (wasOn) await Connection!.ConnectAsync();
         }
         finally { Operations.Release(); }
@@ -204,17 +208,33 @@ public static class MoskomLauncherRuntime
     public static async Task SelectServerAsync(ComboItem item)
     {
         if (item.ID.IsNullOrEmpty()) return;
-        var wasOn = Connection?.IsConnected == true;
-        if (wasOn) await Connection!.DisconnectAsync();
-        await ConfigHandler.SetDefaultServerIndex(AppManager.Instance.Config, item.ID);
-        if (wasOn) await Connection!.ConnectAsync();
+        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
+        try
+        {
+            var wasOn = Connection?.IsConnected == true;
+            if (wasOn) await Connection!.DisconnectAsync();
+            await ConfigHandler.SetDefaultServerIndex(AppManager.Instance.Config, item.ID);
+            if (wasOn) await Connection!.ConnectAsync();
+        }
+        finally { Operations.Release(); }
     }
     public static async Task SelectRoutingAsync(RoutingItem item)
     {
-        var wasOn = Connection?.IsConnected == true;
-        if (wasOn) await Connection!.DisconnectAsync();
-        await ConfigHandler.SetDefaultRouting(AppManager.Instance.Config, item);
-        if (wasOn) await Connection!.ConnectAsync();
+        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
+        try
+        {
+            var wasOn = Connection?.IsConnected == true;
+            if (wasOn) await Connection!.DisconnectAsync();
+            await ConfigHandler.SetDefaultRouting(AppManager.Instance.Config, item);
+            if (wasOn) await Connection!.ConnectAsync();
+        }
+        finally { Operations.Release(); }
+    }
+    public static async Task ToggleConnectionAsync()
+    {
+        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
+        try { if (Connection!.IsConnected) await Connection.DisconnectAsync(); else await Connection.ConnectAsync(); }
+        finally { Operations.Release(); }
     }
     public static async Task ExitAsync()
     {
