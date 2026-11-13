@@ -8,7 +8,7 @@ namespace v2rayN.Desktop.Views;
 
 internal static class MoskomSettingsSmoke
 {
-    internal sealed record Report(bool Burger, bool Brand, bool Dns, bool RulesApplied, bool RulesRollback, bool UpdatePrompt, bool LaterDefers);
+    internal sealed record Report(bool Burger, bool Brand, bool Dns, bool RulesApplied, bool RulesRollback, bool UpdatePrompt, bool LaterDefers, bool Help);
     private sealed class Handler(string body) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
@@ -34,6 +34,15 @@ internal static class MoskomSettingsSmoke
         var names = menu.Items.OfType<MenuItem>().Select(i=>i.Name).ToList();
         var burger = new[]{"MoskomRulesUpdate","MoskomAppUpdates","MoskomDns"}.All(names.Contains);
         Capture(menu,output,"menu.png"); menu.Close();
+        Control<Button>(owner,"MoskomHelp").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(150);
+        var helpWindow = Child(owner,"Справка");
+        var help = helpWindow.IsVisible && helpWindow.Icon != null && Control<StackPanel>(helpWindow,"MoskomHelpTopics").Children.Count == 14;
+        Capture(helpWindow,output,"help.png");
+        Control<ScrollViewer>(helpWindow,"MoskomHelpScroll").ScrollToEnd();
+        Control<Button>(helpWindow,"MoskomHelpClose").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(100);
+        menu.Items.OfType<MenuItem>().First(i=>i.Name=="MoskomMenuHelp").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); await Task.Delay(150);
+        helpWindow = Child(owner,"Справка"); help &= helpWindow.IsVisible;
+        Control<Button>(helpWindow,"MoskomHelpClose").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(100);
         var brand = owner.Icon != null && Control<Image>(owner,"MoskomSiteLogo").Source is Bitmap;
         var dnsTask = MoskomSettingsViews.ShowDnsAsync(owner); await Task.Delay(150); var dnsWindow = Child(owner,"DNS");
         Control<ComboBox>(dnsWindow,"MoskomDnsChoice").SelectedIndex = 1;
@@ -78,6 +87,6 @@ internal static class MoskomSettingsSmoke
         var prompt = Control<Button>(updateWindow,"MoskomUpdateNow")!=null && Control<Button>(updateWindow,"MoskomUpdateLater")!=null && updateWindow.Title!.Contains(availableVersion.ToString(),StringComparison.Ordinal);
         Capture(updateWindow,output,"update.png"); Control<Button>(updateWindow,"MoskomUpdateLater").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await updateTask;
         var later = await MoskomLauncherRuntime.CheckApplicationUpdateAsync(false)==null && await MoskomLauncherRuntime.CheckApplicationUpdateAsync(true)!=null;
-        return new(burger,brand,dns,applied,rollback,prompt,later);
+        return new(burger,brand,dns,applied,rollback,prompt,later,help);
     }
 }

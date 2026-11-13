@@ -97,7 +97,7 @@ function ValidateSmokeReport([string]$Destination, [string]$AppDirectory) {
     foreach ($Name in @('MoskomPower','MoskomPowerIcon','MoskomAdd','MoskomServers','MoskomRouting','MoskomAvailability','MoskomWebsiteStatus','MoskomLogin','MoskomMenu','MoskomSiteLogo')) { if ($Report.controls -notcontains $Name) { throw "UI missing $Name" } }
     if (!$Report.vectorIcon) { throw 'Power icon is not a vector.' }
     foreach ($Name in @('LoginForm','MultipleSubscriptions','RotatedLink','ExpiredSkipped','RevokedRemoved','SessionEncrypted','LogoutPreservedManual','AvailabilityChecked')) { if (!$Report.website.$Name) { throw "Website smoke failed: $Name" } }
-    foreach ($Name in @('Burger','Brand','Dns','RulesApplied','RulesRollback','UpdatePrompt','LaterDefers')) { if (!$Report.settings.$Name) { throw "Settings smoke failed: $Name" } }
+    foreach ($Name in @('Burger','Brand','Dns','RulesApplied','RulesRollback','UpdatePrompt','LaterDefers','Help')) { if (!$Report.settings.$Name) { throw "Settings smoke failed: $Name" } }
     $Xray = Get-ChildItem "$AppDirectory/bin" -Recurse -File -Filter xray.exe | Select-Object -First 1
     if (!$Xray) { throw 'Packaged Xray is missing.' }
     $OldAsset = $env:XRAY_LOCATION_ASSET; $env:XRAY_LOCATION_ASSET = Join-Path $AppDirectory 'bin'
@@ -135,7 +135,7 @@ $Install = Join-Path $Work 'Installed App'
 $Setup = Join-Path $Output "MoskomVPN-Setup-$Version.exe"
 # Verify an in-place upgrade from the installer already delivered to clients.
 $Previous = Join-Path $Work 'previous-setup.exe'
-Download 'https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.2.7/MoskomVPN-Setup-0.2.7.exe' $Previous 'c6ecca74a00f0a0ab0da330edefd0f006174f834c2f4d8951bec6dbc18ce0760'
+Download 'https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.3.10/MoskomVPN-Setup-0.3.10.exe' $Previous '57d63ede6c417f067fd8c8941a2f462a06266305ba66153fbfe779da131f98ff'
 $OldInstall = Start-Process $Previous -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $Install)) -Wait -PassThru
 if ($OldInstall.ExitCode -ne 0) { throw 'Previous version installation failed.' }
 $PreviousHash = (Get-FileHash "$Install/MoskomVPN.exe").Hash
@@ -198,10 +198,10 @@ if($Fresh.ExitCode -ne 0 -or !(Test-Path $DesktopLink)){throw 'Fresh install did
 VerifyInstallerShortcuts 'fresh'
 $Removed=Start-Process "$Install/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
 if($Removed.ExitCode -ne 0){throw 'Fresh installation could not be uninstalled.'}
-@{installed=$true;upgradedFrom027=$true;automaticRelaunch=$true;freshDesktopShortcut=$true;installedAppLaunched=$true;shortcutsVerified=$true;uninstalled=$true;realProxyUnchanged=$true} | ConvertTo-Json | Set-Content "$Output/smoke/installer-validation.json" -Encoding utf8
+@{installed=$true;upgradedFrom0310=$true;automaticRelaunch=$true;freshDesktopShortcut=$true;installedAppLaunched=$true;shortcutsVerified=$true;uninstalled=$true;realProxyUnchanged=$true} | ConvertTo-Json | Set-Content "$Output/smoke/installer-validation.json" -Encoding utf8
 Copy-Item "$Output/smoke/launcher.png" "$Output/MoskomVPN-Preview.png"
 Copy-Item "$Output/smoke/login.png" "$Output/MoskomVPN-Login.png"
-foreach($Name in @('menu','dns','update')){Copy-Item "$Output/smoke/$Name.png" "$Output/MoskomVPN-$Name.png"}
+foreach($Name in @('menu','dns','update','help')){Copy-Item "$Output/smoke/$Name.png" "$Output/MoskomVPN-$Name.png"}
 # Corresponding modified application source and build instructions, without secrets/cache/output.
 $SourceBundle = Join-Path $Work 'source-bundle'
 Run { python "$PSScriptRoot/source-bundle.py" $Upstream $Client $SourceBundle }

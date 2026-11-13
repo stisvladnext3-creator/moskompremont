@@ -57,7 +57,7 @@ public sealed class MoskomLauncherView : UserControl
         Entry("Проверить обновления приложения", "MoskomAppUpdates", () => MoskomSettingsViews.CheckApplicationAsync(owner));
         Entry("DNS", "MoskomDns", () => MoskomSettingsViews.ShowDnsAsync(owner));
         context.Items.Add(new Separator());
-        Entry("Справка", "MoskomMenuHelp", () => { var file = System.IO.Path.Combine(Utils.GetBaseDirectory(), "КАК-ПОЛЬЗОВАТЬСЯ.txt"); Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); return Task.CompletedTask; });
+        Entry("Справка", "MoskomMenuHelp", () => MoskomHelpView.ShowAsync(owner));
         Entry("Выход", "MoskomMenuExit", () => AppManager.Instance.AppExitAsync(true));
         _menu.ContextMenu = context; _menu.Click += (_, _) => context.Open(_menu);
         var siteRow = new Grid { ColumnDefinitions = new("*,*"), ColumnSpacing = 8, Margin = new(0, 4, 0, 0) };
@@ -78,7 +78,7 @@ public sealed class MoskomLauncherView : UserControl
         actions.Children.Add(_update); Grid.SetColumn(_availability, 1); actions.Children.Add(_availability); shell.Children.Add(actions); shell.Children.Add(_availabilityResult);
         shell.Children.Add(new TextBlock { Text = "Режим: системный прокси Windows", FontSize = 12, Foreground = Brush.Parse("#8D9DB6"), TextAlignment = TextAlignment.Center });
         var foot = new Grid { ColumnDefinitions = new("*,*"), ColumnSpacing = 8, Margin = new(0, 4, 0, 0) };
-        var help = new Button { Content = "Справка", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var help = new Button { Name = "MoskomHelp", Content = "Справка", HorizontalAlignment = HorizontalAlignment.Stretch };
         var exit = new Button { Content = "Выход", HorizontalAlignment = HorizontalAlignment.Stretch };
         foot.Children.Add(help); Grid.SetColumn(exit, 1); foot.Children.Add(exit); shell.Children.Add(foot);
         shell.Children.Add(new TextBlock { Text = "МосКомпРемонт VPN " + MoskomBuildInfo.Version + " · v2rayN 7.25.6 · GPL-3.0", FontSize = 10, Foreground = Brush.Parse("#7D89A5"), TextAlignment = TextAlignment.Center });
@@ -116,7 +116,7 @@ public sealed class MoskomLauncherView : UserControl
         MoskomSettingsViews.AttachUpdates(owner);
         _servers.SelectionChanged += async (_, _) => { if (!_refreshing && _servers.SelectedItem is ComboItem item) { ResetAvailability(); await RunAsync(() => MoskomLauncherRuntime.SelectServerAsync(item)); } };
         _routing.SelectionChanged += async (_, _) => { if (!_refreshing && _routing.SelectedItem is RoutingItem item) await RunAsync(() => MoskomLauncherRuntime.SelectRoutingAsync(item)); };
-        help.Click += (_, _) => { var file = System.IO.Path.Combine(Utils.GetBaseDirectory(), "КАК-ПОЛЬЗОВАТЬСЯ.txt"); if (File.Exists(file)) Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); };
+        help.Click += async (_, _) => await MoskomHelpView.ShowAsync(owner);
         exit.Click += async (_, _) => await RunAsync(() => AppManager.Instance.AppExitAsync(true));
         if (MoskomLauncherRuntime.Connection is { } connection) connection.Changed += state => Dispatcher.UIThread.Post(() => RenderState(state));
         MoskomLauncherRuntime.ListsChanged += () => Dispatcher.UIThread.Post(async () => await RefreshAsync());

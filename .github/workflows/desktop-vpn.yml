@@ -45,5 +45,5 @@ jobs:
           }
           gh release upload $tag "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Setup-$env:MOSKOM_VERSION.exe" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Source-$env:MOSKOM_VERSION.zip" "$env:RUNNER_TEMP/moskom-output/SHA256SUMS.txt" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Preview.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-Login.png" --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-          gh release upload $tag "$env:RUNNER_TEMP/moskom-output/MoskomVPN-menu.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-dns.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-update.png" --repo $env:GITHUB_REPOSITORY --clobber
+          gh release upload $tag "$env:RUNNER_TEMP/moskom-output/MoskomVPN-menu.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-dns.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-update.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-help.png" --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Preview upload failed' }
