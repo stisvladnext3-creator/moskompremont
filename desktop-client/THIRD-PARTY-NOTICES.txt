@@ -1,0 +1,9 @@
+MosKomRemont VPN — derivative desktop interface based on v2rayN 7.25.6.
+Corresponding modified source and build scripts: MoskomVPN-Source-<version>.zip in the same GitHub Release.
+v2rayN: https://github.com/2dust/v2rayN/tree/7.25.6 (GPL-3.0).
+The original project copyright notices and license are preserved in LICENSE-v2rayN-GPL-3.0.txt and source.
+The .NET/Avalonia application and independent proxy engines come from the pinned upstream source/release recorded in sources.json. Their bundled license files are retained. The build does not modify engine binaries.
+Engine source projects: https://github.com/XTLS/Xray-core ; https://github.com/SagerNet/sing-box ; https://github.com/MetaCubeX/mihomo ; https://github.com/klzgrad/naiveproxy . Exact engine binaries are those shipped in the v2rayN 7.25.6 desktop release verified by SHA-256 in sources.json.
+Russia routing/DNS data: https://github.com/runetfreedom/russia-v2ray-custom-routing-list and https://github.com/runetfreedom/russia-v2ray-rules-dat . Exact revisions and geo-data release are recorded in sources.json. Files were downloaded when building, not fetched silently during installation.
+System proxy changes are local to the signed-in Windows user. No telemetry or remote account database is added by this launcher.
+This software is not an official release by 2dust and does not claim endorsement by v2rayN or runetfreedom.

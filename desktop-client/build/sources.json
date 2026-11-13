@@ -1,0 +1,25 @@
+{
+  "upstream": {
+    "version": "7.25.6",
+    "commit": "1883178b5f1e222b6c6db2782e7a3d989b7cc18f",
+    "url": "https://github.com/2dust/v2rayN/releases/download/7.25.6/v2rayN-windows-64-desktop.zip",
+    "sha256": "defb18a16dac1d44659c30d0b8934f8b085cf540133574b892919ea29b083b00"
+  },
+  "russia": {
+    "routingCommit": "ecd88540aa9472ee96dbb8b10df008f57fc75555",
+    "rulesCommit": "6ea3ddf0583a347bf84d61a6c7e3cfe5bf102c85",
+    "geoRelease": "202611131125",
+    "files": [
+      {
+        "name": "geoip.dat",
+        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611131125/geoip.dat",
+        "sha256": "8ac702eb63ba09f315fc50036ff9955ec6d8ed0ce5b89bf7135ba1c547bd51ae"
+      },
+      {
+        "name": "geosite.dat",
+        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611131125/geosite.dat",
+        "sha256": "201b10dfeb203e958e4e2783777283ff3abb75651473d7c38e2197e887d8e0ba"
+      }
+    ]
+  }
+}

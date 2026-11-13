@@ -1,0 +1,6 @@
+out/
+**/bin/
+**/obj/
+**/TestResults/
+**/__pycache__/
+*.user

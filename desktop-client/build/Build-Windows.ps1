@@ -1,0 +1,102 @@
+param([string]$Version = '0.1.0', [string]$Output = "$PSScriptRoot/../out")
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+$Client = (Resolve-Path "$PSScriptRoot/..").Path
+$Output = [IO.Path]::GetFullPath($Output)
+New-Item -ItemType Directory -Force $Output | Out-Null
+$TempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+$Work = Join-Path $TempBase ('moskom-vpn-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force $Work | Out-Null
+$Sources = Get-Content "$PSScriptRoot/sources.json" -Raw | ConvertFrom-Json
+function Run([scriptblock]$Command) { & $Command; if ($LASTEXITCODE -ne 0) { throw "Command failed: $Command" } }
+function Download([string]$Url, [string]$To, [string]$Sha = '') {
+    Invoke-WebRequest -Uri $Url -OutFile $To -MaximumRedirection 10
+    if ($Sha -and (Get-FileHash -Algorithm SHA256 $To).Hash.ToLowerInvariant() -ne $Sha.ToLowerInvariant()) { throw "Checksum mismatch: $([IO.Path]::GetFileName($To))" }
+}
+$Upstream = Join-Path $Work 'upstream'
+Run { git clone --quiet --depth 1 --branch $Sources.upstream.version https://github.com/2dust/v2rayN.git $Upstream }
+$Actual = (git -C $Upstream rev-parse HEAD).Trim()
+if ($Actual -ne $Sources.upstream.commit) { throw 'Upstream commit mismatch.' }
+Run { git -C $Upstream submodule update --init --recursive --depth 1 }
+Run { python "$PSScriptRoot/prepare.py" $Upstream }
+$Project = Join-Path $Upstream 'v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj'
+$Publish = Join-Path $Work 'publish'
+Run { dotnet publish $Project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:RestorePackagesWithLockFile=true -o $Publish }
+$Payload = Join-Path $Work 'payload'
+New-Item -ItemType Directory $Payload | Out-Null
+Copy-Item "$Publish/*" $Payload -Recurse -Force
+Rename-Item "$Payload/v2rayN.exe" 'MoskomVPN.exe'
+$StockZip = Join-Path $Work 'stock.zip'
+Download $Sources.upstream.url $StockZip $Sources.upstream.sha256
+$Stock = Join-Path $Work 'stock'
+Expand-Archive $StockZip $Stock
+$StockExe = Get-ChildItem $Stock -Recurse -File -Filter v2rayN.exe | Select-Object -First 1
+if (!$StockExe) { throw 'Official archive has no v2rayN.exe.' }
+Copy-Item (Join-Path $StockExe.DirectoryName 'bin') $Payload -Recurse -Force
+$Preset = Join-Path $Payload 'preset-russia'
+New-Item -ItemType Directory $Preset -Force | Out-Null
+$RoutingBase = "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-custom-routing-list/$($Sources.russia.routingCommit)/v2rayN/"
+Download ($RoutingBase + 'template.json') "$Preset/template.json"
+$Template = Get-Content "$Preset/template.json" -Raw | ConvertFrom-Json
+$RuleTexts = @()
+for ($i = 0; $i -lt $Template.routingItems.Count; $i++) {
+    $Name = [IO.Path]::GetFileName(([uri]$Template.routingItems[$i].url).AbsolutePath)
+    Download ($RoutingBase + $Name) "$Preset/route-$i.json"
+    $RuleTexts += Get-Content "$Preset/route-$i.json" -Raw
+}
+foreach ($Name in @('v2ray.json','sing_box.json','simple_dns.json')) {
+    Download ($RoutingBase + $Name) "$Preset/$Name"
+}
+# The official DNS templates may reference separate raw JSON files. Resolve them while building.
+foreach ($Name in @('v2ray.json','sing_box.json')) {
+    $Doc = Get-Content "$Preset/$Name" -Raw | ConvertFrom-Json
+    foreach ($Field in @('normalDNS','tunDNS')) {
+        if ($Doc.PSObject.Properties.Name -contains $Field -and [string]$Doc.$Field -match '^https://(?:raw\.githubusercontent\.com/runetfreedom/|cdn\.jsdelivr\.net/gh/runetfreedom/russia-v2ray-custom-routing-list@)' ) {
+            $Resource = [IO.Path]::GetFileName(([uri]$Doc.$Field).AbsolutePath)
+            $Temp = Join-Path $Work ('dns-' + $Resource)
+            Download ($RoutingBase + $Resource) $Temp
+            $Doc.$Field = Get-Content $Temp -Raw
+        }
+    }
+    $Doc | ConvertTo-Json -Depth 100 | Set-Content "$Preset/$Name" -Encoding utf8
+}
+foreach ($File in $Sources.russia.files) { Download $File.url (Join-Path "$Payload/bin" $File.name) $File.sha256 }
+# sing-box already supports local .srs files in bin/srss; bundle the exact rules used by this preset.
+$AllRules = ($RuleTexts -join "`n") + (Get-Content "$Preset/simple_dns.json" -Raw) + (Get-Content "$Preset/v2ray.json" -Raw) + (Get-Content "$Preset/sing_box.json" -Raw)
+$Srs = Join-Path $Payload 'bin/srss'
+New-Item -ItemType Directory -Force $Srs | Out-Null
+$Tags = [regex]::Matches($AllRules, '(geoip|geosite):([A-Za-z0-9_@!.-]+)') | ForEach-Object { $_.Groups[1].Value + '-' + $_.Groups[2].Value } | Sort-Object -Unique
+foreach ($Tag in $Tags) {
+    $Type = if ($Tag.StartsWith('geosite-')) { 'geosite' } else { 'geoip' }
+    $Url = "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/$($Sources.russia.rulesCommit)/sing-box/rule-set-$Type/$Tag.srs"
+    Download $Url "$Srs/$Tag.srs"
+}
+Copy-Item "$Client/LICENSE" "$Payload/LICENSE-v2rayN-GPL-3.0.txt"
+Copy-Item "$Client/КАК-ПОЛЬЗОВАТЬСЯ.txt" $Payload
+Copy-Item "$Client/THIRD-PARTY-NOTICES.txt" $Payload
+Copy-Item "$PSScriptRoot/sources.json" "$Payload/sources.json"
+# Every delivered executable/preset gets a manifest. The installer never needs to download it.
+Get-ChildItem $Payload -Recurse -File | ForEach-Object {
+    $Rel = [IO.Path]::GetRelativePath($Payload, $_.FullName).Replace('\','/')
+    '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $Rel
+} | Set-Content "$Payload/SHA256SUMS.txt" -Encoding utf8
+# UI smoke check uses a disposable profile and cannot acquire the real Windows proxy.
+$Smoke = Join-Path $Output 'smoke'
+New-Item -ItemType Directory $Smoke -Force | Out-Null
+$env:MOSKOM_SMOKE_TEST = '1'; $env:MOSKOM_SMOKE_HOME = Join-Path $Work 'smoke-profile'; $env:MOSKOM_SMOKE_OUTPUT = $Smoke
+$Process = Start-Process "$Payload/MoskomVPN.exe" -PassThru
+if (!$Process.WaitForExit(60000)) { $Process.Kill(); throw 'UI smoke check timed out.' }
+if ($Process.ExitCode -ne 0) { throw "UI smoke check failed: $($Process.ExitCode)" }
+$Report = Get-Content "$Smoke/smoke.json" -Raw | ConvertFrom-Json
+if ($Report.status -ne 'Disconnected' -or !$Report.proxyUnchanged -or !$Report.tunDisabled -or $Report.routing.Count -lt 3) { throw 'Invalid initial state.' }
+foreach ($Name in @('MoskomPower','MoskomAdd','MoskomServers','MoskomRouting')) { if ($Report.controls -notcontains $Name) { throw "UI missing $Name" } }
+Remove-Item Env:MOSKOM_SMOKE_TEST,Env:MOSKOM_SMOKE_HOME,Env:MOSKOM_SMOKE_OUTPUT
+$Compiler = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
+if (!(Test-Path $Compiler)) { throw 'Inno Setup compiler not found.' }
+Run { & $Compiler "/DAppVersion=$Version" "/DPayloadDir=$Payload" "/DOutputDir=$Output" "$Client/installer/MoskomVPN.iss" }
+# Corresponding modified application source and build instructions, without secrets/cache/output.
+$SourceBundle = Join-Path $Work 'source-bundle'
+Run { python "$PSScriptRoot/source-bundle.py" $Upstream $Client $SourceBundle }
+Compress-Archive "$SourceBundle/*" "$Output/MoskomVPN-Source-$Version.zip" -CompressionLevel Optimal
+Get-ChildItem $Output -File | ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name } | Set-Content "$Output/SHA256SUMS.txt" -Encoding utf8
+Write-Host "Installer, source, SHA256SUMS and smoke report prepared in $Output"
