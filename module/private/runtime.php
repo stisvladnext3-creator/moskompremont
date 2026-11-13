@@ -58,6 +58,7 @@ function claimSubscriptions(PDO $db,int $userId,array $names): void {
   if ($sub && ($sub['user_id']===null || (int)$sub['user_id']===$userId)) {
    query($db,'UPDATE internet_subscriptions SET user_id=?,assigned_at=COALESCE(assigned_at,CURRENT_TIMESTAMP) WHERE id=?',[$userId,$sub['id']]);
    query($db,"UPDATE internet_subscription_claims SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE id=?",[$claim['id']]);
+   notifyClient($db,$userId,'subscription-assigned:'.bin2hex(random_bytes(12)),'subscription_assigned','Подписка добавлена','Подписка «'.$name.'» появилась в вашем кабинете.','subscriptions');
   }
  }
 }
@@ -67,7 +68,7 @@ function reconcileClaims(PDO $db,string $name): int {
  // Several claimants need an administrator's choice; never award a contested name arbitrarily.
  if (count($claims)!==1)return 0;
  $claim=$claims[0];query($db,'UPDATE internet_subscriptions SET user_id=?,assigned_at=CURRENT_TIMESTAMP WHERE id=?',[$claim['user_id'],$sub['id']]);
- query($db,"UPDATE internet_subscription_claims SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE id=?",[$claim['id']]);return 1;
+ query($db,"UPDATE internet_subscription_claims SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE id=?",[$claim['id']]);notifyClient($db,(int)$claim['user_id'],'subscription-assigned:'.bin2hex(random_bytes(12)),'subscription_assigned','Подписка добавлена','Подписка «'.$name.'» появилась в вашем кабинете.','subscriptions');return 1;
 }
 function importCsv(string $csv): array {
  if (strlen($csv)>1048576 || !preg_match('//u',$csv))problem('Нужен CSV в UTF-8 размером до 1 МБ.');
@@ -121,7 +122,7 @@ function directAssignmentItems(array $body): array {
 }
 function assignDirectly(PDO $db,array $recipient,int $adminId,array $wanted): array {
  if (!$db->inTransaction())throw new LogicException('Direct assignment requires a transaction');
- $recipientId=(int)$recipient['id'];$assigned=0;$created=0;$already=0;
+ $recipientId=(int)$recipient['id'];activeAccount($db,$recipientId,true);$assigned=0;$created=0;$already=0;
  foreach($wanted as $name=>$url) {
   $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();
   if ($sub) {
@@ -132,8 +133,9 @@ function assignDirectly(PDO $db,array $recipient,int $adminId,array $wanted): ar
    else {query($db,'UPDATE internet_subscriptions SET user_id=?,assigned_at=CURRENT_TIMESTAMP WHERE id=?',[$recipientId,$id]);$assigned++;}
   } else {
    if ($url===null)problem('Подписка '.$name.' не найдена в базе. Добавьте её название вместе со ссылкой.',404);
-   query($db,'INSERT INTO internet_subscriptions(name,url,user_id,assigned_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',[$name,$url,$recipientId]);$id=(int)$db->lastInsertId();$assigned++;$created++;
+   query($db,'INSERT INTO internet_subscriptions(name,url,user_id,assigned_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',[$name,$url,$recipientId]);$id=(int)$db->lastInsertId();$assigned++;$created++;resourceChanged($db,'subscription',$id);
   }
+  if(!$sub || (int)$sub['user_id']!==$recipientId)notifyClient($db,$recipientId,'subscription-assigned:'.bin2hex(random_bytes(12)),'subscription_assigned','Подписка выдана','Подписка «'.$name.'» доступна в вашем кабинете.','subscriptions');
   // An administrator may explicitly restore a previously removed assignment.
   query($db,'DELETE FROM internet_subscription_revocations WHERE subscription_id=? AND user_id=?',[$id,$recipientId]);
   query($db,"UPDATE internet_subscription_claims SET status='approved',reviewed_at=CURRENT_TIMESTAMP WHERE user_id=? AND name=? AND status IN ('pending','revoked','rejected')",[$recipientId,$name]);
@@ -148,3 +150,9 @@ function assignDirectly(PDO $db,array $recipient,int $adminId,array $wanted): ar
 require_once __DIR__.'/router-keys.php';
 
 require_once __DIR__.'/subscription-terms.php';
+
+require_once __DIR__.'/client-events.php';
+require_once __DIR__.'/support-tools.php';
+require_once __DIR__.'/web-push.php';
+
+require_once __DIR__.'/auth.php';

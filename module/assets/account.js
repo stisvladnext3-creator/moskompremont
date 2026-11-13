@@ -2,24 +2,27 @@
   'use strict';
   const $ = id => document.getElementById(id);
   if (!$('auth-section')) return;
+  let authEpoch = 0;
   let csrf = '', user = null, payment = { available: false }, mode = 'client';
   let clientTab = 'subscriptions', adminTab = 'support', conversation = null;
   let keeneticEnabled = false, keeneticUser = null, keeneticUsersLoaded = false, keeneticRequest = 0;
   let routerHostPreview = null;
   let routerKeyUsersLoaded = false; let assignmentUsersLoaded = false; const assignmentUsers = new Map();
-  const pages = { terms: 0, clients: 0, users: 0, payments: 0, subscriptions: 0, 'router-keys': 0 };
+  const pages = { accounts: 0, support: 0, tickets: 0, terms: 0, clients: 0, users: 0, payments: 0, subscriptions: 0, 'router-keys': 0 };
   const orderStatus = { created: 'Ожидает оплаты', submitted: 'На ручной проверке', paid: 'Оплата подтверждена', rejected: 'Оплата не подтверждена' };
   const claimStatus = { pending: 'Ожидает ссылки или проверки', approved: 'Подписка добавлена', rejected: 'Запрос отклонён', revoked: 'Привязка снята администратором' };
   const money = n => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(n));
-  const date = value => value ? new Date(value.replace(' ', 'T') + 'Z').toLocaleString('ru-RU') : '';
+  const date = value => value ? new Date(value.replace(' ', 'T') + 'Z').toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : '';
   const el = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined && text !== null) node.textContent = text; if (className) node.className = className; return node; };
   function message(text, error = false) { $('account-message').textContent = text; $('account-message').dataset.error = String(error); }
   function button(text, fn, className = 'account-secondary') { const b = el('button', text, className); b.type = 'button'; b.addEventListener('click', () => run(b, fn)); return b; }
-  async function run(b, fn) { message(''); if (b) b.disabled = true; try { await fn(); } catch (e) { message(e.message, true); $('account-message').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } finally { if (b && b.isConnected) b.disabled = false; } }
-  async function api(action, data, params = {}) {
-    const multipart = data instanceof FormData;
+  async function run(b, fn) { message(''); if (b) b.disabled = true; try { await fn(); } catch (e) { if (e.stale) return; message(e.message, true); $('account-message').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } finally { if (b && b.isConnected) b.disabled = false; } }
+  async function api(action, data, params = {}, retry = true) {
+    const requestEpoch = authEpoch, multipart = data instanceof FormData;
     const response = await fetch('api/account.php?' + new URLSearchParams({ action, ...params }), { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: data === undefined ? {} : { ...(multipart ? {} : { 'Content-Type': 'application/json' }), 'X-CSRF-Token': csrf }, body: data === undefined ? undefined : multipart ? data : JSON.stringify(data) });
     let result; try { result = await response.json(); } catch { throw Error(user?.is_admin ? 'Сервер вернул некорректный ответ (HTTP ' + response.status + '). Проверьте журнал ошибок PHP на хостинге.' : 'Не удалось обработать ответ сервера. Обновите страницу или напишите в поддержку.'); }
+    if (requestEpoch !== authEpoch) { const e = Error('Аккаунт изменился.'); e.stale = true; throw e; }
+    if (result.csrf) csrf = result.csrf; if (!response.ok && response.status === 403 && result.code === 'csrf_refresh' && retry) return api(action, data, params, false);
     if (!response.ok) { if (response.status === 401 && user) signedOut(); const e = Error(result.error || 'Ошибка запроса'); e.status = response.status; throw e; }
     if (result.csrf) csrf = result.csrf; return result;
   }
@@ -28,31 +31,33 @@
   $('has-subscriptions').onchange = e => { $('registration-subscriptions').hidden = !e.target.checked; $('existing-subscriptions').disabled = !e.target.checked; $('existing-subscriptions').required = e.target.checked; };
   for (const action of ['login', 'register']) $(action + '-form').onsubmit = event => {
     event.preventDefault(); run(event.submitter, async () => {
-      const data = Object.fromEntries(new FormData(event.target)); if (action === 'register') data.has_existing_subscriptions = $('has-subscriptions').checked;
-      const result = await api(action, data); user = result.user; event.target.reset(); $('registration-subscriptions').hidden = true; $('existing-subscriptions').disabled = true; $('existing-subscriptions').required = false;
+      const data = Object.fromEntries(new FormData(event.target)); data.remember = event.target.elements.remember.checked; if (action === 'register') data.has_existing_subscriptions = $('has-subscriptions').checked;
+      const result = await api(action, data); user = result.user; authEpoch++; event.target.reset(); $('registration-subscriptions').hidden = true; $('existing-subscriptions').disabled = true; $('existing-subscriptions').required = false;
       await showCabinet(); message(action === 'register' ? 'Аккаунт создан. Найденные подписки уже в разделе «Мои подписки».' : 'Вы вошли в кабинет.');
     });
   };
   function signedOut() {
-    user = null; conversation = null; clearRouterHostPreview(); setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('service-notice-form').reset(); $('service-notice-preview').textContent = ''; $('service-notice-saved').textContent = ''; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
-    for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-clients', 'admin-terms', 'keenetic-files', 'admin-keenetic-files', 'mail-diagnostics', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages']) $(id).replaceChildren();
+    authEpoch++; user = null; conversation = null; notificationPage = 0; notificationBaseline = null; templates.clear(); pushInfo = null; $('notification-toast').hidden = true; $('notifications-unread').hidden = $('notifications-tab-unread').hidden = true; $('reply-template-tools').hidden = true; clearRouterHostPreview(); setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('service-notice-form').reset(); $('service-notice-preview').textContent = ''; $('service-notice-saved').textContent = ''; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
+    for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-clients', 'admin-terms', 'keenetic-files', 'admin-keenetic-files', 'mail-diagnostics', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages', 'admin-accounts', 'admin-templates', 'notifications-list', 'push-diagnostics']) $(id).replaceChildren();
     document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; routerKeyUsersLoaded = false; $('keenetic-user').replaceChildren(new Option('Выберите клиента', '')); $('router-key-user').replaceChildren(new Option('Выберите клиента', '')); $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
   }
-  $('logout-button').onclick = e => run(e.target, async () => { await api('logout', {}); signedOut(); message('Вы вышли из кабинета.'); });
+  $('logout-button').onclick = e => run(e.target, async () => { await disconnectPushOnLogout(); await api('logout', {}); signedOut(); message('Вы вышли из кабинета.'); });
   async function showCabinet() {
     $('auth-section').hidden = !!user; $('cabinet-section').hidden = !user; if (!user) return;
+    $('notification-description').textContent = 'Ответы поддержки, выдача и обновления подписок и ключей.' + (user.is_admin ? ' Для администратора — также регистрации, оплаты и сообщения клиентов.' : '');
     $('profile-name').textContent = user.first_name + ' ' + user.last_name; $('profile-contact').textContent = user.email + ' · ' + user.telegram;
     $('client-mode').hidden = !user.is_admin; $('admin-mode').hidden = !user.is_admin;
     $('payment-unavailable').hidden = payment.available; $('order-form').querySelector('button').disabled = !payment.available;
     mode = user.is_admin ? 'admin' : 'client'; if (location.hash === '#payment') { mode = 'client'; clientTab = 'payments'; } if (location.hash === '#instructions') { mode = 'client'; clientTab = 'instructions'; } if (['#servers', '#service-status'].includes(location.hash)) { mode = 'client'; clientTab = 'servers'; }
     await loadKeenetic(); if (location.hash === '#keenetic') { mode = 'client'; clientTab = 'keenetic'; }
+    if (location.hash === '#notifications' || new URLSearchParams(location.search).has('notification')) { mode = 'client'; clientTab = 'notifications'; }
     if (clientTab === 'keenetic' && !keeneticEnabled) clientTab = 'subscriptions';
-    await setMode(mode); window.MKRServiceNotice?.refresh(); await updateSummary();
+    await setMode(mode); window.MKRServiceNotice?.refresh(); await updateSummary(); await openNotificationDeepLink();
   }
   async function setMode(value) { mode = value; $('service-status-button').setAttribute('aria-pressed', String(value === 'client' && clientTab === 'servers')); $('client-shell').hidden = value !== 'client'; $('admin-shell').hidden = value !== 'admin'; closeConversation(); if (value === 'admin') await selectAdmin(adminTab); else await selectClient(clientTab); }
   $('service-status-button').onclick = e => run(e.target, async () => { clientTab = 'servers'; await setMode('client'); $('cabinet-servers').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   $('client-mode').onclick = e => run(e.target, () => setMode('client')); $('admin-mode').onclick = e => run(e.target, () => setMode('admin'));
-  async function selectClient(value) { if (value === 'keenetic' && !keeneticEnabled) value = 'subscriptions'; clientTab = value; $('service-status-button').setAttribute('aria-pressed', String(mode === 'client' && value === 'servers')); closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); if (value === 'instructions') loadInstructions(); if (value === 'servers') await window.MKRServerStatus?.refresh(); if (value === 'keenetic') await loadKeenetic(); }
+  async function selectClient(value) { if (value === 'keenetic' && !keeneticEnabled) value = 'subscriptions'; clientTab = value; $('service-status-button').setAttribute('aria-pressed', String(mode === 'client' && value === 'servers')); closeConversation(); document.querySelectorAll('[data-client-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.clientTab === value))); document.querySelectorAll('[data-client-panel]').forEach(p => p.hidden = p.dataset.clientPanel !== value); if (value === 'subscriptions') await loadSubscriptions(); if (value === 'router-keys') await loadRouterKeys(); if (value === 'payments') await loadOrders(); if (value === 'support') await loadTickets(false); if (value === 'instructions') loadInstructions(); if (value === 'servers') await window.MKRServerStatus?.refresh(); if (value === 'keenetic') await loadKeenetic(); if (value === 'notifications') { await loadNotifications(); await loadPushDevice(); } }
   document.querySelectorAll('[data-client-tab]').forEach(b => b.onclick = () => run(b, () => selectClient(b.dataset.clientTab)));
   let instructionsLoaded = false;
   function loadInstructions() {
@@ -76,7 +81,7 @@
     if (/^(https?|vless|vmess|trojan|ss|hysteria2):\/\//i.test(url)) { const a = el('a', 'Открыть'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; row.append(a); } return row;
   }
   function subscriptionCard(sub, revealExpired = false) {
-    const card = el('article', null, 'subscription-card'); card.append(el('h3', sub.name), subscriptionTermBadge(sub));
+    const card = el('article', null, 'subscription-card'); card.append(el('h3', sub.name), subscriptionTermBadge(sub), resourceUpdated(sub));
     if (sub.expires_at) card.append(el('p', 'Действует до: ' + date(sub.expires_at), 'account-muted'));
     if (sub.url && (!sub.is_expired || revealExpired)) { const link = linkRow(sub.url, sub.name); link.classList.add('subscription-link'); link.dataset.hideExpired = String(!revealExpired); card.append(link); }
     else if (sub.is_expired) card.append(el('p', 'Срок подписки истёк. Для продления выберите тариф или напишите в поддержку.', 'account-note subscription-expired-note'));
@@ -97,7 +102,7 @@
   }
   $('order-form').oninput = total; total();
   $('order-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { await api('create_order', { plan: e.target.elements.plan.value, devices: Number(e.target.elements.devices.value), months: e.target.elements.plan.value === 'monthly' ? Number(e.target.elements.months.value) : 1 }); await loadOrders(); message('Заявка создана. Оплатите по QR-коду ниже.'); $('orders-list').scrollIntoView({ behavior: 'smooth' }); }); };
-  function orderCard(order) { const box = el('article', null, 'account-order'); box.append(el('h3', (order.plan === 'monthly' ? 'Подписка на ' + (order.months || 1) + ' мес.' : 'Навсегда') + ' · ' + order.devices + ' устр. · ' + money(order.amount)), el('p', 'Заявка ' + order.id, 'account-muted'), el('span', orderStatus[order.status] || order.status, 'status-badge status-' + order.status)); if (order.deleted_subscriptions?.length) box.append(el('p', 'Удалённые подписки: ' + order.deleted_subscriptions.map(s => s.name).join(', '), 'account-muted')); return box; }
+  function orderCard(order) { const box = el('article', null, 'account-order'); box.dataset.orderId = order.id; box.append(el('h3', (order.plan === 'monthly' ? 'Подписка на ' + (order.months || 1) + ' мес.' : 'Навсегда') + ' · ' + order.devices + ' устр. · ' + money(order.amount)), el('p', 'Заявка ' + order.id, 'account-muted'), el('span', orderStatus[order.status] || order.status, 'status-badge status-' + order.status)); if (order.deleted_subscriptions?.length) box.append(el('p', 'Удалённые подписки: ' + order.deleted_subscriptions.map(s => s.name).join(', '), 'account-muted')); return box; }
   async function loadOrders() {
     const data = await api('orders'); $('orders-list').replaceChildren(); if (!data.orders.length) $('orders-list').append(el('p', 'У вас пока нет заявок.', 'account-muted'));
     for (const order of data.orders) {
@@ -118,9 +123,11 @@
   $('refresh-orders').onclick = e => run(e.target, loadOrders);
   $('ticket-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const data = await api('create_ticket', new FormData(e.target)); e.target.reset(); await loadTickets(false); await openConversation(data.id, false); message('Обращение отправлено. Администратору создано уведомление и поставлено письмо в очередь.'); }); };
   async function loadTickets(asAdmin) {
-    const data = await api(asAdmin ? 'admin_tickets' : 'tickets'), target = $(asAdmin ? 'admin-tickets' : 'tickets-list'); target.replaceChildren();
-    if (!data.tickets.length) target.append(el('p', 'Обращений пока нет.', 'account-muted'));
-    for (const ticket of data.tickets) { const box = el('article', null, 'record' + (Number(ticket.unread) ? ' record-new' : '')); box.append(el('h3', '#' + ticket.id + ' · ' + ticket.subject), el('p', (ticket.status === 'closed' ? 'Решено' : 'Открыто') + ' · ' + date(ticket.updated_at), 'account-muted')); if (asAdmin) box.append(el('p', ticket.first_name + ' ' + ticket.last_name + ' · ' + ticket.email), el('p', ticket.telegram, 'account-muted')); if (Number(ticket.unread)) box.append(el('p', 'Новых сообщений: ' + ticket.unread, 'account-kicker')); box.append(button('Открыть переписку', () => openConversation(ticket.id, asAdmin))); target.append(box); }
+    const key = asAdmin ? 'support' : 'tickets', data = await api(asAdmin ? 'admin_tickets' : 'tickets', undefined, { page: pages[key], ...(asAdmin ? { scope: ticketScope } : {}) }), target = $(asAdmin ? 'admin-tickets' : 'tickets-list'); target.replaceChildren();
+    if (asAdmin) { $('tickets-active').setAttribute('aria-pressed', String(ticketScope === 'active')); $('tickets-archive').setAttribute('aria-pressed', String(ticketScope === 'archive')); $('tickets-scope-hint').textContent = ticketScope === 'archive' ? 'Решённые обращения. Ответ клиента вернёт обращение в активные.' : 'Обращения в обработке и ожидающие ответа клиента.'; }
+    if (!data.tickets.length) target.append(el('p', asAdmin && ticketScope === 'archive' ? 'В архиве пока нет обращений.' : 'Обращений пока нет.', 'account-muted'));
+    for (const ticket of data.tickets) { const box = el('article', null, 'record' + (Number(ticket.unread) ? ' record-new' : '')); box.dataset.ticketId = ticket.id; box.append(el('h3', '#' + ticket.id + ' · ' + ticket.subject), el('span', ticketLabels[ticket.status] || ticket.status_label, 'status-badge ticket-state-' + ticket.status), el('p', date(ticket.updated_at), 'account-muted')); if (asAdmin) box.append(el('p', ticket.first_name + ' ' + ticket.last_name + ' · ' + ticket.email), el('p', ticket.telegram, 'account-muted')); if (Number(ticket.unread)) box.append(el('p', 'Новых сообщений: ' + ticket.unread, 'account-kicker')); box.append(button('Открыть переписку', () => openConversation(Number(ticket.id), asAdmin))); target.append(box); }
+    smallPager(asAdmin ? 'admin-tickets-pager' : 'tickets-pager', pages[key], data.tickets.length, data.total, 100, async page => { pages[key] = page; await loadTickets(asAdmin); });
   }
   $('refresh-tickets').onclick = e => run(e.target, () => loadTickets(false));
   const photoPreviews = new WeakMap();
@@ -136,12 +143,12 @@
   }
   for (const form of [$('ticket-form'), $('reply-form')]) { form.querySelector('input[name="photos[]"]').addEventListener('change', () => showSelectedPhotos(form)); form.addEventListener('reset', () => queueMicrotask(() => showSelectedPhotos(form))); }
 
-  function closeConversation() { conversation = null; $('conversation').hidden = true; $('conversation-messages').replaceChildren(); $('reply-form').reset(); }
+  function closeConversation() { conversation = null; $('reply-template-tools').hidden = true; $('conversation').hidden = true; $('conversation-messages').replaceChildren(); $('reply-form').reset(); }
   $('close-conversation').onclick = closeConversation;
-  async function openConversation(id, asAdmin) { conversation = { id, asAdmin, lastId: null }; $('reply-form').reset(); await loadConversation(); $('conversation').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  async function openConversation(id, asAdmin) { conversation = { id, asAdmin, lastId: null }; $('reply-form').reset(); $('reply-template-tools').hidden = !asAdmin; if (asAdmin) { try { await refreshTemplates(true); } catch (e) { $('reply-template-hint').textContent = e.message; } } await loadConversation(); $('conversation').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   async function loadConversation() {
     if (!conversation) return; const active = conversation, data = await api('read_ticket', { id: active.id, as_admin: active.asAdmin }); if (conversation !== active) return;
-    $('conversation').hidden = false; $('conversation-title').textContent = '#' + data.ticket.id + ' · ' + data.ticket.subject; $('conversation-meta').textContent = (data.ticket.status === 'closed' ? 'Обращение решено' : 'Обращение открыто') + ' · последние 200 сообщений'; $('resolve-ticket').hidden = !active.asAdmin || data.ticket.status === 'closed';
+    $('conversation').hidden = false; $('conversation-title').textContent = '#' + data.ticket.id + ' · ' + data.ticket.subject; $('conversation-meta').textContent = (ticketLabels[data.ticket.status] || data.ticket.status_label) + ' · последние 200 сообщений'; $('resolve-ticket').hidden = !active.asAdmin || data.ticket.status === 'closed'; $('reopen-ticket').hidden = !active.asAdmin || data.ticket.status !== 'closed';
     const last = data.messages.length ? data.messages[data.messages.length - 1].id : 0;
     if (active.lastId !== last) { const target = $('conversation-messages'), atBottom = active.lastId === null || target.scrollTop + target.clientHeight >= target.scrollHeight - 80; target.replaceChildren(); for (const item of data.messages) { const staff = Number(item.is_admin) === 1, box = el('div', null, 'support-message' + (staff ? ' staff' : '')); box.append(el('div', (staff ? 'Поддержка' : item.first_name + ' ' + item.last_name) + ' · ' + date(item.created_at), 'message-author'), el('div', item.body));
       if (item.photos?.length) { const gallery = el('div', null, 'support-photos'); for (const photo of item.photos) { const a = el('a', null, 'support-photo'); a.href = photo.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; const image = el('img'); image.src = photo.url; image.alt = 'Фото к сообщению: ' + photo.file_name; image.loading = 'lazy'; a.append(image, el('span', 'Открыть фото')); gallery.append(a); } box.append(gallery); }
@@ -152,16 +159,16 @@
   $('resolve-ticket').onclick = e => run(e.target, async () => { if (!conversation) return; await api('set_ticket_status', { id: conversation.id, status: 'closed' }); await loadConversation(); await loadTickets(true); message('Обращение отмечено как решённое.'); });
   function badge(node, value) { if (!node) return; node.hidden = !Number(value); node.textContent = Number(value) > 99 ? '99+' : value; }
   async function updateSummary() {
-    if (!user) return; const summary = await api('summary'); badge($('support-unread'), summary.unread_support);
+    if (!user) return; const summary = await api('summary'); notificationSummary(summary, true); badge($('support-unread'), summary.unread_support);
     setKeeneticVisibility(!!summary.keenetic_enabled); if (!keeneticEnabled && clientTab === 'keenetic' && mode === 'client') await selectClient('subscriptions');
-    if (user.is_admin) { const data = await api('admin_summary'); Object.entries(data.unread).forEach(([type, count]) => document.querySelectorAll('[data-count="' + type + '"]').forEach(node => badge(node, count))); const m = data.mail; $('mail-status').textContent = 'Получатель: ' + m.recipient + '\n' + (m.ready ? 'Отправка настроена.' : 'Отправка не настроена. Заполните раздел mail в private/config.php.') + '\nПринято почтовым сервером: ' + m.sent + '. В очереди: ' + m.pending + '. Ошибок после повторов: ' + m.failed + '.'; $('mail-status').style.whiteSpace = 'pre-line'; $('mail-status').classList.toggle('mail-warning', !m.ready || m.failed > 0); }
+    if (user.is_admin) { const data = await api('admin_summary'); badge($('tickets-archive-count'), data.support_archive); Object.entries(data.unread).forEach(([type, count]) => document.querySelectorAll('[data-count="' + type + '"]').forEach(node => badge(node, count))); const m = data.mail; $('mail-status').textContent = 'Получатель: ' + m.recipient + '\n' + (m.ready ? 'Отправка настроена.' : 'Отправка не настроена. Заполните раздел mail в private/config.php.') + '\nПринято почтовым сервером: ' + m.sent + '. В очереди: ' + m.pending + '. Ошибок после повторов: ' + m.failed + '.'; $('mail-status').style.whiteSpace = 'pre-line'; $('mail-status').classList.toggle('mail-warning', !m.ready || m.failed > 0); }
   }
   function pager(id, key, count, total) { const target = $(id); target.replaceChildren(); const box = el('div', null, 'pager'); const prev = button('← Назад', async () => { pages[key]--; await loadAdmin(key); }); prev.disabled = pages[key] === 0; const next = button('Далее →', async () => { pages[key]++; await loadAdmin(key); }); next.disabled = total === undefined ? count < 100 : (pages[key] + 1) * 100 >= total; box.append(prev, el('span', 'Страница ' + (pages[key] + 1)), next); target.append(box); }
   function readButton(record, reload) { return button('Отметить прочитанным', async () => { await api('read_event', { id: record.event_id }); await reload(); await updateSummary(); }); }
-  async function loadAdmin(value) { if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'clients') await loadClients(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); if (value === 'terms') await loadAdminTerms(); if (value === 'keenetic') await loadAdminKeenetic(); if (value === 'service-notice') await loadServiceNotice(); if (value === 'monitoring') await loadMonitoring(); if (value === 'mail') await loadMailDiagnostics(); await updateSummary(); }
+  async function loadAdmin(value) { if (value === 'accounts') await loadAccounts(); if (value === 'templates') await refreshTemplates(); if (value === 'push') await loadAdminPush(); if (value === 'support') await loadTickets(true); if (value === 'users') await loadUsers(); if (value === 'clients') await loadClients(); if (value === 'payments') await loadAdminOrders(); if (value === 'subscriptions') await loadAdminSubscriptions(); if (value === 'router-keys') await loadAdminRouterKeys(); if (value === 'terms') await loadAdminTerms(); if (value === 'keenetic') await loadAdminKeenetic(); if (value === 'service-notice') await loadServiceNotice(); if (value === 'monitoring') await loadMonitoring(); if (value === 'mail') await loadMailDiagnostics(); await updateSummary(); }
   $('clients-search').onsubmit = e => { e.preventDefault(); pages.clients = 0; run(e.submitter, loadClients); };
   async function loadClients() {
-    const data = await api('admin_clients', undefined, { offset: pages.clients * 100, q: $('clients-query').value.trim() });
+    const data = await api('admin_clients', undefined, { offset: pages.clients * 100, q: $('clients-query').value.trim(), router_keys: $('clients-router-filter').value, terms: $('clients-term-filter').value });
     $('admin-clients').replaceChildren(); $('clients-total').textContent = 'Найдено клиентов: ' + data.total + (data.keenetic_ready === false ? '. Для Keenetic импортируйте private/migrations/006-keenetic.sql.' : '');
     for (const item of data.users) {
       const box = el('article', null, 'record client-directory-card');
@@ -340,7 +347,7 @@
   };
   const routerFormats = { connection: 'Ключ подключения', wireguard: 'WireGuard', openvpn: 'OpenVPN', text: 'Текстовая конфигурация' };
   function routerKeyCard(item) {
-    const card = el('article', null, 'subscription-card router-key-card'); card.append(el('h3', item.label), el('p', routerFormats[item.key_format] || 'Ключ для роутера', 'account-muted'));
+    const card = el('article', null, 'subscription-card router-key-card'); card.append(el('h3', item.label), el('p', routerFormats[item.key_format] || 'Ключ для роутера', 'account-muted'), resourceUpdated(item));
     const details = el('details'), summary = el('summary', 'Показать ключ'), text = el('textarea'); text.readOnly = true; text.rows = item.key_format === 'connection' ? 3 : 8; text.spellcheck = false; text.autocapitalize = 'off'; text.placeholder = 'Загрузка ключа…'; text.setAttribute('aria-label', 'Ключ: ' + item.label); details.append(summary, text); card.append(details);
     let material = null, pending = null;
     async function ensureKey() {
@@ -501,6 +508,124 @@
   }
   $('mail-test').onclick = e => run(e.target, async () => { const data = await api('mail_test', {}); await updateSummary(); await loadMailDiagnostics(); message(data.ready ? 'Тестовое письмо поставлено в очередь отправки.' : 'Письмо сохранено в очереди. Сначала настройте отправку в private/config.php.'); });
   $('mail-retry').onclick = e => run(e.target, async () => { const data = await api('mail_retry', {}); await updateSummary(); await loadMailDiagnostics(); message(data.ready ? 'Почтовым сервером принято: ' + data.sent + '. Не удалось отправить: ' + data.failed + '.' + (data.errors?.length ? ' ' + data.errors.join(' ') : '') : 'Сначала исправьте настройки почты: ' + (data.issues || []).join(' ')); });
-  setInterval(async () => { if (!user || document.hidden) return; try { if (conversation) await loadConversation(); else await updateSummary(); } catch (e) { if (e.status === 401) message('Сессия завершена. Войдите снова.', true); } }, 20000);
-  (async () => { try { const data = await api('me'); user = data.user; payment = data.payment; await showCabinet(); if (!user && new URLSearchParams(location.search).get('mode') === 'register') authTab(true); } catch (e) { message(e.message, true); document.querySelectorAll('#auth-section button[type=submit]').forEach(b => b.disabled = true); } })();
+  const ticketLabels = { open: 'В обработке', waiting: 'Ожидает вашего ответа', closed: 'Решено' };
+  let ticketScope = 'active', notificationPage = 0, notificationBaseline = null, toastTimer;
+  let templates = new Map(), pushRegistration = null, pushInfo = null;
+  function resourceUpdated(item) { return el('p', item.content_updated_at ? 'Обновлено: ' + date(item.content_updated_at) : 'Дата обновления пока не зафиксирована', 'account-muted resource-updated'); }
+  function smallPager(id, page, count, total, size, change) {
+    const target = $(id); target.replaceChildren(); if (total <= size && page === 0) return;
+    const prev = button('← Назад', () => change(page - 1)), next = button('Далее →', () => change(page + 1)); prev.disabled = page === 0; next.disabled = (page + 1) * size >= total;
+    const box = el('div', null, 'pager'); box.append(prev, el('span', 'Страница ' + (page + 1)), next); target.append(box);
+  }
+  for (const [id, scope] of [['tickets-active', 'active'], ['tickets-archive', 'archive']]) $(id).onclick = e => run(e.target, async () => { ticketScope = scope; pages.support = 0; closeConversation(); await loadTickets(true); });
+  $('reopen-ticket').onclick = e => run(e.target, async () => { if (!conversation?.asAdmin) return; await api('set_ticket_status', { id: Number(conversation.id), status: 'open' }); await loadConversation(); await loadTickets(true); message('Обращение возвращено в обработку.'); });
+  for (const id of ['clients-router-filter', 'clients-term-filter']) $(id).onchange = e => run(e.target, async () => { pages.clients = 0; await loadClients(); });
+  function showNotificationToast() {
+    const box = $('notification-toast'); box.replaceChildren(el('span', 'У вас новые уведомления'), button('Открыть', async () => { box.hidden = true; await openNotifications(); })); box.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => box.hidden = true, 10000);
+  }
+  function notificationSummary(data, toast = false) {
+    badge($('notifications-unread'), data.unread_notifications); badge($('notifications-tab-unread'), data.unread_notifications);
+    $('notifications-button').setAttribute('aria-label', 'Уведомления' + (data.unread_notifications ? ': непрочитанных ' + data.unread_notifications : ''));
+    const latest = Number(data.latest_notification_id || 0); if (toast && notificationBaseline !== null && latest > notificationBaseline) showNotificationToast(); notificationBaseline = Math.max(notificationBaseline || 0, latest);
+  }
+  async function openNotifications() { clientTab = 'notifications'; await setMode('client'); $('cabinet-notifications').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  $('notifications-button').onclick = e => run(e.currentTarget, openNotifications);
+  $('notifications-refresh').onclick = e => run(e.target, async () => { await loadNotifications(); await loadPushDevice(); });
+  $('notifications-read-all').onclick = e => run(e.target, async () => { const data = await api('notification_read', { all: true }); notificationSummary(data); await loadNotifications(); });
+  async function openNotification(item) {
+    const data = await api('notification_read', { id: Number(item.id) }); notificationSummary(data);
+    if (item.target === 'ticket' && item.target_id) { clientTab = 'support'; await setMode('client'); await openConversation(Number(item.target_id), false); }
+    else if (item.target.startsWith('admin-') && user?.is_admin) {
+      if (item.target === 'admin-users' && item.target_id) { $('accounts-query').value = String(item.target_id); pages.accounts = 0; adminTab = 'accounts'; }
+      else adminTab = ({ 'admin-payments': 'payments', 'admin-ticket': 'support', 'admin-mail': 'mail' })[item.target] || 'support';
+      if (adminTab === 'support') { ticketScope = 'active'; pages.support = 0; }
+      await setMode('admin'); if (item.target === 'admin-ticket' && item.target_id) await openConversation(Number(item.target_id), true);
+      if (item.target_ref) { const card = Array.from($('admin-orders').children).find(n => n.dataset.orderId === item.target_ref); if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }); else message('Номер заявки: ' + item.target_ref + '. Заявка может находиться на следующей странице оплат.'); }
+    } else if (['subscriptions', 'router-keys'].includes(item.target)) { clientTab = item.target; await setMode('client'); }
+    else await loadNotifications();
+  }
+  async function loadNotifications() {
+    const owner = user?.id, data = await api('notifications', undefined, { page: notificationPage }); if (owner !== user?.id) return; notificationSummary(data);
+    const target = $('notifications-list'); target.replaceChildren(); if (!data.notifications.length) target.append(el('p', 'Пока нет уведомлений. Здесь появятся новые события вашего кабинета.', 'account-muted'));
+    for (const item of data.notifications) {
+      const box = el('article', null, 'record notification-card' + (!item.read_at ? ' record-new' : '')); box.dataset.notificationId = item.id;
+      box.append(el('h3', item.title), el('p', item.body, 'notification-body'), el('p', date(item.created_at) + (item.read_at ? ' · Прочитано' : ' · Новое'), 'account-muted'));
+      const actions = el('div', null, 'order-buttons'); actions.append(button('Открыть', () => openNotification(item)));
+      if (!item.read_at) actions.append(button('Прочитано', async () => { const result = await api('notification_read', { id: Number(item.id) }); notificationSummary(result); await loadNotifications(); })); box.append(actions); target.append(box);
+    }
+    smallPager('notifications-pager', notificationPage, data.notifications.length, data.total, 50, async page => { notificationPage = page; await loadNotifications(); });
+  }
+  async function openNotificationDeepLink() {
+    const query = new URLSearchParams(location.search), raw = query.get('notification'); if (!raw || !/^\d+$/.test(raw)) return;
+    query.delete('notification'); history.replaceState(null, '', location.pathname + (query.size ? '?' + query : '') + '#notifications');
+    try { const data = await api('notification', undefined, { id: raw }); await openNotification(data.notification); } catch (e) { if (e.status !== 404) throw e; message('Это уведомление больше недоступно. Остальные события — в разделе «Уведомления».'); }
+  }
+  async function refreshTemplates(forReply = false) {
+    const data = await api('admin_reply_templates'); templates = new Map(data.templates.map(t => [Number(t.id), t]));
+    const select = $('reply-template-select'), previous = select.value; select.replaceChildren(new Option('Выберите шаблон', '')); for (const t of data.templates) select.append(new Option(t.title, String(t.id))); select.value = previous;
+    $('reply-template-hint').textContent = data.templates.length ? 'Шаблон можно отредактировать перед отправкой.' : 'Создайте заготовки в разделе «Шаблоны ответов».';
+    if (forReply) return;
+    const target = $('admin-templates'); target.replaceChildren(); if (!data.templates.length) target.append(el('p', 'Шаблонов пока нет. Добавьте первый в форме выше.', 'account-muted'));
+    for (const item of data.templates) { const box = el('article', null, 'record'); box.append(el('h3', item.title), el('p', item.body, 'template-body'), el('p', 'Изменён: ' + date(item.updated_at), 'account-muted'));
+      const actions = el('div', null, 'order-buttons'); actions.append(button('Редактировать', async () => { const form = $('template-form'); form.elements.id.value = item.id; form.elements.title.value = item.title; form.elements.body.value = item.body; $('template-form-title').textContent = 'Редактирование шаблона'; form.scrollIntoView({ behavior: 'smooth', block: 'start' }); }), button('Удалить', async () => { if (!confirm('Удалить шаблон «' + item.title + '»?')) return; await api('admin_template_delete', { id: Number(item.id) }); if (Number($('template-form').elements.id.value) === Number(item.id)) newTemplate(); await refreshTemplates(); }, 'account-secondary account-danger')); box.append(actions); target.append(box); }
+  }
+  function newTemplate() { $('template-form').reset(); $('template-form').elements.id.value = ''; $('template-form-title').textContent = 'Новый шаблон'; }
+  $('template-new').onclick = newTemplate;
+  $('template-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const form = e.target; await api('admin_template_save', { id: form.elements.id.value ? Number(form.elements.id.value) : null, title: form.elements.title.value, body: form.elements.body.value }); newTemplate(); await refreshTemplates(); message('Шаблон сохранён.'); }); };
+  $('reply-template-insert').onclick = e => run(e.target, async () => { if (!conversation?.asAdmin) return; const template = templates.get(Number($('reply-template-select').value)); if (!template) throw Error('Выберите шаблон ответа.'); const input = $('reply-form').elements.message; input.value += (input.value ? '\n\n' : '') + template.body; if (input.value.length > 4000) { input.value = input.value.slice(0, 4000); message('Текст ограничен 4000 символами. Проверьте ответ перед отправкой.'); } input.focus(); });
+  $('accounts-search').onsubmit = e => { e.preventDefault(); pages.accounts = 0; run(e.submitter, loadAccounts); };
+  async function loadAccounts() {
+    const target = $('admin-accounts'); target.replaceChildren(); const data = await api('admin_accounts', undefined, { q: $('accounts-query').value.trim(), page: pages.accounts }); $('accounts-total').textContent = 'Найдено аккаунтов: ' + data.total;
+    if (!data.accounts.length) target.append(el('p', 'Аккаунты не найдены.', 'account-muted'));
+    for (const item of data.accounts) {
+      const self = Number(item.id) === Number(user.id), box = el('article', null, 'record account-management'); box.dataset.accountId = item.id;
+      box.append(el('h3', '#' + item.id + ' · ' + item.first_name + ' ' + item.last_name + (self ? ' · Ваш аккаунт' : '')), el('p', item.email + ' · ' + item.telegram, 'account-muted'), el('p', 'Зарегистрирован: ' + date(item.created_at), 'account-muted'));
+      const details = el('details', null, 'issue-form'); details.append(el('summary', 'Сбросить пароль')); const form = el('form'), label = el('label', 'Новый пароль'), input = el('input'); input.type = 'password'; input.name = 'password'; input.autocomplete = 'new-password'; input.required = true; input.minLength = 6; input.maxLength = 72; label.append(input);
+      const submit = el('button', 'Сохранить новый пароль', 'account-primary'); submit.type = 'submit'; form.append(label, el('p', 'От 6 символов, до 72 байт. Все прежние входы будут завершены. Передайте новый пароль клиенту лично.', 'account-muted'), submit);
+      form.onsubmit = e => { e.preventDefault(); run(submit, async () => { if (!confirm('Сбросить пароль аккаунта ' + item.email + '? Все прежние входы будут завершены.' + (self ? ' Вам потребуется войти заново.' : ''))) return; const result = await api('admin_account_password', { id: Number(item.id), password: input.value }); input.value = ''; if (result.logged_out) { signedOut(); message('Ваш пароль изменён. Войдите с новым паролем.'); } else { details.open = false; message('Пароль изменён. Прежние входы клиента завершены.'); } }); }; details.append(form); box.append(details);
+      if (!self) { const remove = el('details', null, 'issue-form'); remove.append(el('summary', 'Удалить аккаунт')); const removeForm = el('form'), choiceLabel = el('label', 'Подписки и ключи клиента'), select = el('select'); select.append(new Option('Снять привязки и оставить в общей базе', 'release'), new Option('Полностью удалить из базы кабинета', 'delete')); choiceLabel.append(select); const removeButton = el('button', 'Удалить аккаунт', 'account-secondary account-danger'); removeButton.type = 'submit'; removeForm.append(choiceLabel, el('p', 'Вход будет закрыт, аккаунт исчезнет из списков. История оплат и обращений сохранится с пометкой «Удалённый аккаунт».', 'account-muted'), removeButton);
+        removeForm.onsubmit = e => { e.preventDefault(); run(removeButton, async () => { if (!confirm('Удалить аккаунт ' + item.email + '? ' + (select.value === 'delete' ? 'Его подписки и ключи будут удалены из базы кабинета.' : 'Его подписки и ключи станут свободными.'))) return; await api('admin_account_delete', { id: Number(item.id), resources: select.value }); assignmentUsers.clear(); assignmentUsersLoaded = routerKeyUsersLoaded = keeneticUsersLoaded = false; await loadAccounts(); message('Аккаунт удалён. ' + (select.value === 'delete' ? 'Его подписки и ключи удалены из базы кабинета.' : 'Подписки и ключи остались в общей базе без владельца.')); }); }; remove.append(removeForm); box.append(remove); } target.append(box);
+    }
+    pager('accounts-pager', 'accounts', data.accounts.length, data.total);
+  }
+  async function accountWorker() { if (!pushRegistration) { await navigator.serviceWorker.register('account-sw.js'); pushRegistration = await navigator.serviceWorker.ready; } return pushRegistration; }
+  function fromBase64Url(value) { return Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4)), c => c.charCodeAt(0)); }
+  function bytesEqual(a, b) { const x = new Uint8Array(a || []), y = new Uint8Array(b || []); return x.length === y.length && x.every((v, i) => v === y[i]); }
+  function pushSupported() { return window.isSecureContext && 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window; }
+  async function loadPushDevice() {
+    $('push-enable').hidden = $('push-disable').hidden = true; const hint = $('push-device-hint');
+    if (!pushSupported()) { hint.textContent = 'Этот браузер не поддерживает push. На iPhone/iPad запустите сайт с экрана «Домой». Уведомления в кабинете доступны всегда.'; return; }
+    const data = await api('push_settings'); pushInfo = data;
+    if (!data.ready) { hint.textContent = 'Push пока не включены администратором. Уведомления остаются доступны в кабинете.'; return; }
+    const reg = await accountWorker(), sub = await reg.pushManager.getSubscription(); const status = sub ? await api('push_device_status', { endpoint: sub.endpoint }) : { registered: false };
+    $('push-disable').hidden = !sub; const denied = Notification.permission === 'denied'; $('push-enable').hidden = denied || (status.registered && !!sub && bytesEqual(sub.options.applicationServerKey, fromBase64Url(data.public_key)));
+    hint.textContent = denied ? 'Уведомления запрещены в настройках браузера. Разрешите их для этого сайта и обновите раздел.' : status.registered ? 'Push включены для вашего аккаунта на этом устройстве.' : 'Включите push, чтобы получать новые события, когда сайт закрыт.';
+  }
+  $('push-enable').onclick = e => run(e.target, async () => {
+    if (!pushSupported() || !pushInfo?.ready) throw Error('Откройте раздел заново и проверьте доступность push.');
+    // Permission request starts directly in this click handler, before any network await (Safari).
+    const permission = await Notification.requestPermission(); if (permission !== 'granted') { await loadPushDevice(); return; }
+    const reg = await accountWorker(); let sub = await reg.pushManager.getSubscription(); const key = fromBase64Url(pushInfo.public_key);
+    if (sub && !bytesEqual(sub.options.applicationServerKey, key)) { try { await api('push_unsubscribe', { endpoint: sub.endpoint }); } catch {} await sub.unsubscribe(); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }); await api('push_subscribe', sub.toJSON()); await loadPushDevice(); message('Push включены на этом устройстве.');
+  });
+  $('push-disable').onclick = e => run(e.target, async () => { const reg = await accountWorker(), sub = await reg.pushManager.getSubscription(); if (sub) { await api('push_unsubscribe', { endpoint: sub.endpoint }); await sub.unsubscribe(); } await loadPushDevice(); message('Push отключены на этом устройстве.'); });
+  async function disconnectPushOnLogout() {
+    if (!pushSupported()) return; try { const reg = await navigator.serviceWorker.getRegistration(new URL('account-sw.js', location.href)), sub = await reg?.pushManager.getSubscription(); if (sub) { await api('push_unsubscribe', { endpoint: sub.endpoint }); await sub.unsubscribe(); } } catch { /* Logout must remain possible if a push service is unavailable. */ }
+  }
+  function renderAdminPush(data) {
+    $('push-settings-form').elements.enabled.checked = data.enabled; $('push-setup').hidden = data.keys_ready;
+    const target = $('push-admin-status'); target.replaceChildren(el('p', data.ready ? 'Push включены. Подключено устройств: ' + data.devices + '.' : data.keys_ready ? 'Ключи созданы. Включите отправку и проверьте требования PHP.' : 'Создайте ключи один раз, затем разрешите push.', 'account-note'));
+    for (const issue of data.issues) target.append(el('p', issue, 'mail-warning'));
+    target.append(el('p', data.checked_at ? 'Последняя обработка: ' + date(data.checked_at) : 'Очередь ещё не обрабатывалась.', 'account-muted'));
+    const diag = $('push-diagnostics'); diag.replaceChildren(); const states = { pending: 'В очереди', retry: 'Повторная попытка', sending: 'Отправляется', sent: 'Принято push-сервисом', failed: 'Не отправлено', cancelled: 'Уже прочитано / отменено' };
+    for (const item of data.messages) { const row = el('div', null, 'record'); row.append(el('p', 'Push #' + item.id + ' · ' + (states[item.status] || item.status)), el('p', 'Попыток: ' + item.attempts, 'account-muted')); if (item.last_error) row.append(el('p', item.last_error, 'mail-warning')); diag.append(row); }
+  }
+  async function loadAdminPush() { $('push-settings-form').inert = true; try { renderAdminPush(await api('admin_push_settings')); } finally { $('push-settings-form').inert = false; } }
+  $('push-setup').onclick = e => run(e.target, async () => { renderAdminPush(await api('admin_push_setup', {})); message('Ключи push созданы и сохранены.'); });
+  $('push-settings-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { renderAdminPush(await api('admin_push_save', { enabled: e.target.elements.enabled.checked })); message('Настройки push сохранены. Чтобы получать уведомления на своём устройстве, включите их в разделе «Уведомления».'); }); };
+  $('push-retry').onclick = e => run(e.target, async () => { const data = await api('admin_push_retry', {}); await loadAdminPush(); message(data.ready ? 'Принято push-сервисом: ' + data.sent + '. Ошибок: ' + data.failed + '.' : 'Сначала включите push и проверьте требования PHP.'); });
+
+  setInterval(async () => { if (!user || document.hidden) return; try { if (conversation) await loadConversation(); else { await updateSummary(); if (mode === 'client' && clientTab === 'support') await loadTickets(false); if (mode === 'admin' && adminTab === 'support') await loadTickets(true); if (mode === 'client' && clientTab === 'notifications') await loadNotifications(); } } catch (e) { if (e.status === 401) message('Сессия завершена. Войдите снова.', true); } }, 20000);
+  (async () => { try { const data = await api('me'); user = data.user; authEpoch++; payment = data.payment; await showCabinet(); if (!user && new URLSearchParams(location.search).get('mode') === 'register') authTab(true); } catch (e) { message(e.message, true); document.querySelectorAll('#auth-section button[type=submit]').forEach(b => b.disabled = true); } })();
 })();

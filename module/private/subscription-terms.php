@@ -16,7 +16,7 @@ function withSubscriptionTerms(PDO $db,array $subscriptions,bool $revealExpired=
   $end=$sub['term_kind']==='fixed'&&$sub['expires_at']!==null?strtotime($sub['expires_at'].' UTC'):false;
   $sub['remaining_seconds']=$end!==false?max(0,$end-$now):null;$sub['is_expired']=$end!==false&&$end<=$now;
   if($sub['is_expired']&&!$revealExpired)unset($sub['url']);
- }unset($sub);return $subscriptions;
+ }unset($sub);return withResourceUpdates($db,$subscriptions,'subscription');
 }
 function termMonthsInput(mixed $value): int {if(!is_int($value)||$value<1||$value>12)problem('Выберите срок от 1 до 12 месяцев.');return $value;}
 function addSubscriptionMonths(DateTimeImmutable $base,int $months,int $anchorDay): DateTimeImmutable {

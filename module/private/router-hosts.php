@@ -59,10 +59,12 @@ function routerHostApply(PDO $db,array $body,int $adminId): array {
  try {
   $rows=routerHostRows($db,true);if(!hash_equals($preview['snapshot'],routerHostSnapshot($rows)))problem('Ключи или их владельцы изменились. Повторите предпросмотр перед заменой.',409);
   $plan=routerHostPlan($db,$rows,$preview['new_host'],$preview['old_host']);
+  $affected=[];$metadata=[];foreach($rows as $row)$metadata[(int)$row['id']]=$row;
   foreach($plan['changes'] as $id=>$change){
    $value=query($db,'SELECT key_value FROM internet_router_keys WHERE id=?',[$id])->fetchColumn();$replacement=routerHostReplacement($value,$preview['new_host']);
-   query($db,'UPDATE internet_router_keys SET key_value=?,key_hash=? WHERE id=?',[$replacement['value'],$change['hash'],$id]);
+   query($db,'UPDATE internet_router_keys SET key_value=?,key_hash=? WHERE id=?',[$replacement['value'],$change['hash'],$id]);resourceChanged($db,'router_key',(int)$id);if($metadata[$id]['user_id']!==null)$affected[(int)$metadata[$id]['user_id']][]=$metadata[$id]['label'];
   }
+  notifyResourceBatch($db,'router_key',$affected);
   if($plan['changed'])query($db,'INSERT INTO internet_admin_events(event_key,type,user_id,title,body,read_at) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)',[
    'router-host:'.bin2hex(random_bytes(12)),'system',$adminId,'Обновлён адрес в ключах для роутеров','Администратор #'.$adminId."\nИзменено ключей: ".$plan['changed']."\nНовый адрес: ".$preview['new_host']."\nТексты ключей в журнал не записываются."
   ]);

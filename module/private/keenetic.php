@@ -22,7 +22,7 @@ function keeneticRecipient(PDO $db,mixed $value,bool $lock=false): array {
  if(is_string($value) && preg_match('/\A[1-9][0-9]{0,17}\z/D',$value))$value=(int)$value;
  if(!is_int($value)||$value<1)problem('Выберите клиента для Keenetic.');
  $row=query($db,'SELECT id,first_name,last_name,email,telegram FROM internet_users WHERE id=?'.($lock?' FOR UPDATE':''),[$value])->fetch();
- if(!$row)problem('Клиент не найден.',404);return $row;
+ if(!$row||authState($db,(int)$row['id'])['deleted_at']!==null)problem('Клиент не найден.',404);return $row;
 }
 function keeneticFileId(mixed $id): string {
  if(!is_string($id)||!preg_match('/\A[a-f0-9]{32}\z/D',$id))problem('Файл не найден.',404);return $id;

@@ -42,6 +42,7 @@ function notifyAdmin(PDO $db,array $config,string $key,string $type,int $userId,
  $q=$db->prepare('INSERT INTO internet_admin_events(event_key,type,user_id,order_id,title,body) VALUES (?,?,?,?,?,?)');
  $q->execute([$key,$type,$userId,$orderId,$title,$body]);$eventId=(int)$db->lastInsertId();
  if (!$email)return;
+ if(function_exists('notifyAdminOnSite'))notifyAdminOnSite($db,$config,$key,$type,$userId,$title,$body,$orderId);
  $recipient=$config['admin_email'] ?? 'sania.iwannikow@yandex.ru';
  if (!is_string($recipient) || !filter_var($recipient,FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Invalid notification recipient');
  $base=rtrim($config['origin'],'/').'/';

@@ -9,7 +9,7 @@ try {
  if(stripos($_SERVER['CONTENT_TYPE'] ?? '','application/json')!==0)problem('Требуется JSON.',415);
  $raw=file_get_contents('php://input',false,null,0,200001);if(strlen($raw)>200000)problem('Слишком большой отчёт.',413);
  try{$body=json_decode($raw,true,12,JSON_THROW_ON_ERROR);}catch(Throwable $e){problem('Некорректный JSON.');}if(!is_array($body))problem('Некорректный отчёт.');
- if(($body['task'] ?? '')==='mail')monitorAnswer(sendPendingMail($db,$GLOBALS['monitor_app_config'],1));
+ if(($body['task'] ?? '')==='mail'){$mail=sendPendingMail($db,$GLOBALS['monitor_app_config'],1);$mail['push']=sendClientPush($db,$GLOBALS['monitor_app_config'],20);monitorAnswer($mail);}
  if(!$s['enabled'])problem('Мониторинг отключён.',409);
  monitorReport($db,$body,(int)$s['revision']);monitorAnswer(['ok'=>true]);
 }catch(AccountError $e){monitorAnswer(['error'=>$e->getMessage()],$e->httpStatus);}

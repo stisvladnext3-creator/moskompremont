@@ -2,8 +2,9 @@
 
 Кабинет на PHP/MySQL: подписки и отдельные ключи для роутеров клиентов, ручная выдача с оплатой и без неё, переписка с фотографиями и разделы администратора.
 
-- [Скачать обновление кабинета v15](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v15-update.zip)
+- [Скачать обновление кабинета v16](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v16-update.zip)
 - [Полный комплект раздела и кабинета](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-account-php.zip)
+- [Установка v16: уведомления, аккаунты, шаблоны и архив](downloads/UPDATE-CABINET-V16.md)
 - [Установка v15: статус сервиса, удаление, адреса ключей и сроки подписок](downloads/UPDATE-CABINET-V15.md)
 - [Установка v14: редактируемое объявление на сайте и в статусе серверов](downloads/UPDATE-CABINET-V14.md)
 - [Установка v13: персональная вкладка Keenetic и конфигурации роутеров](downloads/UPDATE-CABINET-V13.md)
@@ -24,6 +25,16 @@
 - [Исходники модуля](module/)
 - [Предпросмотр клиента](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=client)
 - [Предпросмотр администратора](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=admin)
+
+## Уведомления и управление аккаунтами (v16)
+
+В кабинете появились дата обновления каждой ссылки/ключа и уведомления о выдаче, обновлениях и ответах поддержки. Администратору в уведомления и push дублируются все события, для которых создаются письма. В «Клиентах» — фильтры по ключам и срокам, в «Шаблонах ответов» — редактируемые заготовки для переписки. Решённые обращения находятся в отдельном архиве администратора; клиент продолжает видеть их в своём списке.
+
+«Аккаунты» позволяют сбросить пароль с отзывом прежних входов и удалить аккаунт, освободив либо удалив его подписки/ключи. Финансовая история и переписка сохраняются. «Запомнить меня на 30 дней» восстанавливает вход после очистки PHP-сессий хостингом.
+
+Для v15 импортируйте `module/private/migrations/009-client-updates.sql`; для старых версий или новой установки — `module/private/schema.sql`. Загрузите обновление, сохранив `private/config.php`, `assets/config.js` и QR. Служба Ubuntu v8 сохраняется: новый PHP-обработчик обрабатывает push в том же фоновом запросе, что и почту.
+
+Push включается через «Админка → Push», затем отдельно на каждом устройстве в разделе «Уведомления». Нужны HTTPS, PHP 8.1+, OpenSSL/curl/mbstring. На iPhone/iPad с iOS16.4+ сайт нужно добавить на экран «Домой» через Safari и включить уведомления из установленного приложения. Пошаговые действия и проверка фоновой очереди — в [UPDATE-CABINET-V16.md](downloads/UPDATE-CABINET-V16.md).
 
 ## Статус сервиса и управление подписками (v15)
 

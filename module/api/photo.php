@@ -9,11 +9,9 @@ try {
  $path=getenv('INTERNET_CONFIG') ?: dirname(__DIR__).'/private/config.php';if (!is_file($path))problem('Сервис не настроен.',503);$config=require $path;
  ini_set('session.use_strict_mode','1');ini_set('session.use_only_cookies','1');session_name('internet_account');
  session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>$config['secure_cookies'] ?? true,'httponly'=>true,'samesite'=>'Lax']);session_start();
- if (isset($_SESSION['last_seen']) && time()-$_SESSION['last_seen']>7200){$_SESSION=[];session_regenerate_id(true);}
- $userId=(int)($_SESSION['user_id'] ?? 0);if (!$userId)problem('Сначала войдите в кабинет.',401);$_SESSION['last_seen']=time();session_write_close();
  $id=$_GET['id'] ?? '';if (!is_string($id) || !preg_match('/\A[a-f0-9]{32}\z/D',$id))problem('Фото не найдено.',404);
  $db=new PDO($config['dsn'],$config['db_user'],$config['db_password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
- $user=query($db,'SELECT id,first_name,last_name,email,telegram FROM internet_users WHERE id=?',[$userId])->fetch();if (!$user)problem('Сначала войдите в кабинет.',401);
+ query($db,"SET time_zone='+00:00'");$user=accountSessionUser($db,$config);if(!$user)problem('Сначала войдите в кабинет.',401);$userId=(int)$user['id'];session_write_close();
  $photo=query($db,'SELECT p.id,p.mime,p.byte_size,t.user_id AS ticket_owner FROM internet_message_photos p JOIN internet_messages m ON m.id=p.message_id JOIN internet_tickets t ON t.id=m.ticket_id WHERE p.id=?',[$id])->fetch();
  if (!$photo || ((int)$photo['ticket_owner']!==$userId && !publicUser($user,$config)['is_admin']))problem('Фото не найдено.',404);
  $extensions=['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'];if (!isset($extensions[$photo['mime']]))problem('Фото не найдено.',404);

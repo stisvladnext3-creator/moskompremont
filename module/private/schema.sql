@@ -242,3 +242,95 @@ CREATE TABLE IF NOT EXISTS internet_order_terms (
  months TINYINT UNSIGNED NOT NULL DEFAULT 1,
  FOREIGN KEY (order_id) REFERENCES internet_orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Даты изменения содержимого, уведомления клиентов, шаблоны и Web Push.
+CREATE TABLE IF NOT EXISTS internet_resource_updates (
+ resource_type VARCHAR(20) NOT NULL,
+ resource_id BIGINT UNSIGNED NOT NULL,
+ content_updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ revision INT UNSIGNED NOT NULL DEFAULT 1,
+ PRIMARY KEY(resource_type,resource_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_client_notifications (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT UNSIGNED NOT NULL,
+ event_key VARCHAR(120) NOT NULL,
+ type VARCHAR(32) NOT NULL,
+ title VARCHAR(200) NOT NULL,
+ body TEXT NOT NULL,
+ target VARCHAR(24) NOT NULL,
+ target_id BIGINT UNSIGNED NULL,
+ target_ref VARCHAR(64) NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ read_at TIMESTAMP NULL,
+ UNIQUE(user_id,event_key),
+ FOREIGN KEY(user_id) REFERENCES internet_users(id),
+ INDEX(user_id,read_at,id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_reply_templates (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ title VARCHAR(100) NOT NULL,
+ body TEXT NOT NULL,
+ updated_by BIGINT UNSIGNED NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY(updated_by) REFERENCES internet_users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_push_settings (
+ id TINYINT UNSIGNED PRIMARY KEY,
+ enabled TINYINT UNSIGNED NOT NULL DEFAULT 0,
+ public_key VARCHAR(100) NULL,
+ private_key VARCHAR(100) NULL,
+ subject VARCHAR(254) NULL,
+ checked_at DATETIME NULL,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+INSERT IGNORE INTO internet_push_settings(id) VALUES (1);
+CREATE TABLE IF NOT EXISTS internet_push_devices (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT UNSIGNED NOT NULL,
+ endpoint TEXT NOT NULL,
+ endpoint_hash CHAR(64) NOT NULL UNIQUE,
+ p256dh VARCHAR(100) NOT NULL,
+ auth VARCHAR(32) NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY(user_id) REFERENCES internet_users(id),
+ INDEX(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_push_outbox (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ notification_id BIGINT UNSIGNED NOT NULL,
+ device_id BIGINT UNSIGNED NOT NULL,
+ status VARCHAR(16) NOT NULL DEFAULT 'pending',
+ attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+ next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ lease_until DATETIME NULL,
+ last_error VARCHAR(200) NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ sent_at DATETIME NULL,
+ UNIQUE(notification_id,device_id),
+ FOREIGN KEY(notification_id) REFERENCES internet_client_notifications(id) ON DELETE CASCADE,
+ FOREIGN KEY(device_id) REFERENCES internet_push_devices(id) ON DELETE CASCADE,
+ INDEX(status,next_attempt_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- Отзыв входа при сбросе пароля и удалении аккаунта; длительный вход по защищённому cookie.
+CREATE TABLE IF NOT EXISTS internet_auth_state (
+ user_id BIGINT UNSIGNED PRIMARY KEY,
+ version INT UNSIGNED NOT NULL DEFAULT 1,
+ deleted_at DATETIME NULL,
+ FOREIGN KEY(user_id) REFERENCES internet_users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS internet_remember_tokens (
+ selector CHAR(24) PRIMARY KEY,
+ user_id BIGINT UNSIGNED NOT NULL,
+ validator_hash CHAR(64) NOT NULL,
+ previous_hash CHAR(64) NULL,
+ previous_until DATETIME NULL,
+ password_fingerprint CHAR(64) NOT NULL,
+ expires_at DATETIME NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ last_used_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(user_id) REFERENCES internet_users(id),
+ INDEX(user_id), INDEX(expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

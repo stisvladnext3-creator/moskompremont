@@ -1,0 +1,12 @@
+{
+  "require": {
+    "minishlink/web-push": "9.0.4"
+  },
+  "config": {
+    "platform": {
+      "php": "8.1.0"
+    },
+    "allow-plugins": {}
+  },
+  "license": "proprietary"
+}
