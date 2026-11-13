@@ -37,7 +37,7 @@
     });
   };
   function signedOut() {
-    authEpoch++; user = null; conversation = null; notificationPage = 0; notificationBaseline = null; templates.clear(); pushInfo = null; $('notification-toast').hidden = true; $('notifications-unread').hidden = $('notifications-tab-unread').hidden = true; $('reply-template-tools').hidden = true; clearRouterHostPreview(); setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('service-notice-form').reset(); $('service-notice-preview').textContent = ''; $('service-notice-saved').textContent = ''; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
+    authEpoch++; user = null; conversation = null; clearSubscriptionHostPreview(); notificationPage = 0; notificationBaseline = null; templates.clear(); pushInfo = null; $('notification-toast').hidden = true; $('notifications-unread').hidden = $('notifications-tab-unread').hidden = true; $('reply-template-tools').hidden = true; clearRouterHostPreview(); setKeeneticVisibility(false); clearKeeneticManagement(); keeneticUsersLoaded = false; $('monitor-token-value').value = ''; $('monitor-token-box').hidden = true; $('monitor-form').reset(); $('service-notice-form').reset(); $('service-notice-preview').textContent = ''; $('service-notice-saved').textContent = ''; $('auth-section').hidden = false; $('cabinet-section').hidden = true; $('conversation').hidden = true;
     for (const id of ['subscriptions-list', 'claims-list', 'orders-list', 'tickets-list', 'admin-tickets', 'admin-clients', 'admin-terms', 'keenetic-files', 'admin-keenetic-files', 'mail-diagnostics', 'admin-users', 'admin-orders', 'admin-subscriptions', 'admin-claims', 'router-keys-list', 'admin-router-keys', 'conversation-messages', 'admin-accounts', 'admin-templates', 'notifications-list', 'push-diagnostics']) $(id).replaceChildren();
     document.querySelectorAll('#cabinet-section form').forEach(form => form.reset()); $('reply-form').reset(); assignmentUsers.clear(); assignmentUsersLoaded = false; routerKeyUsersLoaded = false; $('keenetic-user').replaceChildren(new Option('Выберите клиента', '')); $('router-key-user').replaceChildren(new Option('Выберите клиента', '')); $('assignment-user').replaceChildren(new Option('Выберите клиента', '')); resetDirectRows();
   }
@@ -443,6 +443,31 @@
     }
     pager('terms-pager', 'terms', data.subscriptions.length, data.total);
   }
+  let subscriptionHostPreview = null, subscriptionHostRequest = 0;
+  function clearSubscriptionHostPreview() {
+    subscriptionHostRequest++; subscriptionHostPreview = null; $('subscription-host-preview').hidden = true; $('subscription-host-items').replaceChildren(); $('subscription-host-summary').textContent = '';
+  }
+  $('subscription-host-form').oninput = clearSubscriptionHostPreview;
+  $('subscription-host-form').onsubmit = e => {
+    e.preventDefault(); run(e.submitter, async () => {
+      clearSubscriptionHostPreview(); const request = subscriptionHostRequest, input = Object.fromEntries(new FormData(e.target)), data = await api('admin_subscription_host_preview', input);
+      if (!user?.is_admin || request !== subscriptionHostRequest || JSON.stringify(input) !== JSON.stringify(Object.fromEntries(new FormData(e.target)))) return;
+      subscriptionHostPreview = data; $('subscription-host-preview').hidden = false;
+      $('subscription-host-summary').textContent = 'К замене: ' + data.changed + '. Уже указан этот адрес: ' + data.already_same + '. Пропущено: ' + data.skipped + '. Новый адрес: ' + data.new_host + '.';
+      for (const item of data.items) {
+        const box = el('div', null, 'router-host-preview-item'); box.append(el('strong', '#' + item.id + ' · ' + item.name), el('p', item.owner || (item.user_id ? 'Клиент #' + item.user_id : 'Свободная подписка'), 'account-muted'), el('p', item.old_host + ' → ' + item.new_host)); $('subscription-host-items').append(box);
+      }
+      if (data.changed > data.items.length) $('subscription-host-items').append(el('p', 'Показаны первые ' + data.items.length + ' из ' + data.changed + ' изменений.', 'account-muted'));
+      $('subscription-host-apply').hidden = !data.changed;
+      if (!data.changed) message('Подходящих подписок для изменения нет. Проверьте адрес и фильтр.');
+    });
+  };
+  $('subscription-host-apply').onclick = e => run(e.target, async () => {
+    const preview = subscriptionHostPreview; if (!preview) throw Error('Сначала выполните предпросмотр замены.');
+    if (!confirm('Заменить домен / IP на «' + preview.new_host + '» в ' + preview.changed + ' ссылках подписок? Порт, путь и остальные параметры сохранятся.')) return;
+    const data = await api('admin_subscription_host_apply', { preview_token: preview.preview_token }); clearSubscriptionHostPreview(); await loadAdminSubscriptions(); await updateSummary(); message('Адрес обновлён. Изменено подписок: ' + data.changed + '. В кабинетах клиентов обновятся ссылки, дата изменения и уведомления.');
+  });
+
   function clearRouterHostPreview() {
     routerHostPreview = null; $('router-host-preview').hidden = true; $('router-host-items').replaceChildren(); $('router-host-summary').textContent = '';
   }

@@ -2,8 +2,9 @@
 
 Кабинет на PHP/MySQL: подписки и отдельные ключи для роутеров клиентов, ручная выдача с оплатой и без неё, переписка с фотографиями и разделы администратора.
 
-- [Скачать обновление кабинета v16](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v16-update.zip)
+- [Скачать обновление кабинета v17](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-cabinet-v17-update.zip)
 - [Полный комплект раздела и кабинета](https://github.com/stisvladnext3-creator/moskompremont/raw/refs/heads/main/downloads/moskompremont-account-php.zip)
+- [Установка v17: замена домена / IP в базе подписок](downloads/UPDATE-CABINET-V17.md)
 - [Установка v16: уведомления, аккаунты, шаблоны и архив](downloads/UPDATE-CABINET-V16.md)
 - [Установка v15: статус сервиса, удаление, адреса ключей и сроки подписок](downloads/UPDATE-CABINET-V15.md)
 - [Установка v14: редактируемое объявление на сайте и в статусе серверов](downloads/UPDATE-CABINET-V14.md)
@@ -25,6 +26,12 @@
 - [Исходники модуля](module/)
 - [Предпросмотр клиента](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=client)
 - [Предпросмотр администратора](https://moskompremont-account-preview.vilarh973.chatgpt.site/account.html?demo=admin)
+
+## Замена домена / IP в базе подписок (v17)
+
+В «Админка → База подписок» добавлена массовая замена адреса с необязательным фильтром по текущему домену/IP, предпросмотром и применением. Меняется только серверная часть адреса: порт, путь, идентификаторы и остальные параметры сохраняются. Обрабатываются выданные и свободные подписки; клиентам обновляются даты и создаются уведомления. Изменения выполняются одной транзакцией с проверкой актуальности предпросмотра.
+
+Поверх v16 достаточно загрузить обновление, сохранив свои конфиги и QR: **импорт SQL не нужен**. Для v15 требуется миграция `009-client-updates.sql`, для старых версий — полный `schema.sql`. Точный список файлов и шаги — в [UPDATE-CABINET-V17.md](downloads/UPDATE-CABINET-V17.md).
 
 ## Уведомления и управление аккаунтами (v16)
 

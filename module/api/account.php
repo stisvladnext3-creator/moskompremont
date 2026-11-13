@@ -19,6 +19,7 @@ require_once dirname(__DIR__).'/private/monitoring.php';
 require_once dirname(__DIR__).'/private/keenetic.php';
 require_once dirname(__DIR__).'/private/service-notice.php';
 require_once dirname(__DIR__).'/private/router-hosts.php';
+require_once dirname(__DIR__).'/private/subscription-hosts.php';
 require_once dirname(__DIR__).'/private/subscription-delete.php';
 $db=null;
 try {
@@ -30,7 +31,7 @@ try {
  $db=new PDO($config['dsn'],$config['db_user'],$config['db_password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);query($db,"SET time_zone='+00:00'");
  $user=accountSessionUser($db,$config);$_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
  $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
- $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete','admin_service_notice_save','admin_router_host_preview','admin_router_host_apply','admin_delete_subscription','admin_subscription_term_save','notification_read','admin_template_save','admin_template_delete','push_subscribe','push_unsubscribe','push_device_status','admin_push_setup','admin_push_save','admin_push_retry','admin_account_password','admin_account_delete'];
+ $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete','admin_service_notice_save','admin_router_host_preview','admin_router_host_apply','admin_subscription_host_preview','admin_subscription_host_apply','admin_delete_subscription','admin_subscription_term_save','notification_read','admin_template_save','admin_template_delete','push_subscribe','push_unsubscribe','push_device_status','admin_push_setup','admin_push_save','admin_push_retry','admin_account_password','admin_account_delete'];
  if (in_array($action,$writes,true)) {
   if ($method!=='POST')problem('Требуется POST.',405);
   if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
@@ -58,7 +59,7 @@ try {
   try {if(!empty($GLOBALS['internet_push_queued']))sendClientPush($db,$config,20);if(!empty($GLOBALS['internet_mail_queued']))sendPendingMail($db,$config,1);}catch(Throwable $e){error_log('Internet mail: queue processing failed.');}
   finally {while(ob_get_level()>$level){if(!@ob_end_clean())break;}}
  });
- if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>16,'photo_limits'=>photoLimits()]);
+ if ($action==='me')answer(['user'=>$user?publicUser($user,$config):null,'csrf'=>$_SESSION['csrf'],'payment'=>payment($config),'version'=>17,'photo_limits'=>photoLimits()]);
  if ($action==='register') {
   limitRate($db,'register',10);$first=field($body,'first_name',320);$last=field($body,'last_name',320);
   if (!$first || !$last || preg_match_all('/./u',$first)>80 || preg_match_all('/./u',$last)>80)problem('Укажите имя и фамилию (до 80 символов).');
@@ -94,6 +95,8 @@ try {
   $rows=query($db,'SELECT s.id,s.name,s.user_id,u.first_name,u.last_name,u.email FROM internet_subscriptions s LEFT JOIN internet_users u ON u.id=s.user_id'.$where." ORDER BY s.id DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();answer(['subscriptions'=>withSubscriptionTerms($db,$rows,true),'total'=>$total]);
  }
  if ($action==='admin_delete_subscription')answer(deleteSubscription($db,$body,$userId));
+ if ($action==='admin_subscription_host_preview')answer(subscriptionHostPreview($db,$body));
+ if ($action==='admin_subscription_host_apply')answer(subscriptionHostApply($db,$body,$userId));
  if ($action==='admin_router_host_preview')answer(routerHostPreview($db,$body));
  if ($action==='admin_router_host_apply')answer(routerHostApply($db,$body,$userId));
  if ($action==='admin_service_notice')answer(serviceNoticeAdmin($db));
