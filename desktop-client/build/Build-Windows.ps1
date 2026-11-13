@@ -150,17 +150,19 @@ if ((Get-FileHash "$Install/MoskomVPN.exe").Hash -eq $PreviousHash) { throw 'Upg
 $DesktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'МосКомпРемонт VPN.lnk'
 $StartLink = Join-Path ([Environment]::GetFolderPath('Programs')) 'МосКомпРемонт VPN.lnk'
 if (!(Test-Path $DesktopLink) -or !(Test-Path $StartLink)) { throw 'Installer did not create shortcuts.' }
-$Shell = New-Object -ComObject WScript.Shell
+Add-Type -Path "$PSScriptRoot/ShellLinkReader.cs"
 function VerifyInstallerShortcuts([string]$Label) {
     $ExpectedTargetHash = (Get-FileHash "$Install/MoskomVPN.exe").Hash
     $ExpectedIconHash = (Get-FileHash "$Client/branding/moskom-vpn.ico").Hash
     $Details = foreach ($Link in @($DesktopLink, $StartLink)) {
         if (!(Test-Path -LiteralPath $Link)) { throw "Installer did not create $Link" }
-        $Shortcut = $Shell.CreateShortcut($Link)
+        $CopyName = if ($Link -eq $DesktopLink) { 'desktop' } else { 'start-menu' }
+        Copy-Item -LiteralPath $Link "$Output/smoke/$CopyName-$Label.lnk"
+        $Shortcut = [Moskom.Build.ShellLinkReader]::Read($Link)
         # Windows can return short DOS paths from a shell link. Verify the actual
         # linked files, rather than requiring one spelling of the installation path.
-        $Target = [Environment]::ExpandEnvironmentVariables($Shortcut.TargetPath).Trim('"')
-        $Icon = [Environment]::ExpandEnvironmentVariables(($Shortcut.IconLocation -replace ',\s*-?\d+\s*$', '')).Trim('"')
+        $Target = [Environment]::ExpandEnvironmentVariables($Shortcut.Target).Trim('"')
+        $Icon = [Environment]::ExpandEnvironmentVariables($Shortcut.Icon).Trim('"')
         [ordered]@{link=$Link;target=$Target;icon=$Icon;expectedTarget="$Install/MoskomVPN.exe"}
     }
     $Details | ConvertTo-Json | Tee-Object -FilePath "$Output/smoke/shortcuts-$Label.json" | Write-Host
