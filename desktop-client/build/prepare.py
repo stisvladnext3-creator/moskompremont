@@ -65,6 +65,23 @@ edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', '''        var lstMod
             return;
         }''', '''        var lstModel = await AppManager.Instance.ProfileModels("", "") ?? [];''')
 edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'Text = it.GetSummary()', 'Text = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary()')
+# Default-server recovery must remain inside the selected subscription, including
+# an empty subscription. The upstream fallback otherwise picks any stored server.
+edit('v2rayN/ServiceLib/Handler/ConfigHandler.cs', '''        var item = await AppManager.Instance.GetProfileItem(config.IndexId);
+        if (item is null)
+        {
+            var item2 = await SQLiteHelper.Instance.TableAsync<ProfileItem>().FirstOrDefaultAsync();
+            await SetDefaultServerIndex(config, item2?.IndexId);
+            return item2;
+        }
+
+        return item;''', '''        var item = await AppManager.Instance.GetProfileItem(config.IndexId);
+        var group = ServiceLib.Services.MoskomLauncherRuntime.Preferences.SelectedSubscriptionId;
+        if (item != null && (group == null || (item.Subid ?? "") == group)) return item;
+        var candidates = await AppManager.Instance.ProfileItems("") ?? [];
+        var candidate = candidates.FirstOrDefault(p => group == null || (p.Subid ?? "") == group);
+        if (candidate != null) await SetDefaultServerIndex(config, candidate.IndexId);
+        return candidate;''')
 # No unattended upstream updater may replace the branded application or bundled rules.
 edit('v2rayN/ServiceLib/Manager/TaskManager.cs','        Task.Run(ScheduledTasks);','        // Updates are explicit in the launcher; binary updates are versioned installer releases.')
 app='v2rayN/v2rayN.Desktop/App.axaml.cs'

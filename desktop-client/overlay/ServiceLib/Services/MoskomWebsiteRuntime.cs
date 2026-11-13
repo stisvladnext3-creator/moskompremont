@@ -136,10 +136,15 @@ public static partial class MoskomLauncherRuntime
                 if (preferCabinet || await ConfigHandler.GetDefaultServer(config) == null)
                 {
                     var currentGroups = await AppManager.Instance.SubItems() ?? [];
-                    var preferredId = !preferCabinet && selected != null && !activeRemoved ? selected.Subid
+                    var preferredId = !preferCabinet && currentGroups.Any(g => g.Id == Preferences.SelectedSubscriptionId) ? Preferences.SelectedSubscriptionId
+                        : !preferCabinet && selected != null && !activeRemoved ? selected.Subid
                         : currentGroups.FirstOrDefault(g => active.Any(s => g.Memo == Tag(s)))?.Id;
                     var candidates = string.IsNullOrEmpty(preferredId) ? null : await AppManager.Instance.ProfileItems(preferredId);
-                    if (candidates?.FirstOrDefault() is { } candidate) await ConfigHandler.SetDefaultServerIndex(config, candidate.IndexId);
+                    if (candidates?.FirstOrDefault() is { } candidate)
+                    {
+                        await ConfigHandler.SetDefaultServerIndex(config, candidate.IndexId);
+                        RememberSubscription(candidate.Subid ?? "");
+                    }
                 }
                 await vm.RefreshForLauncherAsync(); await EnsureServerAsync(); await ConfigHandler.SaveConfig(config); ListsChanged?.Invoke();
             }

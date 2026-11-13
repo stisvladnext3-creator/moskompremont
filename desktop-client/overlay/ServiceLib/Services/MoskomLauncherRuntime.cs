@@ -94,6 +94,7 @@ public static partial class MoskomLauncherRuntime
             var config = AppManager.Instance.Config;
             var selected = await ConfigHandler.GetDefaultServer(config);
             if (selected == null) throw new InvalidOperationException("Сначала добавьте ссылку кнопкой «+» и выберите сервер.");
+            if (Preferences.SelectedSubscriptionId is { } group && (selected.Subid ?? "") != group) throw new InvalidOperationException("Выберите сервер выбранной подписки.");
             if (SmokeTest) throw new InvalidOperationException("В проверочном режиме подключение отключено.");
             AllowCoreReload = true;
             await vm.Reload();
@@ -175,6 +176,7 @@ public static partial class MoskomLauncherRuntime
                 if (profiles.Count == 0) throw new InvalidOperationException("Подписка добавлена, но список серверов не получен. Проверьте ссылку и нажмите «Обновить».");
                 config.SubIndexId = sub.Id;
                 await ConfigHandler.SetDefaultServerIndex(config, profiles.First().IndexId);
+                RememberSubscription(sub.Id);
             }
             await vm.RefreshForLauncherAsync();
             await EnsureServerAsync(); ListsChanged?.Invoke();
@@ -199,24 +201,18 @@ public static partial class MoskomLauncherRuntime
         }
         finally { Operations.Release(); }
     }
-    private static async Task EnsureServerAsync()
-    {
-        var vm = ViewModel!; var config = AppManager.Instance.Config;
-        if ((await ConfigHandler.GetDefaultServer(config)) == null)
-        {
-            var first = vm.StatusBarViewModel.Servers.FirstOrDefault(s => !s.ID.IsNullOrEmpty());
-            if (first != null) await ConfigHandler.SetDefaultServerIndex(config, first.ID);
-        }
-    }
     public static async Task SelectServerAsync(ComboItem item)
     {
         if (item.ID.IsNullOrEmpty()) return;
         if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
         try
         {
+            var config = AppManager.Instance.Config;
+            var profile = await AppManager.Instance.GetProfileItem(item.ID) ?? throw new InvalidOperationException("Сервер больше недоступен. Обновите подписку.");
             var wasOn = Connection?.IsConnected == true;
             if (wasOn) await Connection!.DisconnectAsync();
-            await ConfigHandler.SetDefaultServerIndex(AppManager.Instance.Config, item.ID);
+            config.SubIndexId = profile.Subid ?? ""; RememberSubscription(config.SubIndexId);
+            await ConfigHandler.SetDefaultServerIndex(config, item.ID); ListsChanged?.Invoke();
             if (wasOn) await Connection!.ConnectAsync();
         }
         finally { Operations.Release(); }

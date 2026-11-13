@@ -16,6 +16,8 @@ public sealed class MoskomLauncherView : UserControl
 {
     private readonly MainWindowViewModel _vm;
     private readonly Window _owner;
+    private readonly ComboBox _subscriptions = new() { Name = "MoskomSubscriptions", HorizontalAlignment = HorizontalAlignment.Stretch, MinHeight = 48, MaxDropDownHeight = 280 };
+    private readonly TextBlock _subscriptionInfo = new() { Name = "MoskomSubscriptionInfo", FontSize = 12, Foreground = Brush.Parse("#A7B7D0"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly ComboBox _servers = new() { Name = "MoskomServers", HorizontalAlignment = HorizontalAlignment.Stretch, MinHeight = 48 };
     private readonly ComboBox _routing = new() { Name = "MoskomRouting", HorizontalAlignment = HorizontalAlignment.Stretch, MinHeight = 48 };
     private readonly Button _power = new() { Name = "MoskomPower", Width = 154, Height = 154, CornerRadius = new(77), HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
@@ -31,6 +33,7 @@ public sealed class MoskomLauncherView : UserControl
     private readonly TextBlock _hint = new() { Name = "MoskomHint", Text = "Скопируйте ссылку-подписку и нажмите «+».", FontSize = 13, Foreground = Brush.Parse("#A7B7D0"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, MinHeight = 42 };
     private readonly TextBlock _powerLabel = new() { Text = "Включить VPN", Foreground = Brushes.White, FontSize = 13, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
     private bool _refreshing;
+    private bool _refreshQueued;
     private bool _operation;
     private string? _checkedServer;
 
@@ -69,9 +72,11 @@ public sealed class MoskomLauncherView : UserControl
         AutomationProperties.SetName(_power, "Включить VPN");
         shell.Children.Add(new Border { Child = _power, Padding = new(0, 12, 0, 0) });
         shell.Children.Add(_status); shell.Children.Add(_hint);
-        var serverPanel = new StackPanel(); serverPanel.Children.Add(Label("Сервер"));
-        var serverRow = new Grid { ColumnDefinitions = new("*,46"), ColumnSpacing = 8 };
-        serverRow.Children.Add(_servers); Grid.SetColumn(_plus, 1); serverRow.Children.Add(_plus); serverPanel.Children.Add(serverRow); shell.Children.Add(serverPanel);
+        var subscriptionPanel = new StackPanel(); subscriptionPanel.Children.Add(Label("Подписка"));
+        var subscriptionRow = new Grid { ColumnDefinitions = new("*,46"), ColumnSpacing = 8 };
+        subscriptionRow.Children.Add(_subscriptions); Grid.SetColumn(_plus, 1); subscriptionRow.Children.Add(_plus); subscriptionPanel.Children.Add(subscriptionRow); shell.Children.Add(subscriptionPanel); shell.Children.Add(_subscriptionInfo);
+        AutomationProperties.SetName(_subscriptions, "Выберите подписку");
+        var serverPanel = new StackPanel(); serverPanel.Children.Add(Label("Сервер")); serverPanel.Children.Add(_servers); shell.Children.Add(serverPanel);
         ToolTip.SetTip(_plus, "Добавить скопированную ссылку или ключ"); AutomationProperties.SetName(_plus, "Добавить ссылку из буфера обмена");
         var routingPanel = new StackPanel(); routingPanel.Children.Add(Label("Маршрутизация · Russia")); routingPanel.Children.Add(_routing); shell.Children.Add(routingPanel);
         var actions = new Grid { ColumnDefinitions = new("*,*"), ColumnSpacing = 8 }; _update.FontSize = 12;
@@ -85,7 +90,7 @@ public sealed class MoskomLauncherView : UserControl
         Content = new ScrollViewer { Content = shell, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
         _servers.ItemTemplate = new FuncDataTemplate<ComboItem>((x, _) => new TextBlock { Text = x?.Text, TextTrimming = TextTrimming.CharacterEllipsis });
         _routing.ItemTemplate = new FuncDataTemplate<RoutingItem>((x, _) => new TextBlock { Text = x?.Remarks?.Replace("RUv1-", ""), TextTrimming = TextTrimming.CharacterEllipsis });
-        _servers.ItemsSource = vm.StatusBarViewModel.Servers;
+        _subscriptions.ItemTemplate = new FuncDataTemplate<MoskomSubscriptionGroup>((x, _) => new TextBlock { Text = x?.DisplayName, TextTrimming = TextTrimming.CharacterEllipsis });
         _routing.ItemsSource = vm.StatusBarViewModel.RoutingItems;
         _power.Click += async (_, _) =>
         {
@@ -114,6 +119,11 @@ public sealed class MoskomLauncherView : UserControl
         _websiteStatus.Click += async (_, _) => await MoskomWebsiteViews.ShowStatusAsync(_owner);
         _account.Click += async (_, _) => await MoskomWebsiteViews.ShowAccountAsync(_owner);
         MoskomSettingsViews.AttachUpdates(owner);
+        _subscriptions.SelectionChanged += async (_, _) =>
+        {
+            if (!_refreshing && _subscriptions.SelectedItem is MoskomSubscriptionGroup group)
+                await RunAsync(async () => { await MoskomLauncherRuntime.SelectSubscriptionAsync(group.Id); ResetAvailability(); await RefreshAsync(); _hint.Text = group.Servers.Count > 0 ? "Выберите сервер этой подписки и включите VPN." : "В выбранной подписке пока нет серверов. Нажмите «Обновить серверы»."; });
+        };
         _servers.SelectionChanged += async (_, _) => { if (!_refreshing && _servers.SelectedItem is ComboItem item) { ResetAvailability(); await RunAsync(() => MoskomLauncherRuntime.SelectServerAsync(item)); } };
         _routing.SelectionChanged += async (_, _) => { if (!_refreshing && _routing.SelectedItem is RoutingItem item) await RunAsync(() => MoskomLauncherRuntime.SelectRoutingAsync(item)); };
         help.Click += async (_, _) => await MoskomHelpView.ShowAsync(owner);
@@ -125,20 +135,30 @@ public sealed class MoskomLauncherView : UserControl
         ((INotifyCollectionChanged)vm.StatusBarViewModel.RoutingItems).CollectionChanged += (_, _) => Dispatcher.UIThread.Post(async () => await RefreshAsync());
         RenderState(MoskomConnectionState.Disconnected);
         RenderWebsite();
-        AttachedToVisualTree += async (_, _) => { await vm.RefreshForLauncherAsync(); await vm.StatusBarViewModel.RefreshRoutingsMenu(); await RefreshAsync(); await MoskomLauncherRuntime.StartWebsiteAsync(); };
+        AttachedToVisualTree += async (_, _) => { await vm.RefreshForLauncherAsync(); await vm.StatusBarViewModel.RefreshRoutingsMenu(); await MoskomLauncherRuntime.InitializeSubscriptionSelectionAsync(); await RefreshAsync(); await MoskomLauncherRuntime.StartWebsiteAsync(); };
     }
     private async Task RefreshAsync()
     {
-        if (_refreshing) return;
+        if (_refreshing) { _refreshQueued = true; return; }
         _refreshing = true;
         try
         {
-            if (_checkedServer != null && _checkedServer != AppManager.Instance.Config.IndexId) ResetAvailability();
-            _servers.SelectedItem = _vm.StatusBarViewModel.Servers.FirstOrDefault(x => x.ID == AppManager.Instance.Config.IndexId);
-            var active = (await AppManager.Instance.RoutingItems()).FirstOrDefault(x => x.IsActive);
-            _routing.SelectedItem = _vm.StatusBarViewModel.RoutingItems.FirstOrDefault(x => x.Id == active?.Id);
+            do
+            {
+                _refreshQueued = false;
+                var groups = await MoskomLauncherRuntime.SubscriptionGroupsAsync();
+                var selected = MoskomLauncherRuntime.SelectedSubscription(groups);
+                _subscriptions.ItemsSource = groups; _subscriptions.SelectedItem = selected;
+                _servers.ItemsSource = selected?.Servers ?? [];
+                _servers.SelectedItem = selected?.Servers.FirstOrDefault(x => x.ID == AppManager.Instance.Config.IndexId);
+                _subscriptionInfo.IsVisible = selected != null && selected.Servers.Count == 0;
+                _subscriptionInfo.Text = "В этой подписке пока нет серверов. Нажмите «Обновить серверы».";
+                if (_checkedServer != null && _checkedServer != AppManager.Instance.Config.IndexId) ResetAvailability();
+                var active = (await AppManager.Instance.RoutingItems()).FirstOrDefault(x => x.IsActive);
+                _routing.SelectedItem = _vm.StatusBarViewModel.RoutingItems.FirstOrDefault(x => x.Id == active?.Id);
+            } while (_refreshQueued);
         }
-        finally { _refreshing = false; }
+        finally { _refreshing = false; RefreshEnabled(); }
     }
     private void ResetAvailability()
     {
@@ -157,8 +177,11 @@ public sealed class MoskomLauncherView : UserControl
     {
         var state = MoskomLauncherRuntime.Connection?.State ?? MoskomConnectionState.Disconnected;
         var busy = _operation || state is MoskomConnectionState.Connecting or MoskomConnectionState.Disconnecting;
-        _servers.IsEnabled = _routing.IsEnabled = _plus.IsEnabled = _update.IsEnabled = _availability.IsEnabled = _account.IsEnabled = _menu.IsEnabled = !busy;
-        _power.IsEnabled = state == MoskomConnectionState.Connecting || !busy;
+        _routing.IsEnabled = _plus.IsEnabled = _update.IsEnabled = _account.IsEnabled = _menu.IsEnabled = !busy;
+        _subscriptions.IsEnabled = !busy && _subscriptions.Items.Count > 0;
+        _servers.IsEnabled = !busy && _servers.Items.Count > 0;
+        _availability.IsEnabled = !busy && _servers.SelectedItem is ComboItem;
+        _power.IsEnabled = state == MoskomConnectionState.Connecting || !busy && (state == MoskomConnectionState.Connected || _servers.SelectedItem is ComboItem);
     }
     private void RenderState(MoskomConnectionState state)
     {
@@ -168,7 +191,7 @@ public sealed class MoskomLauncherView : UserControl
         _powerLabel.Text = state switch { MoskomConnectionState.Connecting => "Отменить", MoskomConnectionState.Connected => "Выключить VPN", _ => "Включить VPN" };
         _status.Text = state switch { MoskomConnectionState.Connecting => "Проверяем подключение…", MoskomConnectionState.Connected => "VPN включён", MoskomConnectionState.Disconnecting => "Выключаем…", MoskomConnectionState.Failed => "Не удалось подключиться", _ => "VPN выключен" };
         if (on) _hint.Text = "Системный прокси включён. Используется выбранная маршрутизация.";
-        else if (state == MoskomConnectionState.Disconnected) _hint.Text = _vm.StatusBarViewModel.Servers.Count == 0 ? "Скопируйте ссылку-подписку и нажмите «+»." : "Выберите сервер и нажмите большую кнопку.";
+        else if (state == MoskomConnectionState.Disconnected) _hint.Text = _vm.StatusBarViewModel.Servers.Count == 0 ? "Скопируйте ссылку-подписку и нажмите «+»." : "Выберите подписку, затем сервер и нажмите большую кнопку.";
         RefreshEnabled();
     }
     private void RenderWebsite()

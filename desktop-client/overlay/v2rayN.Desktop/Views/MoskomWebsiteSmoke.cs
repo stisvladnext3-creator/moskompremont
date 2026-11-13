@@ -10,7 +10,12 @@ namespace v2rayN.Desktop.Views;
 
 internal static class MoskomWebsiteSmoke
 {
-    internal sealed record Report(bool LoginForm, bool MultipleSubscriptions, bool RotatedLink, bool ExpiredSkipped, bool RevokedRemoved, bool SessionEncrypted, bool LogoutPreservedManual, bool AvailabilityChecked);
+    internal sealed record Report(bool LoginForm, bool MultipleSubscriptions, bool RotatedLink, bool ExpiredSkipped, bool RevokedRemoved, bool SessionEncrypted, bool LogoutPreservedManual, bool AvailabilityChecked, bool SubscriptionPicker, bool ServerIsolation, bool SelectionPreserved, bool EmptySubscriptionSafe, bool StandaloneGroup);
+    private static async Task WaitFor(Func<bool> ready)
+    {
+        for (var i = 0; i < 160; i++) { if (ready()) return; await Task.Delay(50); }
+        throw new InvalidOperationException("Subscription picker did not reach its expected state.");
+    }
     public static async Task<Report> RunAsync(Window owner, MainWindowViewModel vm)
     {
         using var stop = new CancellationTokenSource();
@@ -56,14 +61,17 @@ internal static class MoskomWebsiteSmoke
                                 rows.Add(new { id = 801, name = "VPN-A", url = new Uri(root, revision == 0 ? "sub/a" : "sub/a2").AbsoluteUri, content_updated_at = revision == 0 ? "2026-11-13 20:00:00" : "2026-11-13 20:01:00" });
                                 rows.Add(new { id = 802, name = "VPN-B", url = new Uri(root, "sub/b").AbsoluteUri, content_updated_at = "2026-11-13 20:00:00" });
                                 rows.Add(new { id = 803, name = "Expired", is_expired = true, expires_at = "2020-01-01 00:00:00" });
+                                rows.Add(new { id = 804, name = "VPN-EMPTY", url = new Uri(root, "sub/empty").AbsoluteUri, content_updated_at = "2026-11-13 20:00:00" });
                             }
                             body = JsonSerializer.Serialize(new { subscriptions = rows });
                         }
                     }
                     else if (path.StartsWith("/sub/", StringComparison.Ordinal))
                     {
-                        var p = path.EndsWith("b", StringComparison.Ordinal) ? 6542 : path.EndsWith("a2", StringComparison.Ordinal) ? 6543 : 6541;
-                        body = Convert.ToBase64String(Encoding.UTF8.GetBytes($"vless://33333333-3333-4333-8333-333333333333@127.0.0.1:{p}?encryption=none&security=none&type=tcp#Cabinet-Test"));
+                        var isB = path.EndsWith("b", StringComparison.Ordinal);
+                        var p = isB ? 6542 : path.EndsWith("a2", StringComparison.Ordinal) ? 6543 : 6541;
+                        var content = path.EndsWith("empty", StringComparison.Ordinal) ? "" : string.Join("\n", Enumerable.Range(0, isB ? 3 : 2).Select(i => $"vless://33333333-3333-4333-8333-333333333333@127.0.0.1:{p + i * 10}?encryption=none&security=none&type=tcp#Cabinet-{(isB ? "B" : "A")}-{i + 1}"));
+                        body = Convert.ToBase64String(Encoding.UTF8.GetBytes(content));
                     }
                     else if (path.Contains("service-notice.php")) body = "{\"enabled\":true,\"level\":\"ok\",\"message\":\"Статус и подписки синхронизируются с личным кабинетом.\"}";
                     else if (path.Contains("server-status.php"))
@@ -95,24 +103,58 @@ internal static class MoskomWebsiteSmoke
             await dialogTask.WaitAsync(TimeSpan.FromSeconds(25));
             var groups = (await AppManager.Instance.SubItems()).Where(g => g.Memo?.StartsWith("moskom-cabinet:", StringComparison.Ordinal) == true).ToList();
             var selectedCabinet = await ConfigHandler.GetDefaultServer(AppManager.Instance.Config);
-            var multiple = MoskomLauncherRuntime.CabinetUser?.Id == 41 && groups.Count == 2 && vm.StatusBarViewModel.Servers.Count == initial + 2 && groups.Any(g => g.Id == selectedCabinet?.Subid);
+            var multiple = MoskomLauncherRuntime.CabinetUser?.Id == 41 && groups.Count == 3 && vm.StatusBarViewModel.Servers.Count == initial + 5 && groups.Any(g => g.Id == selectedCabinet?.Subid);
             var expired = groups.All(g => !g.Memo!.EndsWith(":803", StringComparison.Ordinal));
+            var aId = groups.First(g => g.Memo!.EndsWith(":801", StringComparison.Ordinal)).Id;
             var bId = groups.First(g => g.Memo!.EndsWith(":802", StringComparison.Ordinal)).Id;
+            var emptyId = groups.First(g => g.Memo!.EndsWith(":804", StringComparison.Ordinal)).Id;
+            T Main<T>(string name) where T : Control => owner.GetVisualDescendants().OfType<T>().First(c => c.Name == name);
+            var subscriptionPicker = Main<ComboBox>("MoskomSubscriptions"); var serverPicker = Main<ComboBox>("MoskomServers");
+            async Task Pick(string id, int count)
+            {
+                await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Id == id));
+                subscriptionPicker.SelectedItem = subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().First(g => g.Id == id);
+                await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.SelectedItem is MoskomSubscriptionGroup group && group.Id == id && serverPicker.Items.Count == count && MoskomLauncherRuntime.Preferences.SelectedSubscriptionId == id);
+            }
+            await Pick(aId, 2);
+            var picker = subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Name == "VPN-A") && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Name == "VPN-B");
+            await Pick(bId, 3);
+            var bServers = (await AppManager.Instance.ProfileItems(bId))!.Select(p => p.IndexId).ToHashSet();
+            var isolation = serverPicker.Items.OfType<ComboItem>().Select(p => p.ID).ToHashSet().SetEquals(bServers);
+            var chosenB = serverPicker.Items.OfType<ComboItem>().ElementAt(1).ID;
+            serverPicker.SelectedItem = serverPicker.Items.OfType<ComboItem>().First(p => p.ID == chosenB);
+            await WaitFor(() => subscriptionPicker.IsEnabled && AppManager.Instance.Config.IndexId == chosenB);
+            using (var bitmap = new RenderTargetBitmap(new PixelSize((int)owner.Bounds.Width, (int)owner.Bounds.Height))) { bitmap.Render(owner); bitmap.Save(Path.Combine(folder, "subscriptions.png")); }
+            await vm.RefreshForLauncherAsync(); await MoskomLauncherRuntime.InitializeSubscriptionSelectionAsync();
+            await WaitFor(() => subscriptionPicker.SelectedItem is MoskomSubscriptionGroup g && g.Id == bId && serverPicker.Items.Count == 3 && serverPicker.SelectedItem is ComboItem p && p.ID == chosenB);
+            using var preferences = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Utils.StartupPath(), "launcher-settings.json")));
+            var preserved = preferences.RootElement.GetProperty("SelectedSubscriptionId").GetString() == bId;
+            await Pick(emptyId, 0);
+            var emptySafe = await ConfigHandler.GetDefaultServer(AppManager.Instance.Config) == null && !Main<Button>("MoskomPower").IsEnabled && !Main<Button>("MoskomAvailability").IsEnabled;
+            await MoskomLauncherRuntime.SyncCabinetAsync(false);
+            await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.SelectedItem is MoskomSubscriptionGroup g && g.Id == emptyId && serverPicker.Items.Count == 0);
+            emptySafe &= await ConfigHandler.GetDefaultServer(AppManager.Instance.Config) == null;
+            await Pick(bId, 3);
+            serverPicker.SelectedItem = serverPicker.Items.OfType<ComboItem>().First(p => p.ID == chosenB);
+            await WaitFor(() => subscriptionPicker.IsEnabled && AppManager.Instance.Config.IndexId == chosenB);
             var sealedFile = File.ReadAllBytes(Path.Combine(Utils.StartupPath(), "cabinet-session.dat"));
             using var saved = new MoskomWebsiteClient(root); MoskomSessionVault.Load(saved);
             var encrypted = !Encoding.UTF8.GetString(sealedFile).Contains("smoke-session-opaque", StringComparison.Ordinal) && saved.Cookies.GetCookies(root)["internet_account"]?.Value == "smoke-session-opaque";
             revision = 1; await MoskomLauncherRuntime.SyncCabinetAsync(false);
             groups = (await AppManager.Instance.SubItems()).Where(g => g.Memo?.StartsWith("moskom-cabinet:", StringComparison.Ordinal) == true).ToList();
             var current = await ConfigHandler.GetDefaultServer(AppManager.Instance.Config);
-            var rotated = groups.Count == 2 && groups.Any(g => g.Url.EndsWith("/a2", StringComparison.Ordinal)) && groups.Any(g => g.Id == bId) && current?.Subid == selectedCabinet?.Subid && current?.Port == 6543;
+            var rotated = groups.Count == 3 && groups.Any(g => g.Url.EndsWith("/a2", StringComparison.Ordinal)) && groups.Any(g => g.Id == bId) && (await AppManager.Instance.ProfileItems(aId))!.Any(p => p.Port == 6543);
+            preserved &= current?.Subid == bId && current?.IndexId == chosenB && MoskomLauncherRuntime.Preferences.SelectedSubscriptionId == bId;
             revision = 2; await MoskomLauncherRuntime.SyncCabinetAsync(false);
             var revoked = !(await AppManager.Instance.SubItems()).Any(g => g.Memo?.StartsWith("moskom-cabinet:", StringComparison.Ordinal) == true) && vm.StatusBarViewModel.Servers.Count == initial;
             await MoskomLauncherRuntime.LogoutCabinetAsync();
             var logout = MoskomLauncherRuntime.CabinetUser == null && !File.Exists(Path.Combine(Utils.StartupPath(), "cabinet-session.dat")) && vm.StatusBarViewModel.Servers.Count == initial;
+            await Pick("", 1);
+            var standalone = serverPicker.Items.Count == 1 && (await ConfigHandler.GetDefaultServer(AppManager.Instance.Config))?.Port == 5443 && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().All(g => !g.Name.StartsWith("VPN-", StringComparison.Ordinal));
             MoskomLauncherRuntime.UseWebsiteFixture(root); await MoskomLauncherRuntime.RefreshServiceAsync();
             var check = await MoskomLauncherRuntime.CheckAvailabilityAsync();
             var availability = check.Milliseconds == null && MoskomLauncherRuntime.ServerMonitor?.Nodes.Single().LatencyMs == 258;
-            return new(form, multiple, rotated, expired, revoked, encrypted, logout, availability);
+            return new(form, multiple, rotated, expired, revoked, encrypted, logout, availability, picker, isolation, preserved, emptySafe, standalone);
         }
         finally { stop.Cancel(); listener.Stop(); try { await worker; } catch (OperationCanceledException) { } }
     }

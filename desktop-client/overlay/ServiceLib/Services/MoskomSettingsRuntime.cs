@@ -2,6 +2,7 @@ namespace ServiceLib.Services;
 
 public sealed class MoskomPreferences
 {
+    public string? SelectedSubscriptionId { get; set; }
     public string Dns { get; set; } = "auto";
     public string CustomDns { get; set; } = "";
     public string AppliedBundle { get; set; } = "";
