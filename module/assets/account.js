@@ -96,15 +96,33 @@
   $('refresh-subscriptions').onclick = e => run(e.target, loadSubscriptions);
   $('claim-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { await api('claim_subscriptions', { names: e.target.elements.names.value }); e.target.reset(); await loadSubscriptions(); message('Запрос обработан. Найденные подписки добавлены в кабинет.'); }); };
   function total() {
+    const renewal = $('order-purpose').value === 'renew';
+    $('order-renewal-label').hidden = !renewal; $('order-renewal-subscription').required = renewal; $('order-renewal-subscription').disabled = !renewal;
+    $('order-renewal-note').hidden = !renewal;
+    if (renewal) $('order-form').elements.plan.value = 'monthly';
+    $('order-form').elements.plan.disabled = renewal;
     const form = $('order-form'), count = Number(form.elements.devices.value), monthly = form.elements.plan.value === 'monthly', months = Number(form.elements.months.value), rates = monthly ? [250, 225, 200, 175] : [3000, 2500, 2000, 1650];
     $('order-months-label').hidden = !monthly;
     $('order-total').textContent = Number.isInteger(count) && count >= 1 && count <= 20 ? money(rates[Math.min(count, 4) - 1] * count * (monthly ? months : 1)) + (monthly ? ' за ' + months + ' мес.' : ' разово') : 'Укажите от 1 до 20 устройств';
   }
   $('order-form').oninput = total; total();
-  $('order-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { await api('create_order', { plan: e.target.elements.plan.value, devices: Number(e.target.elements.devices.value), months: e.target.elements.plan.value === 'monthly' ? Number(e.target.elements.months.value) : 1 }); await loadOrders(); message('Заявка создана. Оплатите по QR-коду ниже.'); $('orders-list').scrollIntoView({ behavior: 'smooth' }); }); };
-  function orderCard(order) { const box = el('article', null, 'account-order'); box.dataset.orderId = order.id; box.append(el('h3', (order.plan === 'monthly' ? 'Подписка на ' + (order.months || 1) + ' мес.' : 'Навсегда') + ' · ' + order.devices + ' устр. · ' + money(order.amount)), el('p', 'Заявка ' + order.id, 'account-muted'), el('span', orderStatus[order.status] || order.status, 'status-badge status-' + order.status)); if (order.deleted_subscriptions?.length) box.append(el('p', 'Удалённые подписки: ' + order.deleted_subscriptions.map(s => s.name).join(', '), 'account-muted')); return box; }
+  $('order-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const renewal = $('order-purpose').value === 'renew'; await api('create_order', { plan: e.target.elements.plan.value, devices: Number(e.target.elements.devices.value), months: e.target.elements.plan.value === 'monthly' ? Number(e.target.elements.months.value) : 1, renewal_subscription_id: renewal ? Number($('order-renewal-subscription').value) : null }); await loadOrders(); message(renewal ? 'Заявка на продление создана. Срок добавится после подтверждения оплаты администратором.' : 'Заявка создана. Оплатите по QR-коду ниже.'); $('orders-list').scrollIntoView({ behavior: 'smooth' }); }); };
+  function orderCard(order) { const box = el('article', null, 'account-order'); box.dataset.orderId = order.id; const title = order.renewal ? 'Продление «' + order.renewal.subscription_name + '» на ' + (order.months || 1) + ' мес.' : order.plan === 'monthly' ? 'Подписка на ' + (order.months || 1) + ' мес.' : 'Навсегда'; box.append(el('h3', title + ' · ' + order.devices + ' устр. · ' + money(order.amount)), el('p', 'Заявка ' + order.id, 'account-muted'), el('span', orderStatus[order.status] || order.status, 'status-badge status-' + order.status)); if (order.renewal?.applied_at) box.append(el('p', 'Подписка продлена до: ' + date(order.renewal.new_expires_at), 'account-note')); if (order.deleted_subscriptions?.length) box.append(el('p', 'Удалённые подписки: ' + order.deleted_subscriptions.map(s => s.name).join(', '), 'account-muted')); return box; }
+  function renewalChoices(subscriptions) {
+    const selector = $('order-renewal-subscription'), previous = selector.value;
+    selector.replaceChildren(new Option('Выберите подписку', ''));
+    for (const sub of subscriptions) {
+      const suffix = sub.term_kind === 'lifetime' ? ' — бессрочная' : sub.is_expired ? ' — срок истёк' : sub.expires_at ? ' — до ' + date(sub.expires_at) : ' — срок не указан';
+      const option = new Option(sub.name + suffix, String(sub.id)); option.disabled = sub.term_kind === 'lifetime'; selector.append(option);
+    }
+    if (Array.from(selector.options).some(option => option.value === previous && !option.disabled)) selector.value = previous;
+    const available = subscriptions.some(sub => sub.term_kind !== 'lifetime');
+    $('order-purpose').querySelector('[value="renew"]').disabled = !available;
+    if (!available && $('order-purpose').value === 'renew') $('order-purpose').value = 'new';
+    total();
+  }
   async function loadOrders() {
-    const data = await api('orders'); $('orders-list').replaceChildren(); if (!data.orders.length) $('orders-list').append(el('p', 'У вас пока нет заявок.', 'account-muted'));
+    const [data, catalog] = await Promise.all([api('orders'), api('subscriptions')]); renewalChoices(catalog.subscriptions); $('orders-list').replaceChildren(); if (!data.orders.length) $('orders-list').append(el('p', 'У вас пока нет заявок.', 'account-muted'));
     for (const order of data.orders) {
       const box = orderCard(order);
       if (order.status === 'created' && payment.available) {
@@ -114,7 +132,7 @@
         const submit = el('button', 'Я оплатил — отправить на проверку', 'account-primary'); submit.type = 'submit'; form.append(label, submit); form.onsubmit = e => { e.preventDefault(); run(submit, async () => { await api('submit_payment', { id: order.id, reference: input.value }); await loadOrders(); message('Вы сообщили об оплате. Администратору создано уведомление; после проверки он выдаст подписку.'); }); }; box.append(form);
       }
       if (order.status === 'submitted') box.append(el('p', 'Ожидайте проверки поступления. Повторно платить не нужно.', 'account-muted'));
-      if (order.status === 'paid' && !order.subscriptions.length) box.append(el('p', order.deleted_subscriptions?.length ? 'Подписка удалена администратором. История оплаты сохранена.' : order.revoked_subscriptions?.length ? 'Привязка подписки снята администратором. История оплаты сохранена.' : 'Оплата подтверждена. Ожидайте выдачи подписки администратором.', 'account-note'));
+      if (order.status === 'paid' && !order.subscriptions.length && !order.renewal) box.append(el('p', order.deleted_subscriptions?.length ? 'Подписка удалена администратором. История оплаты сохранена.' : order.revoked_subscriptions?.length ? 'Привязка подписки снята администратором. История оплаты сохранена.' : 'Оплата подтверждена. Ожидайте выдачи подписки администратором.', 'account-note'));
       for (const sub of order.subscriptions) box.append(subscriptionCard(sub));
       if (order.status === 'rejected') box.append(el('p', 'Свяжитесь с поддержкой для сверки перевода перед повторной оплатой.', 'account-muted'));
       $('orders-list').append(box);
@@ -208,9 +226,9 @@
     for (const order of data.orders) {
       const box = orderCard(order); if (order.event_id && !order.event_read_at) box.classList.add('record-new'); box.append(el('p', order.first_name + ' ' + order.last_name + ' · ' + order.email), el('p', order.telegram, 'account-muted')); if (order.payment_reference) box.append(el('p', 'Данные перевода: ' + order.payment_reference));
       if (order.event_id && !order.event_read_at) box.append(readButton(order, loadAdminOrders));
-      if (order.status === 'submitted') { const actions = el('div', null, 'order-buttons'); for (const [status, title] of [['paid', 'Подтвердить поступление'], ['rejected', 'Отклонить']]) actions.append(button(title, async () => { if (!confirm(status === 'paid' ? 'Вы проверили поступление полной суммы в Озон Банке?' : 'Отклонить заявку после сверки перевода?')) return; await api('review_order', { id: order.id, status }); await loadAdminOrders(); await updateSummary(); message(status === 'paid' ? 'Оплата подтверждена. Теперь выдайте подписку в этой заявке.' : 'Заявка отклонена.'); }, status === 'paid' ? 'account-primary' : 'account-secondary')); box.append(actions); }
+      if (order.status === 'submitted') { const actions = el('div', null, 'order-buttons'); for (const [status, title] of [['paid', order.renewal ? 'Подтвердить оплату и продлить' : 'Подтвердить поступление'], ['rejected', 'Отклонить']]) actions.append(button(title, async () => { if (!confirm(status === 'paid' ? 'Вы проверили поступление полной суммы в Озон Банке?' + (order.renewal ? ' Срок подписки «' + order.renewal.subscription_name + '» будет продлён на ' + order.months + ' мес.' : '') : 'Отклонить заявку после сверки перевода?')) return; const result = await api('review_order', { id: order.id, status }); await loadAdminOrders(); await updateSummary(); message(status === 'paid' ? result.renewed ? 'Оплата подтверждена. Срок подписки автоматически продлён.' : 'Оплата подтверждена. Теперь выдайте подписку в этой заявке.' : 'Заявка отклонена.'); }, status === 'paid' ? 'account-primary' : 'account-secondary')); box.append(actions); }
       for (const sub of order.subscriptions) box.append(subscriptionCard(sub, true));
-      if (order.status === 'paid') {
+      if (order.status === 'paid' && !order.renewal) {
         const details = el('details', null, 'issue-form'); details.open = !order.subscriptions.length; details.append(el('summary', order.subscriptions.length ? 'Выдать ещё одну подписку' : 'Выдать подписку клиенту'));
         const form = el('form'), nameLabel = el('label', 'Название подписки'), name = el('input'); name.name = 'name'; name.required = true; name.maxLength = 100; name.placeholder = 'VPN5089'; nameLabel.append(name);
         const urlLabel = el('label', 'Подписочная ссылка'), url = el('textarea'); url.name = 'url'; url.rows = 2; url.maxLength = 8192; url.placeholder = 'Вставьте ссылку или оставьте пустым для выбора из базы по названию'; urlLabel.append(url);

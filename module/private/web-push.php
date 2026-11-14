@@ -58,7 +58,7 @@ function queueClientPush(PDO $db,int $notificationId,int $userId): void {
 }
 function pushPayload(array $config,int $notificationId,string $type=''): string {
  $path=trim((string)($config['app_path'] ?? ''),'/');if($path!==''&&!preg_match('~\A[a-zA-Z0-9_/-]+\z~D',$path))$path='';
- $title=match($type){'admin_user'=>'Новый клиент','admin_payment'=>'Уведомление об оплате','admin_support'=>'Новое сообщение клиента','admin_system'=>'Почтовое уведомление','ticket_reply'=>'Ответ поддержки','subscription_updated'=>'Подписки обновлены','router_key_updated'=>'Ключи роутера обновлены',default=>'МосКомпРемонт'};
+ $title=match($type){'admin_user'=>'Новый клиент','admin_payment'=>'Уведомление об оплате','admin_support'=>'Новое сообщение клиента','admin_system'=>'Почтовое уведомление','ticket_reply'=>'Ответ поддержки','subscription_updated'=>'Подписки обновлены','subscription_renewed'=>'Подписка продлена','router_key_updated'=>'Ключи роутера обновлены',default=>'МосКомпРемонт'};
  return json_encode(['title'=>$title,'body'=>'В вашем личном кабинете есть новое уведомление.','url'=>($path!==''?'/'.$path:'').'/account.html?notification='.$notificationId.'#notifications','tag'=>'mkr-notification-'.$notificationId],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
 }
 function sendClientPush(PDO $db,array $config,int $limit=20,?object $sender=null): array {

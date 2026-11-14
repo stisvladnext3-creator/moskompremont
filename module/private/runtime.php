@@ -90,6 +90,7 @@ function importCsv(string $csv): array {
 function withOrderSubscriptions(PDO $db,array $orders,bool $admin=false): array {
  foreach($orders as &$order) {
   $order['months']=orderMonths($db,$order['id']);
+  $order['renewal']=orderRenewal($db,$order['id']);
   try {$order['deleted_subscriptions']=query($db,'SELECT name,deleted_at FROM internet_order_deleted_subscriptions WHERE order_id=? ORDER BY deleted_at,name',[$order['id']])->fetchAll();}
   catch(PDOException $e){if($e->getCode()!=='42S02')throw $e;$order['deleted_subscriptions']=[];}
 
@@ -150,6 +151,7 @@ function assignDirectly(PDO $db,array $recipient,int $adminId,array $wanted): ar
 require_once __DIR__.'/router-keys.php';
 
 require_once __DIR__.'/subscription-terms.php';
+require_once __DIR__.'/order-renewals.php';
 
 require_once __DIR__.'/client-events.php';
 require_once __DIR__.'/support-tools.php';

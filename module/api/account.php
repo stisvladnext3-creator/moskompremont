@@ -220,26 +220,35 @@ try {
   limitRate($db,'orders',30,$userId);if (!payment($config)['available'])problem('Владелец ещё не добавил реквизиты оплаты.',503);
   $plan=field($body,'plan',20);$devices=$body['devices'] ?? null;if (!in_array($plan,['monthly','lifetime'],true) || !is_int($devices) || $devices<1 || $devices>20)problem('Выберите тариф и от 1 до 20 устройств.');
   subscriptionTermsReady($db);$months=termMonthsInput($body['months'] ?? 1);if($plan==='lifetime'&&$months!==1)problem('Для бессрочного тарифа количество месяцев не требуется.');
+  $renewalId=$body['renewal_subscription_id'] ?? null;
+  if($renewalId!==null&&(!is_int($renewalId)||$renewalId<1||$plan!=='monthly'))problem('Для продления выберите подписку и помесячный тариф.');
+  if($renewalId!==null)orderRenewalsReady($db);
   $rates=$plan==='monthly'?[1=>250,2=>225,3=>200,4=>175]:[1=>3000,2=>2500,3=>2000,4=>1650];$amount=$rates[min($devices,4)]*$devices*($plan==='monthly'?$months:1);
   $db->beginTransaction();activeAccount($db,$userId,true);
   if (query($db,"SELECT id FROM internet_orders WHERE user_id=? AND status IN ('created','submitted') LIMIT 1",[$userId])->fetch())problem('У вас уже есть незавершённая заявка. Откройте её в списке.',409);
-  $id=bin2hex(random_bytes(16));query($db,'INSERT INTO internet_orders(id,user_id,plan,devices,amount) VALUES (?,?,?,?,?)',[$id,$userId,$plan,$devices,$amount]);query($db,'INSERT INTO internet_order_terms(order_id,months) VALUES (?,?)',[$id,$months]);$db->commit();answer(['id'=>$id,'amount'=>$amount,'months'=>$months],201);
+  $renewal=$renewalId!==null?renewalSubscription($db,$renewalId,$userId):null;
+  $id=bin2hex(random_bytes(16));query($db,'INSERT INTO internet_orders(id,user_id,plan,devices,amount) VALUES (?,?,?,?,?)',[$id,$userId,$plan,$devices,$amount]);query($db,'INSERT INTO internet_order_terms(order_id,months) VALUES (?,?)',[$id,$months]);
+  if($renewal)query($db,'INSERT INTO internet_order_renewals(order_id,subscription_id,subscription_name) VALUES (?,?,?)',[$id,$renewalId,$renewal['name']]);
+  $db->commit();answer(['id'=>$id,'amount'=>$amount,'months'=>$months,'renewal_subscription_id'=>$renewalId],201);
  }
  if ($action==='submit_payment') {
   $id=field($body,'id',32);$reference=field($body,'reference',500);if (preg_match_all('/./us',$reference)<4)problem('Укажите время перевода или последние 4 цифры телефона.');
   $db->beginTransaction();$order=query($db,'SELECT * FROM internet_orders WHERE id=? AND user_id=? FOR UPDATE',[$id,$userId])->fetch();if (!$order || $order['status']!=='created')problem('Заявка не найдена или уже отправлена.',409);
   query($db,"UPDATE internet_orders SET status='submitted',payment_reference=?,submitted_at=CURRENT_TIMESTAMP WHERE id=?",[$reference,$id]);
-  notifyAdmin($db,$config,'payment:'.$id,'payment',$userId,'Клиент сообщил об оплате',contactText($user)."\nЗаявка: $id\nТариф: ".($order['plan']==='monthly'?'На '.orderMonths($db,$id).' мес.':'Навсегда')."\nУстройств: ".$order['devices']."\nСумма: ".$order['amount']." ₽\nДанные перевода: ".$reference."\n\nПроверьте поступление в Озон Банке. Нажатие кнопки клиентом не подтверждает оплату.",$id);
+  $renewal=orderRenewal($db,$id);
+  notifyAdmin($db,$config,'payment:'.$id,'payment',$userId,'Клиент сообщил об оплате',contactText($user)."\nЗаявка: $id".($renewal?"\nПродление подписки: ".$renewal['subscription_name']:"\nНовая подписка")."\nТариф: ".($order['plan']==='monthly'?'На '.orderMonths($db,$id).' мес.':'Навсегда')."\nУстройств: ".$order['devices']."\nСумма: ".$order['amount']." ₽\nДанные перевода: ".$reference."\n\nПроверьте поступление в Озон Банке. Нажатие кнопки клиентом не подтверждает оплату.",$id);
   $db->commit();answer(['ok'=>true]);
  }
  if ($action==='review_order') {
   $id=field($body,'id',32);$status=field($body,'status',20);if (!in_array($status,['paid','rejected'],true))problem('Недопустимый статус.');
   $db->beginTransaction();$order=query($db,'SELECT * FROM internet_orders WHERE id=? FOR UPDATE',[$id])->fetch();if (!$order || $order['status']!=='submitted')problem('Заявка уже обработана или не отправлена на проверку.',409);
-  query($db,'UPDATE internet_orders SET status=?,reviewed_at=CURRENT_TIMESTAMP,reviewed_by=? WHERE id=?',[$status,$userId,$id]);$db->commit();answer(['ok'=>true]);
+  $renewed=$status==='paid'?applyOrderRenewal($db,$order,$userId):false;
+  query($db,'UPDATE internet_orders SET status=?,reviewed_at=CURRENT_TIMESTAMP,reviewed_by=? WHERE id=?',[$status,$userId,$id]);$db->commit();answer(['ok'=>true,'renewed'=>$renewed]);
  }
  if ($action==='issue_subscription') {
   $id=field($body,'order_id',32);$name=subscriptionName(field($body,'name',100));$url=field($body,'url',8192);if ($url!=='')$url=subscriptionUrl($url);
   $db->beginTransaction();$order=query($db,'SELECT * FROM internet_orders WHERE id=? FOR UPDATE',[$id])->fetch();if (!$order || $order['status']!=='paid')problem('Сначала подтвердите поступление оплаты.',409);
+  if(orderRenewal($db,$id))problem('Это заявка на продление. Срок добавляется при подтверждении оплаты; выдавать новую ссылку не требуется.',409);
   activeAccount($db,(int)$order['user_id'],true);
   $sub=query($db,'SELECT * FROM internet_subscriptions WHERE name=? FOR UPDATE',[$name])->fetch();
   $alreadyIssued=$sub&&(bool)query($db,'SELECT order_id FROM internet_order_subscriptions WHERE order_id=? AND subscription_id=?',[$id,$sub['id']])->fetch();

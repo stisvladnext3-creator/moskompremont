@@ -9,7 +9,7 @@
   <link rel="icon" href="images/service-app-logo.png" type="image/png">
   <link rel="stylesheet" href="assets/account.css?v=18">
   <link rel="stylesheet" href="assets/service-app.css?v=19">
-  <script src="assets/service-app.js?v=19" defer></script>
+  <script src="assets/service-app.js?v=20" defer></script>
 </head>
 <body class="account-page app-download-page">
   <header class="app-site-header">
@@ -26,14 +26,14 @@
       <section class="app-platform app-platform-windows" aria-labelledby="windows-title">
         <div class="app-platform-top"><svg viewBox="0 0 32 32" class="app-platform-icon" aria-hidden="true"><path fill="currentColor" d="M2 5.5 14 4v11H2zm14-1.8L30 2v13H16zM2 17h12v11L2 26.5zm14 0h14v13l-14-1.7z"/></svg><span class="app-platform-badge">Готово к установке</span></div>
         <h2 id="windows-title">Для компьютера</h2><p class="app-platform-name">Windows 10 / 11 · 64 бит</p><p class="app-platform-description">Быстрое подключение, автоматическое обновление подписок и статус сервиса в приложении.</p>
-        <a id="windows-download" class="app-download-button" href="https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.3.14/MoskomVPN-Setup-0.3.14.exe"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>Скачать для Windows</a>
-        <div class="app-platform-bottom"><span id="windows-version">Версия 0.3.14</span><a href="#install-windows">Как установить →</a></div>
+        <a id="windows-download" data-version="0.3.17" class="app-download-button" href="https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.3.17/MoskomVPN-Setup-0.3.17.exe"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>Скачать для Windows</a>
+        <div class="app-platform-bottom"><span id="windows-version">Версия 0.3.17</span><a href="#install-windows">Как установить →</a></div>
       </section>
       <section class="app-platform app-platform-android" aria-labelledby="android-title">
         <div class="app-platform-top"><svg viewBox="0 0 32 32" class="app-platform-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 5-3-4m17 4 3-4M4 15a12 12 0 0 1 24 0v11H4zM1 15v9m30-9v9M10 26v5m12-5v5"/><path stroke-width="3" stroke-linecap="round" d="M11 10h.1M21 10h.1"/></svg><span class="app-platform-badge">Готово к установке</span></div>
         <h2 id="android-title">Для телефона</h2><p class="app-platform-name">Android 7 и новее · APK</p><p class="app-platform-description">Тот же кабинет, подписки, статус сервиса и пресет Russia. Полноценное VPN-подключение на телефоне.</p>
-        <a id="android-download" class="app-download-button" href="https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-android-v0.1.13/MoskomVPN-Android-0.1.13.apk">Скачать для Android</a>
-        <div class="app-platform-bottom"><span id="android-version">Версия 0.1.13</span><a href="#install-android">Инструкция →</a></div>
+        <a id="android-download" data-version="0.1.17" class="app-download-button" href="https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-android-v0.1.17/MoskomVPN-Android-0.1.17.apk">Скачать для Android</a>
+        <div class="app-platform-bottom"><span id="android-version">Версия 0.1.17</span><a href="#install-android">Инструкция →</a></div>
       </section>
     </div>
 
@@ -46,7 +46,7 @@
           <li><strong>Нажмите «Установить».</strong><span>Запустите скачанный файл MoskomVPN-Setup. Приложение установится и откроется, а на рабочем столе появится ярлык МосКомпРемонт VPN.</span></li>
           <li><strong>Добавьте свои подписки.</strong><span>Нажмите «Войти в кабинет» и введите почту и пароль от сайта — активные подписки загрузятся автоматически. Или скопируйте ссылку из <a href="account.html#subscriptions">личного кабинета</a> и нажмите «+» в приложении.</span></li>
           <li><strong>Включите VPN.</strong><span>Выберите подписку, затем сервер и маршрутизацию. Нажмите большую кнопку «Включить VPN» и дождитесь подключения.</span></li>
-          <li><strong>Всё остальное — в меню ☰.</strong><span>Там можно обновить правила Russia, проверить новую версию приложения и выбрать DNS. «Справка» внутри приложения коротко объясняет все кнопки.</span></li>
+          <li><strong>Всё остальное — в меню ☰.</strong><span>Там можно удалить добавленные вручную подписки через «Управление подписками», обновить правила Russia, проверить новую версию приложения и выбрать DNS. «Справка» внутри приложения коротко объясняет все кнопки.</span></li>
         </ol>
         <p class="app-guide-note">При обновлении устанавливайте новую версию поверх прежней: ваши подписки и настройки сохраняются. Приложение работает через системный прокси Windows.</p>
       </article>
@@ -57,7 +57,7 @@
           <li><strong>Разрешите установку и нажмите «Установить».</strong><span>Если Android запросит разрешение, откройте «Настройки» и разрешите установку из текущего браузера. Затем вернитесь к файлу. Google Play для установки не нужен.</span></li>
           <li><strong>Войдите в кабинет.</strong><span>Откройте МосКомпРемонт VPN и введите почту и пароль от сайта. Активные подписки появятся автоматически. Для ручного добавления скопируйте подписочную ссылку и нажмите «+».</span></li>
           <li><strong>Выберите подписку и сервер.</strong><span>В списке серверов отображаются подключения только из выбранной подписки. Выберите маршрутизацию и нажмите большую кнопку «Включить VPN». Подтвердите системный запрос Android на создание VPN-подключения.</span></li>
-          <li><strong>Меню ☰ и встроенная справка.</strong><span>В меню находятся DNS, обновление правил Russia и проверка обновлений приложения. Статус сервиса и проверка выбранного сервера доступны на главном экране приложения.</span></li>
+          <li><strong>Меню ☰ и встроенная справка.</strong><span>В меню находятся «Управление подписками» для удаления вручную добавленных подписок, DNS, обновление правил Russia и проверка обновлений приложения. Статус сервиса и проверка выбранного сервера доступны на главном экране приложения.</span></li>
         </ol>
         <p class="app-guide-note">Обновляйте приложение поверх установленной версии — подписки и настройки сохранятся. После обновления из приложения Android также может запросить разрешение на установку из этого источника.</p>
         <a class="app-guide-link" href="account.html#instructions">Открыть инструкции со скриншотами →</a>

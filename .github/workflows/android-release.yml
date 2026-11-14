@@ -5,7 +5,7 @@ on:
       payload_ref:
         description: Branch containing the verified signed release payload
         required: true
-        default: distribution/android-0.1.13
+        default: distribution/android-0.1.17
   push:
     branches: ['distribution/android-*']
     paths: ['release-payload/**']
@@ -51,4 +51,7 @@ jobs:
             gh release create "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --draft --target "$MOSKOM_RELEASE_SOURCE" --title "МосКомпРемонт VPN · Android $MOSKOM_RELEASE_VERSION" --notes-file NOTES.md
           fi
           gh release upload "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --clobber "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION.apk" "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION-source.zip" moskompremont-app-download-update.zip MoskomVPN-Android-preview.png VALIDATION.md SHA256SUMS.txt
+          if [ -f moskompremont-cabinet-v20-update.zip ]; then
+            gh release upload "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --clobber moskompremont-cabinet-v20-update.zip
+          fi
           gh release edit "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false

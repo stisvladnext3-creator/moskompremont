@@ -5,6 +5,7 @@
     { key: 'windows', tag: /^moskom-vpn-v(\d+\.\d+\.\d+)$/, filename: version => `MoskomVPN-Setup-${version}.exe` },
     { key: 'android', tag: /^moskom-android-v(\d+\.\d+\.\d+)$/, filename: version => `MoskomVPN-Android-${version}.apk` }
   ];
+  const compareParts = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
   // Keep the verified fallback link usable when the version check is unavailable.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7000);
@@ -30,9 +31,13 @@
         const installer = release.assets.find(asset => asset.name === name && asset.browser_download_url === expected && asset.state === 'uploaded' && asset.size > 0);
         if (installer) candidates.push({ version, url: expected, parts: version.split('.').map(Number) });
       }
-      candidates.sort((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1] || b.parts[2] - a.parts[2]);
+      candidates.sort((a, b) => compareParts(b.parts, a.parts));
       if (candidates.length) {
+        const known = button.dataset.version || '';
+        // A delayed API response must not replace the verified page links with an older release.
+        if (/^\d+\.\d+\.\d+$/.test(known) && compareParts(candidates[0].parts, known.split('.').map(Number)) < 0) continue;
         button.href = candidates[0].url;
+        button.dataset.version = candidates[0].version;
         caption.textContent = `Версия ${candidates[0].version}`;
       }
     }
