@@ -1,0 +1,30 @@
+{
+  "upstream": {
+    "version": "2.3.15",
+    "commit": "57907cf354d9769200ed4717b4430d605abe0952"
+  },
+  "aar": {
+    "commit": "2ffe5f794a32ba15b122e177b5acffc6f11c4959",
+    "tag": "v26.10.31",
+    "url": "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.31/libv2ray.aar",
+    "sha256": "2efdf731b1ed624eb1cb0d5a4d0aa95c0672e89f9702226d1ba2dc90308630b6"
+  },
+  "hev": "c5584feca8f6df70ee53eb2879e034b849a3d15a",
+  "russia": {
+    "routingCommit": "ecd88540aa9472ee96dbb8b10df008f57fc75555",
+    "rulesCommit": "934f38aeecf88459ab4564dfe134cb0d90460344",
+    "geoRelease": "202611132130",
+    "files": [
+      {
+        "name": "geoip.dat",
+        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611132130/geoip.dat",
+        "sha256": "8ac702eb63ba09f315fc50036ff9955ec6d8ed0ce5b89bf7135ba1c547bd51ae"
+      },
+      {
+        "name": "geosite.dat",
+        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611132130/geosite.dat",
+        "sha256": "986fecc3f01f85bd1e319b4d895e7a0d7e77a2bc28a94b5ac3238a916061cda6"
+      }
+    ]
+  }
+}

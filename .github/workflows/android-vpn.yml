@@ -1,0 +1,58 @@
+name: Build Android VPN APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['android-client/**', '.github/workflows/android-vpn.yml']
+permissions:
+  contents: write
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Fetch pinned Android base
+        run: |
+          git clone --quiet --depth 1 --branch 2.3.15 https://github.com/2dust/v2rayNG.git "$RUNNER_TEMP/moskom-android"
+          test "$(git -C "$RUNNER_TEMP/moskom-android" rev-parse HEAD)" = '57907cf354d9769200ed4717b4430d605abe0952'
+          git -C "$RUNNER_TEMP/moskom-android" submodule update --init --recursive --depth 1
+      - uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+          cmdline-tools-version: '14742923'
+          packages: 'platforms;android-37.0 build-tools;37.0.0 platform-tools'
+      - name: Install pinned NDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;30.0.16248370'
+          echo "NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        id: native-cache
+        with:
+          path: ${{ runner.temp }}/moskom-android/libs
+          key: moskom-hev-c5584feca8f6df70ee53eb2879e034b849a3d15a-ndk30
+      - name: Build HEV libraries for all supported ABIs
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}/moskom-android
+        run: bash compile-hevtun.sh
+      - name: Prepare service build
+        run: |
+          cp -r "$RUNNER_TEMP/moskom-android/libs" "$RUNNER_TEMP/moskom-android/V2rayNG/app/"
+          python android-client/build/inputs.py "$RUNNER_TEMP/moskom-android"
+          python android-client/build/prepare.py "$RUNNER_TEMP/moskom-android" "0.1.$GITHUB_RUN_NUMBER" "$GITHUB_RUN_NUMBER"
+          echo "sdk.dir=$ANDROID_HOME" > "$RUNNER_TEMP/moskom-android/V2rayNG/local.properties"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile and test the Android application
+        working-directory: ${{ runner.temp }}/moskom-android/V2rayNG
+        run: ./gradlew :app:testFdroidDebugUnitTest :app:compileFdroidDebugKotlin :app:assembleFdroidDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: moskom-android-build-review
+          path: |
+            ${{ runner.temp }}/moskom-android/V2rayNG/app/build/reports/**
+            ${{ runner.temp }}/moskom-android/V2rayNG/app/build/outputs/apk/fdroid/debug/**
