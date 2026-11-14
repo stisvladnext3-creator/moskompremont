@@ -24,9 +24,10 @@ jobs:
     timeout-minutes: 45
     env:
       MOSKOM_VERSION: 0.2.${{ github.run_number }}
-      MAC_WORK: ${{ runner.temp }}/moskom-mac
     steps:
       - uses: actions/checkout@v4
+      - name: Select temporary build directory
+        run: echo "MAC_WORK=$RUNNER_TEMP/moskom-mac" >> "$GITHUB_ENV"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
