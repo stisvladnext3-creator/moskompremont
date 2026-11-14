@@ -118,12 +118,12 @@ class MoskomIntegrationTest {
         assertEquals("Manual-key",model.moskom().state.value.groups.single().servers.single().name)
         // Help stays inside the branded activity and includes the owner's routing descriptions.
         click("moskom_help")
-        compose.onNodeWithText("Всё, кроме РФ",substring=true).assertExists();screenshot("05-help");closeSheet()
+        compose.onNodeWithText("Режим «Всё» — полная маршрутизация",substring=true).assertExists();screenshot("05-help");closeSheet()
         // Standard focus activation must match touch for keyboard and D-pad users.
         for(key in listOf(Key.Enter,Key.Spacebar,Key.DirectionCenter)) {
             compose.onNodeWithTag("moskom_help").performScrollTo().performSemanticsAction(SemanticsActions.RequestFocus){it()}
             compose.onNodeWithTag("moskom_help").assertIsFocused().performKeyInput{pressKey(key)}
-            compose.onNodeWithText("Всё, кроме РФ",substring=true).assertExists();closeSheet()
+            compose.onNodeWithText("Режим «Всё» — полная маршрутизация",substring=true).assertExists();closeSheet()
         }
         compose.onNodeWithTag("moskom_menu").assertContentDescriptionEquals(text(R.string.moskom_menu))
         compose.onNodeWithTag("moskom_add").assertContentDescriptionEquals(text(R.string.moskom_add))
