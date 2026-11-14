@@ -16,6 +16,7 @@ if a.flavor=='legacy':
  for file in ['ServiceLib/Events/EventChannel.cs','ServiceLib/Services/SpeedtestService.cs']:
   q=root/'v2rayN'/file;s=q.read_text();q.write_text(s.replace('readonly Lock ','readonly object '))
  # API-only backports: keep SemVer ordering and locking semantics on .NET 8.
+ q=root/'v2rayN/v2rayN.Desktop/Manager/WindowDialog.cs';code=q.read_text().replace('openWindows.Reverse().FirstOrDefault','openWindows.ToArray().AsEnumerable().Reverse().FirstOrDefault');q.write_text(code)
  q=root/'v2rayN/ServiceLib/Services/UpdateService.cs';code=q.read_text().replace('                Architecture.RiscV64 => coreInfo?.DownloadUrlLinuxRiscV64,\n','');q.write_text(code)
  q=root/'v2rayN/ServiceLib/Models/Dto/SemanticVersion.cs';code=q.read_text();start=code.index('        var leftSpan = left.AsSpan();');end=code.index('    private static int CompareSegment',start)
  code=code[:start]+'''        var a = left.Split('.');

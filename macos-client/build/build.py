@@ -19,6 +19,12 @@ app=work/'MoskomVPN.app';payload=app/'Contents/MacOS';resources=app/'Contents/Re
 run('dotnet','publish',upstream/'v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj','-c','Release','-r',a.rid,'--self-contained','true','-p:PublishSingleFile=false','-p:DebugType=None','-p:Version='+a.version,'-o',payload)
 (payload/'v2rayN').rename(payload/'MoskomVPN')
 run('clang','-dynamiclib','-fobjc-arc','-mmacosx-version-min='+minimum,'-arch','x86_64' if arch=='x64' else 'arm64','-framework','Foundation','-framework','Security','-framework','SystemConfiguration','-install_name','@rpath/libMoskomPlatform.dylib',OWN/'native/MoskomPlatform.m','-o',payload/'libMoskomPlatform.dylib')
+# The upstream SQLite native package now targets macOS 13.5. Compile its same
+# public-domain SQLite engine for the advertised OS rather than editing Mach-O headers.
+sqlite=src['sqlite'];archive=download(sqlite['url'],work/'sqlite-source.zip',sqlite['sha256'])
+with zipfile.ZipFile(archive) as z:
+ name=next(n for n in z.namelist() if n.endswith('/sqlite3.c'));(work/'sqlite3.c').write_bytes(z.read(name))
+run('clang','-dynamiclib','-O2','-mmacosx-version-min='+minimum,'-arch','x86_64' if arch=='x64' else 'arm64','-DSQLITE_THREADSAFE=1','-DSQLITE_ENABLE_COLUMN_METADATA','-DSQLITE_ENABLE_FTS3','-DSQLITE_ENABLE_FTS4','-DSQLITE_ENABLE_FTS5','-DSQLITE_ENABLE_RTREE','-DSQLITE_ENABLE_DBSTAT_VTAB','-DSQLITE_ENABLE_MATH_FUNCTIONS','-DSQLITE_ENABLE_SESSION','-DSQLITE_ENABLE_PREUPDATE_HOOK','-DSQLITE_ENABLE_SNAPSHOT','-DSQLITE_ENABLE_UNLOCK_NOTIFY','-install_name','@rpath/libe_sqlite3.dylib',work/'sqlite3.c','-o',payload/'libe_sqlite3.dylib')
 audit(payload,arch,tuple(map(int,minimum.split('.')))+(0,))
 # Cores are self-contained. Legacy sing-box is built with the last Go branch
 # whose genuine Darwin deployment target includes Big Sur; no header patching.
