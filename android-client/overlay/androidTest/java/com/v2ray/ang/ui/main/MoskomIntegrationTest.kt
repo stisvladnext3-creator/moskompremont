@@ -58,6 +58,7 @@ class MoskomIntegrationTest {
         compose.mainClock.advanceTimeByFrame()
         waitReady()
         compose.waitUntil(30_000){compose.onAllNodesWithTag("moskom_power").fetchSemanticsNodes(atLeastOneRootRequired=false).isNotEmpty()}
+        scenario.onActivity{assertFalse("Dark shell must use readable light system bar icons",androidx.core.view.WindowCompat.getInsetsController(it.window,it.window.decorView).isAppearanceLightStatusBars)}
         assertTrue(model.moskom().state.value.groups.isEmpty())
         compose.onNodeWithTag("moskom_power").assertIsNotEnabled()
         screenshot("01-empty")

@@ -10,6 +10,7 @@ import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.ui.compose.ThemeManager
 import java.io.File
 import java.io.IOException
 import java.util.UUID
@@ -27,6 +28,8 @@ class MoskomRepository(private val context: Context) {
         private set
 
     fun initialize() {
+        ThemeManager.setThemeMode("2")
+        ThemeManager.setDynamicColorEnabled(false)
         MmkvManager.encodeSettings(AppConfig.PREF_GROUP_ALL_DISPLAY,false)
         MmkvManager.encodeSettings(AppConfig.PREF_LOGLEVEL,"warning")
         val default = MmkvManager.decodeSubscription(AppConfig.DEFAULT_SUBSCRIPTION_ID) ?: SubscriptionItem()
