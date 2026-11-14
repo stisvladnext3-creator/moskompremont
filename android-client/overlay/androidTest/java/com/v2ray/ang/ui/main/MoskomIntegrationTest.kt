@@ -14,6 +14,7 @@ import androidx.test.uiautomator.Until
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.moskom.MoskomPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -187,6 +188,16 @@ class MoskomIntegrationTest {
         closeSheet();scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
         assertTrue(model.moskom().state.value.manualSubscriptions.isEmpty())
         assertEquals("Manual-key",model.moskom().state.value.groups.single().servers.single().name)
+        // Empty legacy groups can lack a server index and must still be removable.
+        val emptyGroup="moskom-manual-empty"
+        runBlocking(Dispatchers.IO){MmkvManager.encodeSubscription(emptyGroup,SubscriptionItem(remarks="Empty manual",autoUpdate=false))}
+        dispatch(MoskomAction.Group(emptyGroup))
+        assertTrue(model.moskom().state.value.groups.first{it.id==emptyGroup}.servers.isEmpty())
+        click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_manage_subscriptions)).performClick()
+        click("moskom_delete_subscription_$emptyGroup");click("moskom_confirm_subscription_delete");waitReady()
+        assertTrue(model.moskom().state.value.manualSubscriptions.isEmpty())
+        runBlocking(Dispatchers.IO){assertNull(MmkvManager.decodeSubscription(emptyGroup))}
+        closeSheet()
         dispatch(MoskomAction.DeleteSubscription("missing-group"))
         assertEquals(R.string.moskom_subscription_not_removable,model.moskom().state.value.error)
         assertEquals("Manual-key",model.moskom().state.value.groups.single().servers.single().name)

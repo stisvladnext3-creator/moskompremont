@@ -45,7 +45,7 @@ edit('V2rayNG/app/src/main/java/com/v2ray/ang/handler/MmkvManager.kt','    fun r
         withProfileIndexLock {
             require(decodeSubscription(subid) != null)
             val servers = decodeServerList(subid).toList()
-            val referenced = decodeServersReferencedByOtherGroups(subid)
+            val referenced = if (servers.isEmpty()) emptySet() else decodeServersReferencedByOtherGroups(subid)
                 ?: throw ProfileStorageException("Failed to inspect other subscription references")
             val removable = servers.filterNot { it in referenced }
             val backup = mutableListOf<Triple<MMKV, String, String?>>()
