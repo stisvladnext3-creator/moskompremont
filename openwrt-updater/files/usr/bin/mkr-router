@@ -1,0 +1,252 @@
+#!/bin/sh
+# Data-only updater: the website supplies a URI, never a shell command or a package.
+MKR_VERSION='0.1.0'
+umask 077
+[ "$(id -u)" = 0 ] || { printf '{"error":"root_required"}\n'; exit 1; }
+STATE=/tmp/mkr-router
+KEEP=/etc/mkr-router
+LOCK=/var/lock/mkr-router.lock
+mkdir -p "$STATE" "$KEEP" /var/lock || exit 1
+chmod 700 "$STATE" "$KEEP" || exit 1
+
+cfg() { uci -q get "mkr_router.main.$1" 2>/dev/null; }
+sha() { sha256sum | cut -d ' ' -f1; }
+text_sha() { printf '%s' "$1" | sha; }
+number() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
+endpoint_ok() { printf '%s' "$1" | grep -Eq '^https://[^/@?#[:space:]]+(/[A-Za-z0-9_.~-]+)*/router-agent\.php$'; }
+token_ok() { printf '%s' "$1" | grep -Eq '^mkr1\.[a-f0-9]{24}\.[a-f0-9]{64}$'; }
+supported_uri() { printf '%s' "$1" | grep -Eq '^(vless|ss|trojan|hysteria2|hy2)://[^[:space:]]+$'; }
+
+load_settings() {
+ ENABLED="$(cfg enabled)"; MODE="$(cfg mode)"; ENDPOINT="$(cfg endpoint)"; TOKEN="$(cfg token)"; SECTION="$(cfg section)"; BASELINE="$(cfg baseline)"; DEVICE="$(cfg device_id)"
+ SETTINGS="$(printf '%s\n' "$ENABLED" "$MODE" "$ENDPOINT" "$TOKEN" "$SECTION" | sha)"
+}
+same_settings() {
+ [ "$SETTINGS" = "$(printf '%s\n' "$(cfg enabled)" "$(cfg mode)" "$(cfg endpoint)" "$(cfg token)" "$(cfg section)" | sha)" ]
+}
+state() {
+ jq -n --arg state "$1" --arg reason "${2:-}" --argjson checked "$(date +%s)" '{state:$state,reason:$reason,checked_at:$checked}' > "$STATE/state.new"
+ mv "$STATE/state.new" "$STATE/state.json"
+}
+podkop_version() {
+ if command -v opkg >/dev/null 2>&1; then opkg status podkop 2>/dev/null | sed -n 's/^Version: *//p' | head -n1
+ elif command -v apk >/dev/null 2>&1; then apk info -v podkop 2>/dev/null | sed -n 's/^podkop-//p' | head -n1; fi
+}
+version_ok() { case "$(podkop_version)" in 0.3.*|0.4.*|0.5.*|0.6.*) return 0;; *) return 1;; esac; }
+targets() {
+ uci -q show podkop 2>/dev/null | sed -n 's/^podkop\.\([A-Za-z0-9_]*\)=[^=]*$/\1/p' | while IFS= read -r section; do
+  [ -n "$section" ] || continue
+  mode="$(uci -q get "podkop.$section.mode" 2>/dev/null)"; kind="$(uci -q get "podkop.$section.proxy_config_type" 2>/dev/null)"
+  [ "$mode" = proxy ] || continue
+  jq -cn --arg id "$section" --arg kind "$kind" '{id:$id,type:$kind,supported:($kind=="url")}'
+ done | jq -s '.'
+}
+target() {
+ TARGET="$SECTION"
+ if [ -z "$TARGET" ]; then
+  targets > "$WORK/targets.json"
+  [ "$(jq '[.[]|select(.supported)]|length' "$WORK/targets.json")" = 1 ] || return 1
+  TARGET="$(jq -r '.[]|select(.supported)|.id' "$WORK/targets.json")"
+ fi
+ printf '%s' "$TARGET" | grep -Eq '^[A-Za-z0-9_]+$' || return 1
+ [ "$(uci -q get "podkop.$TARGET.mode" 2>/dev/null)" = proxy ] && [ "$(uci -q get "podkop.$TARGET.proxy_config_type" 2>/dev/null)" = url ] || return 1
+ CURRENT="$(uci -q get "podkop.$TARGET.proxy_string" 2>/dev/null)"
+ # Multiline/manual fallback lists belong to the user. Never erase their backup entries.
+ [ "$(printf '%s' "$CURRENT" | wc -l)" = 0 ] || return 1
+ CURRENT_SHA="$(text_sha "$CURRENT")"
+ return 0
+}
+write_options() {
+ # jq's @sh quoting is consumed by UCI's parser, not by a shell; no URI/token is an argv value.
+ package="$1"; file="$2"; delta="$WORK/uci-delta"
+ mkdir -p "$delta"
+ jq -r --arg package "$package" 'to_entries[]|"set "+$package+".main."+.key+"="+(.value|tostring|@sh)' "$file" > "$WORK/options.batch" || return 1
+ uci -q -t "$delta" batch < "$WORK/options.batch" || return 1
+ uci -q -t "$delta" commit "$package" || return 1
+ chmod 600 "/etc/config/$package"
+}
+binding() {
+ same_settings || return 1
+ jq -n --arg baseline "$1" --arg device "$DEVICE" '{baseline:$baseline,device_id:$device}' > "$WORK/binding.json" || return 1
+ write_options mkr_router "$WORK/binding.json"
+}
+transfer() {
+ url_file="$1"; output="$2"; auth="$3"; post="${4:-}"
+ jq -r '"url = "+@json' "$url_file" > "$WORK/curl.conf"
+ if [ "$auth" = yes ]; then printf '%s' "$TOKEN" > "$WORK/token"; jq -Rrs '"header = "+("X-MKR-Router-Token: "+.|@json)' "$WORK/token" >> "$WORK/curl.conf"; fi
+ if [ -n "$post" ]; then printf '%s\n' 'header = "Content-Type: application/json"' >> "$WORK/curl.conf"; fi
+ if [ -n "$post" ]; then
+  HTTP="$(curl --config "$WORK/curl.conf" --proto '=https' --tlsv1.2 --silent --connect-timeout 8 --max-time 25 --max-filesize 262144 --output "$output" --write-out '%{http_code}' --data-binary "@$post" 2> "$WORK/curl.error")" || return 1
+ else
+  HTTP="$(curl --config "$WORK/curl.conf" --proto '=https' --tlsv1.2 --silent --connect-timeout 8 --max-time 25 --max-filesize 262144 --output "$output" --write-out '%{http_code}' 2> "$WORK/curl.error")" || return 1
+ fi
+ [ -f "$output" ] && [ "$(wc -c < "$output")" -le 262144 ]
+}
+report() {
+ [ -n "$REVISION" ] || return 0
+ jq -n --arg state "$1" --arg revision "$REVISION" --arg version "$MKR_VERSION" '{state:$state,revision:$revision,client_version:$version}' > "$WORK/report.json"
+ printf '%s' "$ENDPOINT" | jq -Rs '.' > "$WORK/site-url.json"
+ transfer "$WORK/site-url.json" "$WORK/report-reply.json" yes "$WORK/report.json" >/dev/null 2>&1 || :
+}
+identity() {
+ # Host changes are expected. Pin a subscription node by protocol, credential, port and label.
+ value="$1"; scheme="${value%%://*}"; rest="${value#*://}"; authority="${rest%%\?*}"; authority="${authority%%#*}"
+ case "$scheme" in vless|trojan|hysteria2|hy2) ;; *) return 1;; esac
+ case "$authority" in *@*:* ) ;; *) return 1;; esac
+ credential="${authority%@*}"; address="${authority##*@}"; port="${address##*:}"
+ number "$port" || return 1
+ fragment=''; case "$value" in *\#*) fragment="${value#*#}";; esac
+ printf '%s|%s|%s|%s' "$scheme" "$credential" "$port" "$fragment"
+}
+resolve_value() {
+ jq -r '.resource.value' "$WORK/snapshot.json" > "$WORK/source.txt"
+ source_value="$(cat "$WORK/source.txt")"
+ if supported_uri "$source_value"; then NEW="$source_value"; printf '%s' "$NEW" | jq -Rs '[.]' > "$WORK/candidates.json"; return 0; fi
+ case "$source_value" in https://*) ;; *) printf '[]' > "$WORK/candidates.json"; return 1;; esac
+ jq '.resource.value' "$WORK/snapshot.json" > "$WORK/sub-url.json"
+ transfer "$WORK/sub-url.json" "$WORK/subscription.txt" no && [ "$HTTP" = 200 ] || return 1
+ if ! grep -Eq '^(vless|ss|trojan|hysteria2|hy2)://' "$WORK/subscription.txt"; then
+  tr -d ' \r\n\t' < "$WORK/subscription.txt" | tr '_-' '/+' > "$WORK/base64.txt"
+  case $(( $(wc -c < "$WORK/base64.txt") % 4 )) in 2) printf '==' >> "$WORK/base64.txt";; 3) printf '=' >> "$WORK/base64.txt";; 1) return 1;; esac
+  base64 -d < "$WORK/base64.txt" > "$WORK/decoded.txt" 2>/dev/null || return 1
+ else cp "$WORK/subscription.txt" "$WORK/decoded.txt"; fi
+ tr -d '\r' < "$WORK/decoded.txt" | grep -E '^(vless|ss|trojan|hysteria2|hy2)://[^[:space:]]+$' | head -n 256 > "$WORK/uris.txt"
+ jq -Rn '[inputs]' < "$WORK/uris.txt" > "$WORK/candidates.json"
+ [ "$(jq length "$WORK/candidates.json")" -gt 0 ] || return 1
+ wanted="$(identity "$CURRENT")" || return 1
+ : > "$WORK/matches"
+ while IFS= read -r uri; do [ "$(identity "$uri")" = "$wanted" ] && printf '%s\n' "$uri" >> "$WORK/matches"; done < "$WORK/uris.txt"
+ [ "$(wc -l < "$WORK/matches")" = 1 ] || return 1
+ NEW="$(cat "$WORK/matches")"; return 0
+}
+pending() {
+ [ -f "$WORK/candidates.json" ] || printf '[]' > "$WORK/candidates.json"
+ printf '%s' "${NEW:-}" > "$WORK/new-value"
+ jq --slurpfile candidates "$WORK/candidates.json" --rawfile value "$WORK/new-value" '{label:.resource.label,resource_type:.resource.type,device_id:.device_id,value:$value,source_value:.resource.value,candidates:$candidates[0]}' "$WORK/snapshot.json" > "$STATE/pending.new"
+ mv "$STATE/pending.new" "$STATE/pending.json"
+}
+config_value() {
+ # Use an isolated delta. Do not commit another LuCI tab's unsaved changes.
+ [ -z "$(uci -q changes podkop 2>/dev/null)" ] || return 1
+ delta="$WORK/podkop-delta"; mkdir -p "$delta"
+ printf '%s' "$1" > "$WORK/value" || return 1
+ jq -Rrs --arg section "$TARGET" '"set podkop."+$section+".proxy_string="+(.|@sh)' "$WORK/value" > "$WORK/value.batch" || return 1
+ uci -q -t "$delta" batch < "$WORK/value.batch" || return 1
+ [ -z "$(uci -q changes podkop 2>/dev/null)" ] || return 1
+ uci -q -t "$delta" commit podkop || return 1
+ [ "$(text_sha "$(uci -q get "podkop.$TARGET.proxy_string" 2>/dev/null)")" = "$(text_sha "$1")" ]
+}
+podkop_running() { /etc/init.d/podkop running >/dev/null 2>&1; }
+healthy() {
+ config_path="$(uci -q get podkop.main.config_path 2>/dev/null)"; [ -n "$config_path" ] || config_path=/etc/sing-box/config.json
+ [ -f "$config_path" ] && sing-box check -c "$config_path" >/dev/null 2>&1 && podkop_running
+}
+rollback() {
+ # Restore only our option; concurrent edits to DNS, lists or other sections survive.
+ now_value="$(uci -q get "podkop.$TARGET.proxy_string" 2>/dev/null)"
+ if [ "$(text_sha "$now_value")" = "$(text_sha "$CURRENT")" ]; then rm -f "$KEEP/journal.json"; return 0; fi
+ [ "$(text_sha "$now_value")" = "$REVISION" ] || return 1
+ config_value "$CURRENT" || return 1
+ if [ "$WAS_RUNNING" = yes ]; then /etc/init.d/podkop restart 9>&- >/dev/null 2>&1 || return 1; fi
+ rm -f "$KEEP/journal.json"
+}
+apply_value() {
+ same_settings || { state manual settings_changed; return 1; }
+ version_ok && target || { state manual unsupported_podkop; return 1; }
+ [ -z "$(uci -q changes podkop 2>/dev/null)" ] || { state manual unsaved_changes; return 1; }
+ [ -n "$BASELINE" ] && [ "$CURRENT_SHA" = "$BASELINE" ] || { state manual local_changed; return 1; }
+ WAS_RUNNING=no; podkop_running && WAS_RUNNING=yes
+ cp /etc/config/podkop "$KEEP/podkop.backup" && chmod 600 "$KEEP/podkop.backup" && printf '%s' "$CURRENT" > "$KEEP/previous-value" || { state failed backup_failed; return 1; }
+ jq -n --arg section "$TARGET" --arg revision "$REVISION" --arg old "$CURRENT_SHA" --arg running "$WAS_RUNNING" '{section:$section,revision:$revision,previous:$old,running:$running}' > "$KEEP/journal.new" && mv "$KEEP/journal.new" "$KEEP/journal.json" || { state failed backup_failed; return 1; }
+ state applying ''
+ if ! config_value "$NEW"; then if rollback; then state failed write_failed; else state manual rollback_failed; fi; report failed; return 1; fi
+ if [ "$WAS_RUNNING" = yes ]; then
+  if ! /etc/init.d/podkop restart 9>&- > "$WORK/restart.log" 2>&1; then
+   if rollback; then state failed restart_failed; else state manual rollback_failed; fi; report failed; return 1
+  fi
+  ready=no
+  for delay in 1 2 3 4 5 6 7 8 9 10; do sleep 1; if healthy; then ready=yes; break; fi; done
+  if [ "$ready" != yes ]; then if rollback; then state failed check_failed; else state manual rollback_failed; fi; report failed; return 1; fi
+ fi
+ binding "$REVISION" || { state failed binding_failed; return 1; }
+ rm -f "$KEEP/journal.json" "$STATE/pending.json"
+ state applied ''; report applied
+ logger -t mkr-router 'Connection configuration updated' 2>/dev/null || :
+}
+recover() {
+ [ -f "$KEEP/journal.json" ] || return 0
+ TARGET="$(jq -r '.section' "$KEEP/journal.json")"; REVISION="$(jq -r '.revision' "$KEEP/journal.json")"; WAS_RUNNING="$(jq -r '.running' "$KEEP/journal.json")"; CURRENT="$(cat "$KEEP/previous-value" 2>/dev/null)"
+ printf '%s' "$TARGET" | grep -Eq '^[A-Za-z0-9_]+$' || return 1
+ [ "$(text_sha "$CURRENT")" = "$(jq -r '.previous' "$KEEP/journal.json")" ] || return 1
+ if [ "$(text_sha "$(uci -q get "podkop.$TARGET.proxy_string" 2>/dev/null)")" = "$(text_sha "$CURRENT")" ]; then rm -f "$KEEP/journal.json"; return 0; fi
+ if rollback; then state failed recovered; else state manual recovery_conflict; return 1; fi
+}
+check() {
+ load_settings; REVISION=''; NEW=''; CURRENT=''; CURRENT_SHA=''; rm -f "$STATE/pending.json"
+ [ "$ENABLED" = 1 ] && token_ok "$TOKEN" && endpoint_ok "$ENDPOINT" || { state unconfigured ''; return 0; }
+ state checking ''
+ printf '%s' "$ENDPOINT" | jq -Rs '.' > "$WORK/site-url.json"
+ if ! transfer "$WORK/site-url.json" "$WORK/snapshot.json" yes; then state failed network; return 1; fi
+ case "$HTTP" in 200) ;; 401|403) state auth ''; return 1;; 410) state unavailable ''; return 1;; 422) state manual unsupported_source; return 1;; 429) state failed rate_limit; return 1;; *) state failed server; return 1;; esac
+ jq -e '.version==1 and (.device_id|type=="number") and (.resource.value|type=="string") and (.resource.revision|type=="string" and length==64 and (explode|all((.>=48 and .<=57) or (.>=97 and .<=102)))) and (.resource.value|length>0 and length<=8192 and (explode|all(.>32 and .!=127)))' "$WORK/snapshot.json" >/dev/null 2>&1 || { state failed invalid_response; return 1; }
+ source_value="$(jq -r '.resource.value' "$WORK/snapshot.json")"
+ [ "$(text_sha "$source_value")" = "$(jq -r '.resource.revision' "$WORK/snapshot.json")" ] || { state failed invalid_response; return 1; }
+ new_device="$(jq -r '.device_id' "$WORK/snapshot.json")"
+ [ -z "$DEVICE" ] || [ "$DEVICE" = "$new_device" ] || { state auth wrong_device; return 1; }; DEVICE="$new_device"
+ supported=no; target && version_ok && supported=yes
+ if ! resolve_value; then pending; REVISION="$(jq -r '.resource.revision' "$WORK/snapshot.json")"; state manual choose_node; report manual; return 0; fi
+ REVISION="$(text_sha "$NEW")"; pending
+ printf '%s' "$NEW" | grep -Eq '^(vless|ss|trojan)://' || { state manual unsupported_protocol; report manual; return 0; }
+ [ "$supported" = yes ] || { state manual unsupported_podkop; report manual; return 0; }
+ [ -z "$(uci -q changes podkop 2>/dev/null)" ] || { state manual unsaved_changes; return 0; }
+ same_settings || { state manual settings_changed; return 1; }
+ if [ "$CURRENT_SHA" = "$REVISION" ]; then
+  [ "$BASELINE" = "$CURRENT_SHA" ] && [ "$(cfg device_id)" = "$DEVICE" ] || binding "$CURRENT_SHA"
+  rm -f "$STATE/pending.json"; state current ''; report current; return 0
+ fi
+ if [ -z "$BASELINE" ]; then binding "$CURRENT_SHA" || return 1; BASELINE="$CURRENT_SHA"; fi
+ [ "$BASELINE" = "$CURRENT_SHA" ] || { state manual local_changed; report manual; return 0; }
+ if [ "$MODE" = auto ] || [ "$1" = force ]; then apply_value
+ else state available ''; report available; fi
+}
+configure() {
+ cat > "$WORK/input.json"
+ [ "$(wc -c < "$WORK/input.json")" -le 4096 ] || return 1
+ jq -e '(.mode=="auto" or .mode=="notify") and (.interval|type=="number" and .>=300 and .<=86400 and floor==.) and (.section|type=="string" and (explode|all((.>=48 and .<=57) or (.>=65 and .<=90) or (.>=97 and .<=122) or .==95))) and (.endpoint|type=="string" and (explode|all(.>32 and .!=127))) and (.token|type=="string" and (explode|all(.>32 and .!=127)))' "$WORK/input.json" >/dev/null 2>&1 || return 1
+ endpoint="$(jq -r '.endpoint' "$WORK/input.json")"; endpoint_ok "$endpoint" || return 1
+ token="$(jq -r '.token' "$WORK/input.json")"; [ -n "$token" ] || token="$(cfg token)"; token_ok "$token" || return 1
+ printf '%s' "$token" > "$WORK/config-token"
+ section="$(jq -r '.section' "$WORK/input.json")"
+ current=''; [ -z "$section" ] || current="$(uci -q get "podkop.$section.proxy_string" 2>/dev/null)"
+ # An empty automatic section binds only after resolving a single supported target.
+ baseline=''; [ -z "$section" ] || baseline="$(text_sha "$current")"
+ jq --rawfile token "$WORK/config-token" --arg baseline "$baseline" '{mode,interval,section,endpoint}+{token:$token,enabled:"1",baseline:$baseline,device_id:""}' "$WORK/input.json" > "$WORK/settings.json" || return 1
+ write_options mkr_router "$WORK/settings.json" || return 1
+ rm -f "$STATE/pending.json"; state configured ''; printf '{"ok":true}\n'
+}
+status() {
+ read_dir="$(mktemp -d "$STATE/read.XXXXXX")" || return 1
+ if [ -f "$STATE/state.json" ]; then cp "$STATE/state.json" "$read_dir/state.json"; else printf '{"state":"unconfigured","reason":""}' > "$read_dir/state.json"; fi
+ targets > "$read_dir/targets.json"
+ jq -n --slurpfile state "$read_dir/state.json" --slurpfile targets "$read_dir/targets.json" --arg version "$MKR_VERSION" --arg mode "$(cfg mode)" --arg endpoint "$(cfg endpoint)" --arg section "$(cfg section)" --arg interval "$(cfg interval)" --arg podkop "$(podkop_version)" --arg token "$([ -n "$(cfg token)" ] && echo yes)" '$state[0]+{version:$version,targets:$targets[0],settings:{mode:$mode,endpoint:$endpoint,section:$section,interval:($interval|tonumber? //900),has_token:($token=="yes")},podkop_version:$podkop}' > "$read_dir/status.json"
+ if [ -f "$STATE/pending.json" ]; then jq --slurpfile pending "$STATE/pending.json" '.+{pending:$pending[0]}' "$read_dir/status.json"; else cat "$read_dir/status.json"; fi
+ rm -rf "$read_dir"
+}
+
+case "${1:-status}" in
+ status) status; exit;;
+ daemon) sleep 45; while :; do "$0" check >/dev/null 2>&1; interval="$(cfg interval)"; number "$interval" && [ "$interval" -ge 300 ] && [ "$interval" -le 86400 ] || interval=900; sleep "$interval"; done;;
+esac
+exec 9>"$LOCK"
+if ! flock -n 9; then printf '{"error":"busy"}\n'; exit 75; fi
+WORK="$(mktemp -d "$STATE/work.XXXXXX")" || exit 1
+trap 'rm -rf "$WORK"' EXIT
+trap 'exit 143' HUP INT TERM
+case "$1" in
+ configure) recover && configure || { printf '{"error":"invalid_settings"}\n'; exit 1; };;
+ disable) printf '{"enabled":"0","token":"","baseline":"","device_id":""}' > "$WORK/off.json"; write_options mkr_router "$WORK/off.json" || exit 1; rm -f "$STATE/pending.json"; if recover; then state unconfigured ''; else state manual recovery_conflict; fi; printf '{"ok":true}\n';;
+ check) recover && check normal;;
+ apply) recover && check force;;
+ recover) recover;;
+ *) printf '{"error":"unknown_command"}\n'; exit 1;;
+esac

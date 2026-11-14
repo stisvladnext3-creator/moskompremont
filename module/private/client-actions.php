@@ -1,5 +1,12 @@
 <?php
 // Included only after account authentication and administrator routing checks.
+if($action==='router_devices')answer(['devices'=>routerDeviceRows($db,$userId),'sources'=>routerDeviceSources($db,$userId),'endpoint'=>routerDeviceEndpoint($config)]);
+if($action==='router_device_create'){limitRate($db,'router-device-create',30,$userId);answer(createRouterDevice($db,$body,$userId,false,$config),201);}
+if($action==='router_device_revoke')answer(revokeRouterDevice($db,(int)($body['id'] ?? 0),$userId,false));
+if($action==='admin_router_devices')answer(['devices'=>routerDeviceRows($db,$userId,true)]);
+if($action==='admin_router_device_sources'){$owner=(int)($_GET['user_id'] ?? 0);activeAccount($db,$owner);answer(['sources'=>routerDeviceSources($db,$owner)]);}
+if($action==='admin_router_device_create'){limitRate($db,'router-device-create',100,$userId);answer(createRouterDevice($db,$body,$userId,true,$config),201);}
+if($action==='admin_router_device_revoke')answer(revokeRouterDevice($db,(int)($body['id'] ?? 0),$userId,true));
 if($action==='notifications')answer(clientNotifications($db,$userId,$_GET,$admin));
 if($action==='notification'){
  $id=filter_var($_GET['id'] ?? null,FILTER_VALIDATE_INT);if(!$id||!clientEventsReady($db))problem('Уведомление не найдено.',404);

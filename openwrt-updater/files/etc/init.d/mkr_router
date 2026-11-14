@@ -1,0 +1,11 @@
+#!/bin/sh /etc/rc.common
+START=99
+STOP=10
+USE_PROCD=1
+start_service() {
+ chmod 600 /etc/config/mkr_router
+ procd_open_instance
+ procd_set_param command /usr/bin/mkr-router daemon
+ procd_set_param respawn 3600 5 5
+ procd_close_instance
+}

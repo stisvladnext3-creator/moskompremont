@@ -1,0 +1,1 @@
+{"admin/services/mkr-router":{"title":"МосКомпРемонт","order":70,"action":{"type":"view","path":"mkr-router"},"depends":{"acl":["luci-app-mkr-router"]}}}

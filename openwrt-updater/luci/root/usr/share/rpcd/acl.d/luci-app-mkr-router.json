@@ -1,0 +1,1 @@
+{"luci-app-mkr-router":{"description":"Manage a MosKomRemont router device and its Podkop connection","read":{"ubus":{"mkr-router":["status"]}},"write":{"ubus":{"mkr-router":["configure","check","apply","disable"]}}}}

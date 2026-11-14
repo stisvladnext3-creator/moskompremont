@@ -158,3 +158,4 @@ require_once __DIR__.'/support-tools.php';
 require_once __DIR__.'/web-push.php';
 
 require_once __DIR__.'/auth.php';
+require_once __DIR__.'/router-devices.php';

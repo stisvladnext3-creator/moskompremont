@@ -1,0 +1,12 @@
+#!/bin/sh
+case "$1" in
+ list) printf '%s\n' '{"status":{},"check":{},"apply":{},"disable":{},"configure":{"mode":"","interval":0,"section":"","endpoint":"","token":""}}';;
+ call)
+  case "$2" in
+   status|disable) exec /usr/bin/mkr-router "$2";;
+   check|apply) /usr/bin/mkr-router "$2" </dev/null >/dev/null 2>&1 & printf '{"accepted":true}\n';;
+   configure)
+    if /usr/bin/mkr-router configure; then /usr/bin/mkr-router check </dev/null >/dev/null 2>&1 & fi;;
+   *) printf '{"error":"unknown_method"}\n';;
+  esac;;
+esac

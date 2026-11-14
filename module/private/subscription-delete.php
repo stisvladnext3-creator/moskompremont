@@ -16,6 +16,7 @@ function deleteSubscription(PDO $db,array $body,int $adminId): array {
 
 function deleteSubscriptionData(PDO $db,array $sub,int $adminId): void {
  $id=(int)$sub['id'];$owner=$sub['user_id']===null?null:(int)$sub['user_id'];
+  revokeResourceDevices($db,'subscription',$id);
   foreach(query($db,'SELECT order_id FROM internet_order_subscriptions WHERE subscription_id=? FOR UPDATE',[(int)$sub['id']])->fetchAll() as $issued)query($db,'INSERT INTO internet_order_deleted_subscriptions(order_id,name,deleted_by) VALUES (?,?,?) ON DUPLICATE KEY UPDATE deleted_at=CURRENT_TIMESTAMP,deleted_by=VALUES(deleted_by)',[$issued['order_id'],$sub['name'],$adminId]);
   query($db,'DELETE FROM internet_order_subscriptions WHERE subscription_id=?',[(int)$sub['id']]);
   query($db,'DELETE FROM internet_subscription_revocations WHERE subscription_id=?',[(int)$sub['id']]);

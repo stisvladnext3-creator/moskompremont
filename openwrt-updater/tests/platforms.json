@@ -1,0 +1,14 @@
+[
+  {
+    "version": "24.10.4",
+    "url": "https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-24.10.4-x86-64-rootfs.tar.gz",
+    "sha256": "e7f8ab84eef55c7eb23492de7b0517dbc23fbedaa4abbb680fe64720c309dc03",
+    "bytes": 4629776
+  },
+  {
+    "version": "25.12.5",
+    "url": "https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/openwrt-25.12.5-x86-64-rootfs.tar.gz",
+    "sha256": "2dae4250b1b742062ed5787adcdc9dd6d26c7f69f94ced46548eb512d5957e8a",
+    "bytes": 4834388
+  }
+]

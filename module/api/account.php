@@ -31,7 +31,7 @@ try {
  $db=new PDO($config['dsn'],$config['db_user'],$config['db_password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);query($db,"SET time_zone='+00:00'");
  $user=accountSessionUser($db,$config);$_SESSION['last_seen']=time();$_SESSION['csrf'] ??=bin2hex(random_bytes(32));
  $action=$_GET['action'] ?? 'me';$method=$_SERVER['REQUEST_METHOD'];
- $writes=['register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete','admin_service_notice_save','admin_router_host_preview','admin_router_host_apply','admin_subscription_host_preview','admin_subscription_host_apply','admin_delete_subscription','admin_subscription_term_save','notification_read','admin_template_save','admin_template_delete','push_subscribe','push_unsubscribe','push_device_status','admin_push_setup','admin_push_save','admin_push_retry','admin_account_password','admin_account_delete'];
+ $writes=['router_device_create','router_device_revoke','admin_router_device_create','admin_router_device_revoke','register','login','logout','create_order','submit_payment','review_order','claim_subscriptions','issue_subscription','import_subscriptions','resolve_claim','create_ticket','reply_ticket','read_ticket','set_ticket_status','read_event','mail_test','mail_retry','unassign_subscription','direct_assign_subscriptions','admin_assign_router_key','admin_unassign_router_key','admin_monitor_save','admin_monitor_token','admin_delete_router_key','admin_keenetic_access','admin_keenetic_upload','admin_keenetic_delete','admin_service_notice_save','admin_router_host_preview','admin_router_host_apply','admin_subscription_host_preview','admin_subscription_host_apply','admin_delete_subscription','admin_subscription_term_save','notification_read','admin_template_save','admin_template_delete','push_subscribe','push_unsubscribe','push_device_status','admin_push_setup','admin_push_save','admin_push_retry','admin_account_password','admin_account_delete'];
  if (in_array($action,$writes,true)) {
   if ($method!=='POST')problem('Требуется POST.',405);
   if (rtrim($_SERVER['HTTP_ORIGIN'] ?? '','/')!==rtrim($config['origin'],'/'))problem('Недопустимый источник запроса.',403);
@@ -194,14 +194,14 @@ try {
   if(!is_int($id)||$id<1||!array_key_exists('user_id',$body)||($owner!==null&&(!is_int($owner)||$owner<1)))problem('Выберите ключ и его текущего владельца.');
   $db->beginTransaction();$key=query($db,'SELECT id,label,user_id FROM internet_router_keys WHERE id=? FOR UPDATE',[$id])->fetch();if(!$key)problem('Ключ уже удалён.',404);
   $current=$key['user_id']===null?null:(int)$key['user_id'];if($current!==$owner)problem('Владелец ключа изменился. Обновите список перед удалением.',409);
-  query($db,'DELETE FROM internet_router_keys WHERE id=?',[$id]);resourceRemoved($db,'router_key',$id);if($owner!==null)routerKeyJournal($db,$owner,$userId,$id,$key['label'],true,true);
+  revokeResourceDevices($db,'router_key',$id);query($db,'DELETE FROM internet_router_keys WHERE id=?',[$id]);resourceRemoved($db,'router_key',$id);if($owner!==null)routerKeyJournal($db,$owner,$userId,$id,$key['label'],true,true);
   $db->commit();answer(['ok'=>true]);
  }
  if ($action==='admin_unassign_router_key') {
   $id=$body['id'] ?? null;$owner=$body['user_id'] ?? null;if (!is_int($id) || !is_int($owner) || $id<1 || $owner<1)problem('Выберите ключ и его текущего владельца.');
   $db->beginTransaction();$key=query($db,'SELECT id,label,user_id FROM internet_router_keys WHERE id=? FOR UPDATE',[$id])->fetch();
   if (!$key || $key['user_id']===null || (int)$key['user_id']!==$owner)problem('Привязка ключа уже изменилась. Обновите список.',409);
-  query($db,'UPDATE internet_router_keys SET user_id=NULL,assigned_at=NULL,issued_by=? WHERE id=?',[$userId,$id]);routerKeyJournal($db,$owner,$userId,$id,$key['label'],true);$db->commit();answer(['ok'=>true]);
+  revokeResourceDevices($db,'router_key',$id);query($db,'UPDATE internet_router_keys SET user_id=NULL,assigned_at=NULL,issued_by=? WHERE id=?',[$userId,$id]);routerKeyJournal($db,$owner,$userId,$id,$key['label'],true);$db->commit();answer(['ok'=>true]);
  }
  if ($action==='subscriptions') {
   $items=query($db,'SELECT id,name,url,assigned_at FROM internet_subscriptions WHERE user_id=? ORDER BY assigned_at DESC,id DESC',[$userId])->fetchAll();
@@ -271,7 +271,7 @@ try {
   $db->beginTransaction();$sub=query($db,'SELECT * FROM internet_subscriptions WHERE id=? FOR UPDATE',[$id])->fetch();
   if (!$sub || $sub['user_id']===null || (int)$sub['user_id']!==$expectedOwner)problem('Привязка уже изменилась. Обновите базу подписок.',409);
   query($db,'INSERT INTO internet_subscription_revocations(subscription_id,user_id,revoked_by) VALUES (?,?,?) ON DUPLICATE KEY UPDATE revoked_by=VALUES(revoked_by),revoked_at=CURRENT_TIMESTAMP',[$id,$expectedOwner,$userId]);
-  query($db,'UPDATE internet_subscriptions SET user_id=NULL,assigned_at=NULL WHERE id=?',[$id]);
+  revokeResourceDevices($db,'subscription',$id);query($db,'UPDATE internet_subscriptions SET user_id=NULL,assigned_at=NULL WHERE id=?',[$id]);
   query($db,"INSERT INTO internet_subscription_claims(user_id,name,status,reviewed_at) VALUES (?,?,'revoked',CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE status='revoked',reviewed_at=CURRENT_TIMESTAMP",[$expectedOwner,$sub['name']]);
   $db->commit();answer(['ok'=>true]);
  }

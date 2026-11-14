@@ -1,0 +1,66 @@
+name: OpenWrt router updater
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare real OpenWrt environments
+        run: python3 openwrt-updater/tests/platforms.py --work "$RUNNER_TEMP/openwrt-platforms"
+      - name: Build native IPK and APK v3
+        run: python3 openwrt-updater/build.py --version 0.1.0 --out "$RUNNER_TEMP/mkr-dist"
+      - name: Test native install, rpcd, UCI, updates and rollback
+        run: |
+          python3 openwrt-updater/tests/install.py --dist "$RUNNER_TEMP/mkr-dist" --version 0.1.0
+          python3 openwrt-updater/tests/router.py
+      - name: Test cabinet API and migration in PHP/MySQL
+        run: |
+          docker build -t mkr-test-php -f openwrt-updater/tests/Dockerfile.php .
+          python3 openwrt-updater/tests/server.py start --work "$RUNNER_TEMP/mkr-web-test"
+          docker exec mkr-v21-web sh -c 'find /app/api /app/private -name "*.php" -not -path "*/vendor/*" -exec php -l {} \;' > "$RUNNER_TEMP/php-lint.txt"
+          if grep -E 'Parse error|Errors parsing' "$RUNNER_TEMP/php-lint.txt"; then exit 1; fi
+          python3 openwrt-updater/tests/backend.py
+      - name: Test cabinet interface
+        run: |
+          npm install --prefix "$RUNNER_TEMP/mkr-node" playwright
+          export NODE_PATH="$RUNNER_TEMP/mkr-node/node_modules"
+          "$RUNNER_TEMP/mkr-node/node_modules/.bin/playwright" install --with-deps chromium
+          export CHROMIUM_PATH=$(node -p "require('playwright').chromium.executablePath()")
+          export MKR_TEST_ARTIFACTS="$RUNNER_TEMP/mkr-artifacts"
+          node --check module/assets/account.js
+          node --check openwrt-updater/luci/htdocs/luci-static/resources/view/mkr-router.js
+          node openwrt-updater/tests/cabinet.cjs
+          node openwrt-updater/tests/luci.cjs
+      - name: Build site update and release bundle
+        run: |
+          python3 openwrt-updater/package-site.py --out "$RUNNER_TEMP/mkr-dist"
+          cp module/UPDATE-CABINET-V21.md "$RUNNER_TEMP/mkr-dist/"
+          cp openwrt-updater/VALIDATION.md "$RUNNER_TEMP/mkr-dist/"
+          git archive --format=zip --prefix=moskom-openwrt-source/ -o "$RUNNER_TEMP/mkr-dist/moskom-openwrt-0.1.0-source.zip" HEAD openwrt-updater module .github/workflows/openwrt-router.yml
+          cd "$RUNNER_TEMP/mkr-dist"
+          sha256sum *.ipk *.apk *.zip *.md > SHA256SUMS.txt
+      - name: Publish permanent downloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          moskom_tag=moskom-openwrt-v0.1.0
+          if ! gh release view "$moskom_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$moskom_tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title 'МосКомпРемонт · OpenWrt 0.1.0' --notes-file openwrt-updater/RELEASE.md
+          fi
+          gh release upload "$moskom_tag" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/mkr-dist/"*.ipk "$RUNNER_TEMP/mkr-dist/"*.apk "$RUNNER_TEMP/mkr-dist/"*.zip "$RUNNER_TEMP/mkr-dist/"*.md "$RUNNER_TEMP/mkr-dist/SHA256SUMS.txt"
+          gh release edit "$moskom_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+      - name: Cleanup test services
+        if: always()
+        run: |
+          python3 openwrt-updater/tests/server.py stop
+          docker rm -f mkr-test-24.10.4 mkr-test-25.12.5 || true
