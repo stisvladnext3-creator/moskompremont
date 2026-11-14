@@ -73,7 +73,11 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
     var file=Path.Combine(directory,"config.json");var options=new FileStreamOptions{Mode=FileMode.CreateNew,Access=FileAccess.Write,Share=FileShare.None};if(!OperatingSystem.IsWindows())options.UnixCreateMode=UnixFileMode.UserRead|UnixFileMode.UserWrite;await using(var output=new FileStream(file,options)){await output.WriteAsync(bytes,setup.Token);}
     var start=new ProcessStartInfo(core){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=directory,RedirectStandardOutput=true,RedirectStandardError=true};foreach(var arg in new[]{"run","-c",file,"--disable-color"})start.ArgumentList.Add(arg);
     process=Process.Start(start)??throw new IOException("Не запущено ядро.");if(OperatingSystem.IsWindows()){job=new();if(!job.AddProcess(process.Id))throw new IOException("Не подготовлено завершение ядра.");}
+#if MOSKOM_TUN_TEST
+    _=process.StandardOutput.ReadToEndAsync().ContinueWith(t=>Console.Error.WriteLine(t.Result));_=process.StandardError.ReadToEndAsync().ContinueWith(t=>Console.Error.WriteLine(t.Result));
+#else
     _=process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);_=process.StandardError.BaseStream.CopyToAsync(Stream.Null);
+#endif
     await Write(channel,Encoding.UTF8.GetBytes("started:"+args[4]),setup.Token);var buffer=new byte[1];var eof=channel.ReadAsync(buffer).AsTask();
     await Task.WhenAny(eof,process.WaitForExitAsync(),parent.WaitForExitAsync());
    }finally{

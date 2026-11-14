@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-<PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>preview</LangVersion></PropertyGroup>
+<PropertyGroup><TargetFramework Condition="'$(MoskomTargetFramework)' == ''">net10.0</TargetFramework><TargetFramework Condition="'$(MoskomTargetFramework)' != ''">$(MoskomTargetFramework)</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>preview</LangVersion><DefineConstants>$(DefineConstants);MOSKOM_TUN_TEST</DefineConstants></PropertyGroup>
 <ItemGroup>
 <Compile Include="../overlay/ServiceLib/Services/MoskomTunSupervisor.cs" Link="Supervisor.cs"/>
 <Compile Include="../overlay/ServiceLib/Services/MoskomSelectivePolicy.cs" Link="Policy.cs"/>

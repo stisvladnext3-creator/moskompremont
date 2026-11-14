@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 namespace ServiceLib.Services {
- public static class MoskomBuildInfo {public const string Repository="stisvladnext3-creator/moskompremont";}
+ public static class MoskomBuildInfo {public const string Version="0.2.0";public const string Repository="stisvladnext3-creator/moskompremont";}
  public static class MoskomMacBuildInfo {
 #if LEGACY
   public const string Flavor="legacy";

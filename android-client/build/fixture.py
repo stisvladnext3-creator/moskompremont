@@ -2,7 +2,7 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
 from datetime import datetime, timezone
-import base64, json, socketserver, socket, threading, select, os, re
+import base64, json, socketserver, socket, threading, select, os, re, hashlib
 from pathlib import Path
 
 PHASE=0
@@ -24,6 +24,20 @@ class Handler(BaseHTTPRequestHandler):
    target=Path(os.environ.get('RUNNER_TEMP','/tmp'))/'moskom-result/review';target.mkdir(parents=True,exist_ok=True);(target/name).write_bytes(self.rfile.read(size));return self.answer({'saved':True})
   authenticated='internet_account=fixture-session' in self.headers.get('Cookie','')
   stamp=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+  if url.path=='/fixture/github':
+   remote=urlsplit(query.get('url',[''])[0]);assets=Path(os.environ['RUNNER_TEMP'])/'moskom-android/V2rayNG/app/src/main/assets';rules=assets/'moskom/russia'
+   manifest=json.loads((rules/'manifest.json').read_text());release=manifest['geoRelease'];commit='e'*40
+   if remote.hostname=='api.github.com':
+    if remote.path.endswith('/commits/main'):return self.answer({'sha':commit})
+    if remote.path.endswith('/releases/latest'):return self.answer({'tag_name':release,'assets':[{'name':name,'browser_download_url':f'https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/{release}/{name}','digest':'sha256:'+hashlib.sha256((assets/name).read_bytes()).hexdigest()} for name in ['geoip.dat','geosite.dat']]})
+    if remote.path.endswith('/releases'):return self.answer([])
+   name=remote.path.rsplit('/',1)[1]
+   if remote.hostname=='raw.githubusercontent.com' and '/'+commit+'/' in remote.path:
+    mapping={'template.json':'template.json','simple_dns.json':'simple_dns.json'}
+    for index,item in enumerate(json.loads((rules/'template.json').read_text())['routingItems']):mapping[item['url'].rsplit('/',1)[1]]=f'route-{index}.json'
+    if name in mapping:return self.answer((rules/mapping[name]).read_bytes())
+   if remote.hostname=='github.com' and remote.path.startswith('/runetfreedom/russia-v2ray-rules-dat/releases/download/'+release+'/') and name in ['geoip.dat','geosite.dat']:return self.answer((assets/name).read_bytes())
+   return self.answer({'error':'Unknown fixture asset'},404)
   if url.path=='/fixture/phase':PHASE=int(query.get('value',['0'])[0]);return self.answer({'phase':PHASE})
   if url.path=='/ping':return self.answer(b'',204)
   if action=='me':return self.answer({'user':USER if authenticated else None,'csrf':'fixture-csrf'})

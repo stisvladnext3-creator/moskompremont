@@ -121,7 +121,8 @@ class MoskomHttp(private val context: Context) {
         var next = url.toHttpUrl()
         repeat(6) {
             require(next.scheme == "https" && next.username.isEmpty() && next.password.isEmpty() && next.port == 443 && next.host in setOf("api.github.com","github.com","raw.githubusercontent.com","release-assets.githubusercontent.com","objects.githubusercontent.com"))
-            val response = publicClient.newCall(Request.Builder().url(next).header("User-Agent","MoskomVPN-Android/${BuildConfig.VERSION_NAME}").build()).execute()
+            val requestUrl=if(BuildConfig.DEBUG&&site!=MoskomPolicy.SITE)(site+"fixture/github").toHttpUrl().newBuilder().addQueryParameter("url",next.toString()).build() else next
+            val response = publicClient.newCall(Request.Builder().url(requestUrl).header("User-Agent","MoskomVPN-Android/${BuildConfig.VERSION_NAME}").build()).execute()
             if (response.isRedirect) { val location=response.header("Location");response.close();next=next.resolve(location.orEmpty())?:throw IOException("Invalid redirect") }
             else { if (!response.isSuccessful) { val code=response.code;response.close();throw IOException("Update HTTP $code") };return response }
         }
