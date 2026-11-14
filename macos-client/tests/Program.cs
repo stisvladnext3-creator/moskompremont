@@ -20,6 +20,12 @@ static class Program {
     var tag=prefix+version;var file=$"MoskomVPN-macOS-{flavor}-{rid}-{version}.dmg";var root=$"https://github.com/{MoskomBuildInfo.Repository}/releases/download/{tag}/";
     return JsonSerializer.Serialize(new{tag_name=tag,draft=false,assets=new[]{new{name=file,browser_download_url=root+file,size=1000000},new{name="SHA256SUMS.txt",browser_download_url=root+"SHA256SUMS.txt",size=400}}});
    }
+   var flat="""{"outbounds":[{"protocol":"vless","settings":{"address":"example.test","port":443,"id":"test-id","encryption":"none","flow":"xtls-rprx-vision"},"streamSettings":{"security":"reality","realitySettings":{"password":"public-key","serverName":"example.test"}}}]}""";
+   var compatible=JsonNode.Parse(MoskomLegacyCoreConfig.Xray(flat))!;var vnext=compatible["outbounds"]![0]!["settings"]!["vnext"]![0]!;
+   Check(vnext["address"]!.GetValue<string>()=="example.test"&&vnext["users"]![0]!["id"]!.GetValue<string>()=="test-id"&&vnext["users"]![0]!["flow"]!.GetValue<string>()=="xtls-rprx-vision","Legacy VLESS schema changed credentials/transport");
+   Check(compatible["outbounds"]![0]!["streamSettings"]!["realitySettings"]!["publicKey"]!.GetValue<string>()=="public-key","Legacy Reality field lost");
+   var dns=JsonNode.Parse(MoskomLegacyCoreConfig.Singbox("""{"dns":{"rules":[{"action":"evaluate","server":"remote","tag":"a","domain":["example.test"]},{"action":"respond","match_response":"a"}]}}"""))!;
+   Check(dns["dns"]!["rules"]!.AsArray().Count==1&&dns["dns"]!["rules"]![0]!["domain"]![0]!.GetValue<string>()=="example.test","Legacy DNS conversion lost selector");
    var flavor=MoskomMacBuildInfo.Flavor;var rid=MoskomMacBuildInfo.Rid;
    using var json=JsonDocument.Parse("["+string.Join(',',Release(flavor,rid,"0.2.9"),Release(flavor,rid,"0.2.10"),Release(flavor=="legacy"?"modern":"legacy",rid,"0.2.99"),Release(flavor,rid=="osx-x64"?"osx-arm64":"osx-x64","0.2.98"),Release(flavor,rid,"0.2.97","moskom-vpn-v"))+"]");
    var selected=MoskomAppUpdates.SelectRelease(json.RootElement,new Version(0,2,1));Check(selected?.Version==new Version(0,2,10),"Wrong platform/channel/version update");
