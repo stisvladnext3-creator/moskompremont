@@ -45,7 +45,9 @@ class MoskomIntegrationTest {
     }
     private fun approveSystemDialog(){
         val allow=device.wait(Until.findObject(By.res("android:id/button1")),15_000)
-        if(allow!=null)allow.click()
+        assertNotNull("Android VPN consent must be visible",allow)
+        allow!!.click()
+        assertTrue("Android VPN consent must close after approval",device.wait(Until.gone(By.pkg("com.android.vpndialogs")),15_000))
     }
     @Test fun accountGroupsRoutingDnsNativeLifecycleAndRevocation() {
         phase(0)

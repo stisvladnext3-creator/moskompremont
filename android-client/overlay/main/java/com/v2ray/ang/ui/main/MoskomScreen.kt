@@ -67,7 +67,7 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
     val modes=listOf("all" to R.string.moskom_mode_all,"except_ru" to R.string.moskom_mode_except,"blocked" to R.string.moskom_mode_blocked)
     BackHandler(enabled=dialog.isNotEmpty()){dialog=""}
     MaterialTheme(colorScheme=darkColorScheme(primary=Cyan,onPrimary=Ink,surface=CardInk,onSurface=Color(0xFFF0F4FF),background=Ink,onBackground=Color.White)) {
-        Scaffold(containerColor=Color.Transparent,contentWindowInsets=WindowInsets.safeDrawing) {padding->
+        Scaffold(containerColor=Color.Transparent,contentColor=Color(0xFFF0F4FF),contentWindowInsets=WindowInsets.safeDrawing) {padding->
             Box(Modifier.fillMaxSize().background(Background).padding(padding).consumeWindowInsets(padding),contentAlignment=Alignment.TopCenter) {
                 Column(Modifier.widthIn(max=520.dp).fillMaxHeight().fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(horizontal=24.dp,vertical=22.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
