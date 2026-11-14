@@ -59,7 +59,7 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
   using var parent=Process.GetProcessById(pid);if(parent.HasExited||parent.StartTime.ToUniversalTime().Ticks!=ticks)return 2;
   Stream channel;
   if(OperatingSystem.IsWindows()){
-   var pipe=new NamedPipeClientStream(".",args[3],PipeDirection.InOut,PipeOptions.Asynchronous);await pipe.ConnectAsync(10000);if(!GetNamedPipeServerProcessId(pipe.SafePipeHandle,out var server)||server!=pid){pipe.Dispose();return 2;}channel=pipe;
+   var pipe=new NamedPipeClientStream(".",args[3],PipeDirection.InOut,PipeOptions.Asynchronous,TokenImpersonationLevel.Impersonation);await pipe.ConnectAsync(10000);if(!GetNamedPipeServerProcessId(pipe.SafePipeHandle,out var server)||server!=pid){pipe.Dispose();return 2;}channel=pipe;
   }else{
    var socket=new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));await socket.ConnectAsync(new UnixDomainSocketEndPoint(args[3]),timeout.Token);if(VerifyUnixPeer?.Invoke((int)socket.Handle,uid,pid)!=true){socket.Dispose();return 2;}channel=new NetworkStream(socket,true);
   }

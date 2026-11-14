@@ -98,10 +98,12 @@ function ValidateSmokeReport([string]$Destination, [string]$AppDirectory) {
     foreach ($Name in @('MoskomPower','MoskomPowerIcon','MoskomAdd','MoskomSubscriptions','MoskomServers','MoskomRouting','MoskomAvailability','MoskomWebsiteStatus','MoskomLogin','MoskomMenu','MoskomSiteLogo')) { if ($Report.controls -notcontains $Name) { throw "UI missing $Name" } }
     if (!$Report.vectorIcon) { throw 'Power icon is not a vector.' }
     foreach ($Name in @('LoginForm','MultipleSubscriptions','RotatedLink','ExpiredSkipped','RevokedRemoved','SessionEncrypted','LogoutPreservedManual','AvailabilityChecked','SubscriptionPicker','ServerIsolation','SelectionPreserved','EmptySubscriptionSafe','StandaloneGroup','SameSelectionKeptConnection','RefreshKeptConnection','BackgroundSyncKeptConnection','OtherSubscriptionKeptConnection','UnchangedSubscriptionKeptConnection','FailedDownloadKeptConnection','ActiveChangeReconnected','ManualSelectionReconnected','RevocationStoppedConnection')) { if (!$Report.website.$Name) { throw "Website smoke failed: $Name" } }
-    foreach ($Name in @('Burger','Brand','Dns','RulesApplied','RulesRollback','UpdatePrompt','LaterDefers','Help')) { if (!$Report.settings.$Name) { throw "Settings smoke failed: $Name" } }
+    foreach ($Name in @('Burger','Brand','Dns','RulesApplied','RulesRollback','UpdatePrompt','LaterDefers','Help','Selective')) { if (!$Report.settings.$Name) { throw "Settings smoke failed: $Name" } }
     if (!$Report.management.Passed) { throw "Subscription management failed: $($Report.management | ConvertTo-Json -Compress)" }
     $Xray = Get-ChildItem "$AppDirectory/bin" -Recurse -File -Filter xray.exe | Select-Object -First 1
     if (!$Xray) { throw 'Packaged Xray is missing.' }
+    $Singbox = Get-ChildItem "$AppDirectory/bin" -Recurse -File -Filter sing-box.exe | Select-Object -First 1
+    foreach ($File in Get-ChildItem $Destination -File -Filter 'selective-*.json' | Where-Object { $_.Name -ne 'selective-source.json' }) { Run { & $Singbox.FullName check -c $File.FullName } }
     $OldAsset = $env:XRAY_LOCATION_ASSET; $env:XRAY_LOCATION_ASSET = Join-Path $AppDirectory 'bin'
     try { foreach ($ConfigFile in Get-ChildItem $Destination -File -Filter 'dns-*.json') { Run { & $Xray.FullName run -test -c $ConfigFile.FullName } } }
     finally { if ($null -eq $OldAsset) { Remove-Item Env:XRAY_LOCATION_ASSET -ErrorAction SilentlyContinue } else { $env:XRAY_LOCATION_ASSET = $OldAsset } }

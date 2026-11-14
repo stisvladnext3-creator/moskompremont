@@ -155,8 +155,8 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
             }
             "account"->AccountSheet(state,action){dialog=""}
             "subscriptions"->SubscriptionSheet(state,busy,action){dialog=""}
-            "apps"->ChoiceSheet(state,true,busy,action){dialog=""}
-            "services"->ChoiceSheet(state,false,busy,action){dialog=""}
+            "apps"->ChoiceSheet(state,true,busy,action){action(MoskomAction.CloseChoices);dialog=""}
+            "services"->ChoiceSheet(state,false,busy,action){action(MoskomAction.CloseChoices);dialog=""}
             "dns"->DnsSheet(state,action){dialog=""}
             "rules"->Sheet(stringResource(R.string.moskom_rules),{dialog=""}){Text(stringResource(R.string.moskom_rules_description));Text(stringResource(R.string.moskom_rules_stamp,state.rulesStamp),color=Muted,fontSize=12.sp);OperationStatus(state);PrimaryButton(R.string.moskom_rules,!busy,{action(MoskomAction.Rules)})}
             "updates"->Sheet(stringResource(R.string.moskom_check_update),{dialog=""}){Text(stringResource(R.string.moskom_version,BuildConfig.VERSION_NAME));OperationStatus(state);PrimaryButton(R.string.moskom_check_update,!busy,{action(MoskomAction.CheckUpdate)})}

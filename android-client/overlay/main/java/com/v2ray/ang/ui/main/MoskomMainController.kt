@@ -20,7 +20,7 @@ data class MoskomState(
     val serviceFailed:Boolean=false,val mode:String="all",val dns:String="auto",val customDns:String="",val rulesStamp:String="",
     val installedApps:List<MoskomInstalledApp> = emptyList(),val services:List<MoskomServiceChoice> = emptyList(),
     val chosenApps:Set<String> = emptySet(),val chosenServices:Set<String> = emptySet(),val selectionReady:Boolean=true,
-    val choiceLoading:Boolean=false,val choiceError:Int=0,
+    val choiceLoading:Boolean=false,val choiceError:Int=0,val choicesOpen:Boolean=false,
     val message:Int=0,val error:Int=0,val progress:Int?=null,val release:MoskomRelease?=null,val updateFile:String?=null,
 )
 sealed interface MoskomAction {
@@ -35,6 +35,7 @@ sealed interface MoskomAction {
     data class ServiceChoice(val id:String,val checked:Boolean):MoskomAction
     data object LoadChoices:MoskomAction
     data object SaveChoices:MoskomAction
+    data object CloseChoices:MoskomAction
     data object Sync:MoskomAction
     data object Logout:MoskomAction
     data object Service:MoskomAction
@@ -94,7 +95,7 @@ class MoskomMainController(
     private suspend fun catalog() {
         val data=withContext(Dispatchers.IO){val r=repo();r.ensureSelection();MoskomState(groups=r.groups(),group=r.selectedGroup(),server=r.selectedServer(),user=r.user,mode=r.routes.mode(),dns=r.routes.dns(),customDns=r.routes.customDns(),rulesStamp=r.routes.stamp(),services=r.routes.services(),chosenApps=r.routes.selectedApps(),chosenServices=r.routes.selectedServices(),selectionReady=r.routes.ready())}
         val manual=withContext(Dispatchers.Default){data.groups.filter{MoskomPolicy.removableSubscription(it.id,AppConfig.DEFAULT_SUBSCRIPTION_ID)}}
-        _state.update {it.copy(groups=data.groups,manualSubscriptions=manual,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp,services=data.services,chosenApps=data.chosenApps,chosenServices=data.chosenServices,selectionReady=data.selectionReady)}
+        _state.update {it.copy(groups=data.groups,manualSubscriptions=manual,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp,services=data.services,chosenApps=if(it.choicesOpen)it.chosenApps else data.chosenApps,chosenServices=if(it.choicesOpen)it.chosenServices else data.chosenServices,selectionReady=data.selectionReady)}
         refresh(data.group)
     }
     fun onNativeState(running:Boolean) {
@@ -113,15 +114,16 @@ class MoskomMainController(
             MoskomAction.LoadChoices->{
                 choicesJob?.cancel()
                 choicesJob=scope.launch {
-                    _state.update{it.copy(choiceLoading=true,choiceError=0)}
+                    _state.update{it.copy(choiceLoading=true,choiceError=0,choicesOpen=true)}
                     try {
                         val data=withContext(Dispatchers.IO){val routes=repo().routes;Triple(routes.installedApps(),routes.selectedApps(),routes.selectedServices())}
                         _state.update{it.copy(installedApps=data.first,chosenApps=data.second,chosenServices=data.third)}
                     }catch(cancelled:CancellationException){throw cancelled}
                     catch(error:Exception){LogUtil.e(AppConfig.TAG,"VPN application list load failed",IllegalStateException(error.javaClass.simpleName));_state.update{it.copy(choiceError=R.string.moskom_selection_error)}}
-                    finally{_state.update{it.copy(choiceLoading=false)}}
+                    finally{if(isActive)_state.update{it.copy(choiceLoading=false)}}
                 }
             }
+            MoskomAction.CloseChoices->{choicesJob?.cancel();_state.update{it.copy(choicesOpen=false,choiceLoading=false)}}
             is MoskomAction.AppChoice->{if(_state.value.installedApps.any{it.id==action.id})_state.update{it.copy(chosenApps=if(action.checked)it.chosenApps+action.id else it.chosenApps-action.id)}}
             is MoskomAction.ServiceChoice->{if(_state.value.services.any{it.id==action.id})_state.update{it.copy(chosenServices=if(action.checked)it.chosenServices+action.id else it.chosenServices-action.id)}}
             MoskomAction.SaveChoices->execute {

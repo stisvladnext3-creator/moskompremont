@@ -12,10 +12,11 @@ with (work/'application.log').open('w') as log:
 if (output/'smoke-error.txt').exists():raise RuntimeError((output/'smoke-error.txt').read_text())
 assert proc.returncode==0,(proc.returncode,(work/'application.log').read_text()[-5000:])
 report=json.loads((output/'smoke.json').read_text());assert report['status']=='Disconnected' and report['vectorIcon'] and report['website']['SessionEncrypted']
+assert report['settings']['Selective'],'New routing selectors/persistence did not pass'
 assert before==contents(),'Application wrote inside its signed bundle'
 subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
 for file in sorted(output.glob('dns-*.json')):
  subprocess.run([str(data/'bin/xray/xray'),'run','-test','-c',str(file)],env={**env,'XRAY_LOCATION_ASSET':str(data/'bin')},check=True)
-for file in sorted(output.glob('singbox-*.json')):
+for file in sorted(list(output.glob('singbox-*.json'))+list(output.glob('selective-apps.json'))+list(output.glob('selective-services.json'))):
  subprocess.run([str(data/'bin/sing_box/sing-box'),'check','-c',str(file)],check=True)
 print('PASS: actual Mac launcher UI, cabinet/keychain/sync/isolation, DNS, Russia, updates, help, manual subscription removal and immutable app bundle.')

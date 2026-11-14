@@ -96,7 +96,7 @@ public static partial class MoskomLauncherRuntime
     {
         if (FixtureDownloads != null) return FixtureDownloads;
         var handler = new SocketsHttpHandler { AllowAutoRedirect = false, UseProxy = Connection?.IsConnected == true, ConnectTimeout = TimeSpan.FromSeconds(15) };
-        if (handler.UseProxy) handler.Proxy = new WebProxy($"socks5://127.0.0.1:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)}");
+        if (handler.UseProxy) handler.Proxy = new WebProxy($"socks5://127.0.0.1:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)+(SelectiveMode?3:0)}");
         return new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(10) };
     }
     public static async Task<bool> UpdateRoutingRulesAsync(CancellationToken ct, IProgress<MoskomTransferProgress>? progress)

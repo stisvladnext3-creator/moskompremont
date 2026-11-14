@@ -8,7 +8,7 @@ namespace v2rayN.Desktop.Views;
 
 internal static class MoskomSettingsSmoke
 {
-    internal sealed record Report(bool Burger, bool Brand, bool Dns, bool RulesApplied, bool RulesRollback, bool UpdatePrompt, bool LaterDefers, bool Help);
+    internal sealed record Report(bool Burger, bool Brand, bool Dns, bool RulesApplied, bool RulesRollback, bool UpdatePrompt, bool LaterDefers, bool Help, bool Selective);
     private sealed class Handler(string body) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
@@ -32,7 +32,7 @@ internal static class MoskomSettingsSmoke
         var burgerButton = Control<Button>(owner,"MoskomMenu"); var menu = burgerButton.ContextMenu!;
         menu.Open(burgerButton); await Task.Delay(150);
         var names = menu.Items.OfType<MenuItem>().Select(i=>i.Name).ToList();
-        var burger = new[]{"MoskomManageSubscriptions","MoskomRulesUpdate","MoskomAppUpdates","MoskomDns"}.All(names.Contains);
+        var burger = new[]{"MoskomManageSubscriptions","MoskomApplications","MoskomServices","MoskomRulesUpdate","MoskomAppUpdates","MoskomDns"}.All(names.Contains);
         Capture(menu,output,"menu.png"); menu.Close();
         Control<Button>(owner,"MoskomHelp").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(150);
         var helpWindow = Child(owner,"Справка");
@@ -50,6 +50,7 @@ internal static class MoskomSettingsSmoke
         for(var i=0;i<100&&!save.IsEnabled;i++)await Task.Delay(50);
         var dns = MoskomLauncherRuntime.Preferences.Dns=="cloudflare" && AppManager.Instance.Config.SimpleDNSItem.RemoteDNS=="https://1.1.1.1/dns-query";
         Capture(dnsWindow,output,"dns.png"); dnsWindow.Close(); await dnsTask;
+        var selective = await MoskomSelectiveSmoke.RunAsync(owner,output);
         var config = AppManager.Instance.Config;
         foreach(var choice in new[]{"cloudflare","google","quad9","auto"})
         {
@@ -87,6 +88,6 @@ internal static class MoskomSettingsSmoke
         var prompt = Control<Button>(updateWindow,"MoskomUpdateNow")!=null && Control<Button>(updateWindow,"MoskomUpdateLater")!=null && updateWindow.Title!.Contains(availableVersion.ToString(),StringComparison.Ordinal);
         Capture(updateWindow,output,"update.png"); Control<Button>(updateWindow,"MoskomUpdateLater").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await updateTask;
         var later = await MoskomLauncherRuntime.CheckApplicationUpdateAsync(false)==null && await MoskomLauncherRuntime.CheckApplicationUpdateAsync(true)!=null;
-        return new(burger,brand,dns,applied,rollback,prompt,later,help);
+        return new(burger,brand,dns,applied,rollback,prompt,later,help,selective);
     }
 }
