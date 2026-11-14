@@ -22,7 +22,7 @@ g=root/gradle;s=g.read_text();s=re.sub(r'localeFilters \+= listOf\(.*?\n        
 res=root/'V2rayNG/app/src/main/res';(res/'drawable').mkdir(exist_ok=True)
 shutil.copyfile(own.parent/'desktop-client/branding/app-logo.png',res/'drawable/moskom_logo.png')
 manifest='V2rayNG/app/src/main/AndroidManifest.xml'
-edit(manifest,'android:icon="@mipmap/ic_launcher"','android:icon="@drawable/moskom_logo"')
+edit(manifest,'android:banner="@mipmap/ic_banner"\n        android:icon="@mipmap/ic_launcher"','android:banner="@mipmap/ic_banner"\n        android:icon="@drawable/moskom_logo"')
 # Do not export account/session data through Android backup.
 edit(manifest,'android:allowBackup="true"','android:allowBackup="false"')
 for p in res.glob('values*/strings.xml'):
