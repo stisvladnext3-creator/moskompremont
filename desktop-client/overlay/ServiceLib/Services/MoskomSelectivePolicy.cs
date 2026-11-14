@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Net;
 namespace ServiceLib.Services;
 
 public sealed record MoskomAppChoice(string Id,string Name,string Path,string? Bundle = null);
@@ -65,7 +66,24 @@ public static class MoskomSelectivePolicy {
    if(mac){var processes=selected.SelectMany(s=>s.MacProcessNames).ToArray();if(processes.Length>0)rules.Add(new JsonObject{["process_name"]=Strings(processes),["outbound"]="proxy"});}
   }
   var route=config["route"] as JsonObject;if(route==null){route=new();config["route"]=route;}route["rules"]=rules;route["final"]="direct";route["auto_detect_interface"]=true;
-  if(config["dns"] is JsonObject dns){dns["reverse_mapping"]=true;}
+  route.Remove("rule_set"); // This policy does not use Russia rule sets or their format/version.
+  config.Remove("experimental"); // A privileged core must not create root-owned user cache/UI files.
+  if(config["dns"] is JsonObject dns){
+   dns["reverse_mapping"]=true;
+   var servers=dns["servers"] as JsonArray;
+   if(servers?.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="direct-dns-1")==true&&servers.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="remote-dns-1")){
+    var dnsRules=new JsonArray();
+    if(servers.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="hosts-dns"))dnsRules.Add(new JsonObject{["preferred_by"]="hosts-dns",["server"]="hosts-dns"});
+    var hosts=outbounds.OfType<JsonObject>().Select(o=>o["server"]?.GetValue<string>()).Where(host=>!string.IsNullOrEmpty(host)&&!IPAddress.TryParse(host,out _)).Select(host=>host!).ToArray();
+    if(hosts.Length>0)dnsRules.Add(new JsonObject{["domain"]=Strings(hosts),["server"]="direct-dns-1"});
+    if(settings.Mode=="services")foreach(var rule in rules.OfType<JsonObject>()){
+     foreach(var field in new[]{"domain","domain_suffix"})if(rule[field] is JsonArray domains)dnsRules.Add(new JsonObject{[field]=domains.DeepClone(),["server"]="remote-dns-1"});
+    }
+    // OS DNS brokers cannot reliably attribute a query to its originating desktop app.
+    dns["final"]=settings.Mode=="apps"?"remote-dns-1":"direct-dns-1";dns["rules"]=dnsRules;
+    route["default_domain_resolver"]="direct-dns-1";
+   }
+  }
   config["log"]=new JsonObject{["level"]="warn",["timestamp"]=true};
   return config;
  }

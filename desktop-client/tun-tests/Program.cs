@@ -14,7 +14,7 @@ internal static class Program {
   if(args.FirstOrDefault()=="--moskom-tun-helper")return await MoskomTunSupervisor.RunHelperAsync(args);
   if(args.FirstOrDefault()=="--fixture-parent"){
    await using var lease=await MoskomTunSupervisor.StartAsync(await File.ReadAllBytesAsync(args[1]),CancellationToken.None);
-   await File.WriteAllTextAsync(args[2],"ready");await Task.Delay(Timeout.Infinite);return 0;
+   await Wait(Tunnel,"Crash parent TUN did not start");await File.WriteAllTextAsync(args[2],"ready");await Task.Delay(Timeout.Infinite);return 0;
   }
   var output=Path.GetFullPath(args[0]);Directory.CreateDirectory(output);
   try {await Run(output);Console.WriteLine("PASS: real TUN selected process/service isolation, direct fallback and parent-crash cleanup");return 0;}
@@ -32,25 +32,25 @@ internal static class Program {
  static async Task Run(string output){
   Check(!Tunnel(),"Fixture must start without the test TUN");var listener=new TcpListener(IPAddress.Loopback,0);listener.Start();var socks=((IPEndPoint)listener.LocalEndpoint).Port;
   using var stop=new CancellationTokenSource();var accept=Task.Run(async()=>{try{while(!stop.IsCancellationRequested){var socket=await listener.AcceptTcpClientAsync(stop.Token);_=Serve(socket,stop.Token);}}catch(OperationCanceledException){}});
-  var directory=Directory.CreateTempSubdirectory("moskom-process-fixture-").FullName;var selected=Path.Combine(directory,Mac?"selected-curl":"selected-curl.exe");var direct=Path.Combine(directory,Mac?"direct-curl":"direct-curl.exe");
+  var directory=Mac?Directory.CreateDirectory(Path.Combine("/private/tmp","moskom-process-fixture-"+Guid.NewGuid().ToString("N"))).FullName:Directory.CreateTempSubdirectory("moskom-process-fixture-").FullName;var selected=Path.Combine(directory,Mac?"selected-curl":"selected-curl.exe");var direct=Path.Combine(directory,Mac?"direct-curl":"direct-curl.exe");
   try{
    var source=Mac?"/usr/bin/curl":Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"curl.exe");File.Copy(source,selected);File.Copy(source,direct);
    if(Mac){File.SetUnixFileMode(selected,UnixFileMode.UserRead|UnixFileMode.UserExecute);File.SetUnixFileMode(direct,UnixFileMode.UserRead|UnixFileMode.UserExecute);}
    var port=18838;var apps=Config(socks,port,selected,false);await File.WriteAllBytesAsync(Path.Combine(output,"selected-apps.json"),apps);await CoreCheck(apps,directory);
    await using(var tunnel=await MoskomTunSupervisor.StartAsync(apps,CancellationToken.None)){
-    await Wait(Tunnel,"Real test TUN did not open");var routed=await Curl(selected,"unselected.invalid");Check(routed.Contains(Marker),"Selected executable did not traverse the proxy");
+    await Wait(Tunnel,"Real test TUN did not open");await Task.Delay(2000);var routed=await Curl(selected,"unselected.invalid");Check(routed.Contains(Marker),"Selected executable did not traverse the proxy");
     var count=_requests;var bypass=await Curl(direct,"unselected.invalid");Check(!bypass.Contains(Marker)&&_requests==count,"Unselected executable was proxied");
    }
    await Wait(()=>!Tunnel(),"Normal disconnect left the TUN/routes active");
    var services=Config(socks,port,selected,true);await File.WriteAllBytesAsync(Path.Combine(output,"selected-services.json"),services);await CoreCheck(services,directory);
    await using(var tunnel=await MoskomTunSupervisor.StartAsync(services,CancellationToken.None)){
-    await Wait(Tunnel,"Service test TUN did not open");var routed=await Curl(direct,"youtube.com");Check(routed.Contains(Marker),"Selected service did not traverse proxy");
+    await Wait(Tunnel,"Service test TUN did not open");await Task.Delay(2000);var routed=await Curl(direct,"youtube.com");Check(routed.Contains(Marker),"Selected service did not traverse proxy");
     var count=_requests;var bypass=await Curl(selected,"unselected.invalid");Check(!bypass.Contains(Marker)&&_requests==count,"Unselected service was proxied");
    }
    await Wait(()=>!Tunnel(),"Service disconnect left TUN/routes active");
    var configFile=Path.Combine(directory,"crash-config.json");await File.WriteAllBytesAsync(configFile,apps);var ready=Path.Combine(directory,"ready");
    var start=new ProcessStartInfo(Environment.ProcessPath!){UseShellExecute=false};foreach(var arg in new[]{"--fixture-parent",configFile,ready})start.ArgumentList.Add(arg);
-   using(var parent=Process.Start(start)!){await Wait(()=>File.Exists(ready),"Crash parent did not start");Check(Tunnel(),"Crash fixture has no TUN");parent.Kill();await parent.WaitForExitAsync();}
+   using(var parent=Process.Start(start)!){await Wait(()=>File.Exists(ready),"Crash parent did not start");await Wait(Tunnel,"Crash fixture has no TUN");parent.Kill();await parent.WaitForExitAsync();}
    await Wait(()=>!Tunnel(),"Killed UI parent left privileged core/TUN active");
    await File.WriteAllTextAsync(Path.Combine(output,"tun-validation.json"),JsonSerializer.Serialize(new{selectedProcess=true,unselectedProcessDirect=true,selectedService=true,unselectedServiceDirect=true,normalStop=true,parentCrash=true,requests=_requests}));
   }finally{stop.Cancel();listener.Stop();try{await accept;}catch{}Directory.Delete(directory,true);}

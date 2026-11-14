@@ -48,7 +48,11 @@ public static partial class MoskomLauncherRuntime {
    var port=AppManager.Instance.GetLocalPort(EInboundProtocol.socks);var tun=OperatingSystem.IsMacOS()?"utun"+System.Security.Cryptography.RandomNumberGenerator.GetInt32(100,200):"MoskomVPN";
    var config=MoskomSelectivePolicy.Configure(json,Preferences.Selective,ServiceCatalog,port,tun,OperatingSystem.IsMacOS());
    _supervisor=await MoskomTunSupervisor.StartAsync(JsonSerializer.SerializeToUtf8Bytes(config),ct);
-   for(var attempt=0;attempt<50;attempt++){ct.ThrowIfCancellationRequested();if(HasExited)throw new InvalidOperationException("Ядро TUN завершилось. Проверьте разрешение администратора и выбранный сервер.");if(await HasSocksAsync(port+3,ct))return;await Task.Delay(200,ct);}
+   for(var attempt=0;attempt<50;attempt++){ct.ThrowIfCancellationRequested();if(HasExited)throw new InvalidOperationException("Ядро TUN завершилось. Проверьте разрешение администратора и выбранный сервер.");if(await HasSocksAsync(port+3,ct)){
+    // sing-box's interface/process cache follows utun/Wintun creation asynchronously.
+    // Keep the UI connecting until that cache has observed the new local addresses.
+    await Task.Delay(2000,ct);if(HasExited)throw new InvalidOperationException("Ядро TUN завершилось при запуске.");return;
+   }await Task.Delay(200,ct);}
    throw new InvalidOperationException("Не запущен локальный вход TUN.");
   }
   public async ValueTask DisposeAsync(){if(_supervisor!=null){await _supervisor.DisposeAsync();_supervisor=null;}}

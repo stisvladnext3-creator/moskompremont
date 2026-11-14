@@ -125,8 +125,8 @@ int mkr_running_apps(unsigned char *buffer,int capacity){
  @autoreleasepool {
   NSMutableArray *rows=[NSMutableArray array];
   for(NSRunningApplication *app in NSWorkspace.sharedWorkspace.runningApplications){
-   NSString *path=app.executableURL.path;if(!path||app.processIdentifier==getpid())continue;
-   [rows addObject:@{@"id":path,@"name":app.localizedName?:path.lastPathComponent,@"path":path,@"bundle":app.bundleURL.path?:@""}];
+   NSString *path=app.executableURL.URLByResolvingSymlinksInPath.path;if(!path||app.processIdentifier==getpid())continue;
+   [rows addObject:@{@"id":path,@"name":app.localizedName?:path.lastPathComponent,@"path":path,@"bundle":app.bundleURL.URLByResolvingSymlinksInPath.path?:@""}];
   }
   NSData *data=[NSJSONSerialization dataWithJSONObject:rows options:0 error:NULL];if(!data||data.length>(NSUInteger)capacity)return -1;memcpy(buffer,data.bytes,data.length);return (int)data.length;
  }
