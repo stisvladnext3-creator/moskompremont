@@ -47,7 +47,7 @@ metadata=json.dumps(alice.call('router_devices'));assert token not in metadata a
 assert sql('SELECT token_hash FROM internet_router_devices WHERE id='+str(did),True)==hashlib.sha256(token.split('.')[2].encode()).hexdigest()
 # Updating the underlying record keeps device identity/token, and notifies only its owner.
 new='https://new.example/sub/alice';admin.call('import_subscriptions',{'csv':'name,url\nALICE,'+new+'\nBOB,https://test.example/sub/bob\n'});assert agent(token)['resource']['value']==new
-revision=hashlib.sha256(new.encode()).hexdigest();report={'state':'applied','revision':revision,'client_version':'0.1.0'}
+revision=hashlib.sha256(new.encode()).hexdigest();report={'state':'applied','revision':revision,'client_version':'0.1.1'}
 agent(token,report);agent(token,report);assert sql("SELECT COUNT(*) FROM internet_client_notifications WHERE event_key='router-device:"+str(did)+':'+revision+":applied'",True)=='1'
 agent(token,{**report,'state':'execute'},400);assert sql('SELECT url FROM internet_subscriptions WHERE id='+str(aid),True)==new
 # Expiry blocks a subscription link without revoking the device; renewal restores access.

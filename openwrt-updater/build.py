@@ -68,7 +68,7 @@ def build(version,out,apk):
    for p in sorted(stage.rglob('*')):
     if not p.is_file():continue
     rel=p.relative_to(stage).as_posix();data=p.read_bytes()
-    if rel=='usr/bin/mkr-router':data=data.replace(b"MKR_VERSION='0.1.0'",f"MKR_VERSION='{version}'".encode());p.write_bytes(data)
+    if rel=='usr/bin/mkr-router':data=data.replace(b"MKR_VERSION='0.1.1'",f"MKR_VERSION='{version}'".encode());p.write_bytes(data)
     mode=0o600 if rel=='etc/config/mkr_router' else 0o755 if rel.startswith(('usr/bin/','usr/libexec/','etc/init.d/')) else 0o644
     p.chmod(mode);os.utime(p,(EPOCH,EPOCH));files.append((rel,data,mode))
    control=f'Package: {name}\nVersion: {version}-1\nArchitecture: all\nMaintainer: MosKomRemont\nSection: net\nPriority: optional\nLicense: GPL-2.0-or-later\nDepends: {deps}\nDescription: {desc}\nInstalled-Size: {sum(len(x[1]) for x in files)}\n'
@@ -117,4 +117,4 @@ def build(version,out,apk):
     if p.is_file() and p.suffix!='.zip':z.write(p,p.name)
  return out
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--version',default='0.1.0');p.add_argument('--out',type=Path,required=True);p.add_argument('--apk-tool',type=Path);a=p.parse_args();build(a.version,a.out.resolve(),a.apk_tool)
+ p=argparse.ArgumentParser();p.add_argument('--version',default='0.1.1');p.add_argument('--out',type=Path,required=True);p.add_argument('--apk-tool',type=Path);a=p.parse_args();build(a.version,a.out.resolve(),a.apk_tool)

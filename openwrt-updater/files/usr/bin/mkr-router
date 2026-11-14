@@ -1,6 +1,6 @@
 #!/bin/sh
 # Data-only updater: the website supplies a URI, never a shell command or a package.
-MKR_VERSION='0.1.0'
+MKR_VERSION='0.1.1'
 umask 077
 [ "$(id -u)" = 0 ] || { printf '{"error":"root_required"}\n'; exit 1; }
 STATE=/tmp/mkr-router
@@ -136,10 +136,20 @@ config_value() {
  uci -q -t "$delta" commit podkop || return 1
  [ "$(text_sha "$(uci -q get "podkop.$TARGET.proxy_string" 2>/dev/null)")" = "$(text_sha "$1")" ]
 }
-podkop_running() { /etc/init.d/podkop running >/dev/null 2>&1; }
+sing_box_running() { /etc/init.d/sing-box running >/dev/null 2>&1; }
+routing_present() { nft list table inet PodkopTable >/dev/null 2>&1; }
+podkop_state() {
+ # Podkop is a one-shot initializer. Its process normally exits while sing-box
+ # and the NFT table remain active. Do not confuse that with a stopped VPN.
+ [ -x /etc/init.d/sing-box ] && command -v nft >/dev/null 2>&1 || { printf unknown; return; }
+ if /etc/init.d/podkop running >/dev/null 2>&1; then printf starting
+ elif routing_present; then if sing_box_running; then printf active; else printf inconsistent; fi
+ elif sing_box_running; then printf inconsistent
+ else printf stopped; fi
+}
 healthy() {
  config_path="$(uci -q get podkop.main.config_path 2>/dev/null)"; [ -n "$config_path" ] || config_path=/etc/sing-box/config.json
- [ -f "$config_path" ] && sing-box check -c "$config_path" >/dev/null 2>&1 && podkop_running
+ [ -f "$config_path" ] && sing-box check -c "$config_path" >/dev/null 2>&1 && sing_box_running && routing_present
 }
 rollback() {
  # Restore only our option; concurrent edits to DNS, lists or other sections survive.
@@ -155,7 +165,8 @@ apply_value() {
  version_ok && target || { state manual unsupported_podkop; return 1; }
  [ -z "$(uci -q changes podkop 2>/dev/null)" ] || { state manual unsaved_changes; return 1; }
  [ -n "$BASELINE" ] && [ "$CURRENT_SHA" = "$BASELINE" ] || { state manual local_changed; return 1; }
- WAS_RUNNING=no; podkop_running && WAS_RUNNING=yes
+ WAS_RUNNING=no
+ case "$(podkop_state)" in active) WAS_RUNNING=yes;; stopped) ;; *) state manual runtime_state; report manual; return 0;; esac
  cp /etc/config/podkop "$KEEP/podkop.backup" && chmod 600 "$KEEP/podkop.backup" && printf '%s' "$CURRENT" > "$KEEP/previous-value" || { state failed backup_failed; return 1; }
  jq -n --arg section "$TARGET" --arg revision "$REVISION" --arg old "$CURRENT_SHA" --arg running "$WAS_RUNNING" '{section:$section,revision:$revision,previous:$old,running:$running}' > "$KEEP/journal.new" && mv "$KEEP/journal.new" "$KEEP/journal.json" || { state failed backup_failed; return 1; }
  state applying ''
@@ -165,7 +176,8 @@ apply_value() {
    if rollback; then state failed restart_failed; else state manual rollback_failed; fi; report failed; return 1
   fi
   ready=no
-  for delay in 1 2 3 4 5 6 7 8 9 10; do sleep 1; if healthy; then ready=yes; break; fi; done
+  attempt=0
+  while [ "$attempt" -lt 45 ]; do sleep 2; if healthy; then ready=yes; break; fi; attempt=$((attempt + 1)); done
   if [ "$ready" != yes ]; then if rollback; then state failed check_failed; else state manual rollback_failed; fi; report failed; return 1; fi
  fi
  binding "$REVISION" || { state failed binding_failed; return 1; }

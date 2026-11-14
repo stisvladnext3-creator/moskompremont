@@ -13,7 +13,7 @@
 ## 2. Установить на OpenWrt
 
 1. В **Статус → Обзор** посмотрите версию OpenWrt. Podkop уже должен быть установлен и настроен с работающим подключением.
-2. Распакуйте `moskom-openwrt-0.1.0.zip` на компьютере. Для **23.05/24.10** нужны два файла `.ipk`; для **25.12** — два файла `.apk`. Это разные форматы, переименовывать их нельзя.
+2. Распакуйте `moskom-openwrt-0.1.1.zip` на компьютере. Для **23.05/24.10** нужны два файла `.ipk`; для **25.12** — два файла `.apk`. Это разные форматы, переименовывать их нельзя.
 3. В **Система → Программное обеспечение** обновите списки пакетов. Через **Загрузить пакет** сначала установите `mkr-router-updater`, затем `luci-app-mkr-router` подходящего формата. Зависимости загружаются из репозиториев вашей прошивки; нужен доступ в интернет и свободное место.
 4. Обновите страницу LuCI. Появится **Сервисы → МосКомпРемонт**. Если пункта нет, выйдите и снова войдите в LuCI.
 
@@ -21,16 +21,16 @@
 
 ```sh
 opkg update
-opkg install /tmp/mkr-router-updater_0.1.0-1_all.ipk
-opkg install /tmp/luci-app-mkr-router_0.1.0-1_all.ipk
+opkg install /tmp/mkr-router-updater_0.1.1-1_all.ipk
+opkg install /tmp/luci-app-mkr-router_0.1.1-1_all.ipk
 ```
 
 Для apk:
 
 ```sh
 apk update
-apk add --allow-untrusted /tmp/mkr-router-updater-0.1.0-r1.apk
-apk add --allow-untrusted /tmp/luci-app-mkr-router-0.1.0-r1.apk
+apk add --allow-untrusted /tmp/mkr-router-updater-0.1.1-r1.apk
+apk add --allow-untrusted /tmp/luci-app-mkr-router-0.1.1-r1.apk
 ```
 
 APK устанавливаются локально, поэтому нужен `--allow-untrusted`. Перед установкой сверьте файлы с `SHA256SUMS.txt` из того же релиза. Пакет не заменяет Podkop и не требует смены прошивки.

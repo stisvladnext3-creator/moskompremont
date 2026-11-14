@@ -25,7 +25,7 @@ class Router:
  def status(self):return json.loads(self.cli('status').stdout)
  def source(self,value=NEW,typ='router_key',device=7):self.put('/tmp/snapshot.json',json.dumps({'version':1,'device_id':device,'resource':{'id':3,'type':typ,'label':'Router fixture','value':value,'revision':hashlib.sha256(value.encode()).hexdigest()}}))
  def reset(self,version='0.6.1',mode='auto',extra=''):
-  self.sh('rm -rf /tmp/mkr-router /etc/mkr-router /tmp/.uci /tmp/podkop-on /tmp/restarts /tmp/check-fail /tmp/restart-fail /tmp/http-code /tmp/curl-fail /tmp/dns-edit /tmp/sub-auth-leak /tmp/argv-leak; mkdir -p /tmp/.uci /etc/sing-box')
+  self.sh('rm -rf /tmp/mkr-router /etc/mkr-router /tmp/.uci /tmp/podkop-on /tmp/restarts /tmp/check-fail /tmp/restart-fail /tmp/http-code /tmp/curl-fail /tmp/dns-edit /tmp/sub-auth-leak /tmp/argv-leak /tmp/podkop-starting /tmp/without-routing /tmp/routing-only; mkdir -p /tmp/.uci /etc/sing-box')
   self.put('/etc/config/mkr_router',(ROOT/'files/etc/config/mkr_router').read_bytes())
   self.put('/etc/config/podkop',"config main 'main'\n option mode 'proxy'\n option proxy_config_type 'url'\n option proxy_string '"+OLD+"'\n option dns_server '1.1.1.1'\n"+extra)
   self.put('/etc/sing-box/config.json','{}');self.put('/tmp/podkop-version',version);self.source()
@@ -53,21 +53,27 @@ fi
    if real:self.put('/tmp/mkr-mocks/'+command,'#!/bin/sh\nif [ "$1" = status ] && [ "$2" = podkop ];then printf "Version: ";cat /tmp/podkop-version;elif [ "$1" = info ] && [ "$2" = -v ] && [ "$3" = podkop ];then printf "podkop-";cat /tmp/podkop-version;else exec '+real+' "$@";fi\n',0o755)
   self.put('/etc/init.d/podkop','''#!/bin/sh
 case "$1" in
- running) [ -f /tmp/podkop-on ];;
+ running) [ -f /tmp/podkop-starting ];;
  restart)
   echo restart >> /tmp/restarts
+  rm -f /tmp/podkop-on
   if [ -f /tmp/dns-edit ];then uci -q set podkop.main.dns_server=9.9.9.9;uci -q commit podkop;rm /tmp/dns-edit;fi
   [ -f /tmp/restart-fail ] && { rm /tmp/restart-fail;exit 1; }
   touch /tmp/podkop-on;;
 esac
 ''',0o755)
   self.put('/tmp/mkr-mocks/sing-box','#!/bin/sh\n[ ! -f /tmp/check-fail ]\n',0o755)
+  self.put('/etc/init.d/sing-box','#!/bin/sh\n[ "$1" = running ] && [ -f /tmp/podkop-on ]\n',0o755)
+  self.put('/tmp/mkr-mocks/nft','#!/bin/sh\n[ ! -f /tmp/without-routing ] && { [ -f /tmp/podkop-on ] || [ -f /tmp/routing-only ]; }\n',0o755)
+  self.put('/tmp/mkr-mocks/sleep','#!/bin/sh\n# Simulated retry timer; no production code bypass.\nexit 0\n',0o755)
  def tests(self):
   self.install_fixtures()
   for version in ['0.3.4','0.4.11','0.5.8','0.6.1']:
    self.reset(version);self.cli('check');assert self.value()==NEW;assert self.status()['state']=='applied';assert self.sh('test ! -f /tmp/restarts && echo yes')=='yes'
    self.cli('check');assert self.status()['state']=='current';assert TOKEN not in self.cli('status').stdout.decode()
   self.reset();self.sh('touch /tmp/podkop-on');self.cli('check');assert self.sh('wc -l < /tmp/restarts')=='1';self.cli('check');assert self.sh('wc -l < /tmp/restarts')=='1'
+  for marker in ['podkop-starting','without-routing','routing-only']:
+   self.reset();self.sh('touch /tmp/podkop-on /tmp/'+marker if marker!='routing-only' else 'touch /tmp/routing-only');self.cli('check');assert self.value()==OLD and self.status()['reason']=='runtime_state'
   self.reset(mode='notify');self.cli('check');assert self.value()==OLD and self.status()['state']=='available';self.cli('apply');assert self.value()==NEW
   self.reset('0.7.0');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
   self.reset(extra="config extra 'other'\n option mode 'proxy'\n option proxy_config_type 'url'\n option proxy_string 'vless://other@other.example:443#Other'\n");self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'

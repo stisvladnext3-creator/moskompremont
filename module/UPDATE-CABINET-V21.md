@@ -13,7 +13,7 @@
 5. Обновите `account.html` без кеша. Клиент: **OpenWrt → название роутера → выбрать ключ/подписку → Создать код**. Администратор в своей вкладке OpenWrt сначала находит клиента и выбирает его запись.
 6. Установите на роутер подходящие пакеты `mkr-router-updater` и `luci-app-mkr-router`. Откройте **Сервисы → МосКомпРемонт**, вставьте показанные адрес API и код. Оставьте автоматический режим. При нескольких секциях Podkop выберите нужную, сохраните и проверьте.
 
-[Скачать пакеты для роутера](https://github.com/stisvladnext3-creator/moskompremont/releases/tag/moskom-openwrt-v0.1.0) · [Подробная установка](https://github.com/stisvladnext3-creator/moskompremont/blob/main/openwrt-updater/INSTALL-OPENWRT.md)
+[Скачать пакеты для роутера](https://github.com/stisvladnext3-creator/moskompremont/releases/tag/moskom-openwrt-v0.1.1) · [Подробная установка](https://github.com/stisvladnext3-creator/moskompremont/blob/main/openwrt-updater/INSTALL-OPENWRT.md)
 
 Код показывается один раз, действует год и разрешает только выбранную запись. В базе хранится хеш. При смене пароля, удалении аккаунта и снятии/передаче привязки доступ прекращается. Истечение срока подписки приостанавливает получение ссылки до продления. При сетевой ошибке уже установленное подключение на роутере сохраняется.
 

@@ -18,10 +18,10 @@ jobs:
       - name: Prepare real OpenWrt environments
         run: python3 openwrt-updater/tests/platforms.py --work "$RUNNER_TEMP/openwrt-platforms"
       - name: Build native IPK and APK v3
-        run: python3 openwrt-updater/build.py --version 0.1.0 --out "$RUNNER_TEMP/mkr-dist"
+        run: python3 openwrt-updater/build.py --version 0.1.1 --out "$RUNNER_TEMP/mkr-dist"
       - name: Test native install, rpcd, UCI, updates and rollback
         run: |
-          python3 openwrt-updater/tests/install.py --dist "$RUNNER_TEMP/mkr-dist" --version 0.1.0
+          python3 openwrt-updater/tests/install.py --dist "$RUNNER_TEMP/mkr-dist" --version 0.1.1
           python3 openwrt-updater/tests/router.py
       - name: Test cabinet API and migration in PHP/MySQL
         run: |
@@ -46,16 +46,16 @@ jobs:
           python3 openwrt-updater/package-site.py --out "$RUNNER_TEMP/mkr-dist"
           cp module/UPDATE-CABINET-V21.md "$RUNNER_TEMP/mkr-dist/"
           cp openwrt-updater/VALIDATION.md "$RUNNER_TEMP/mkr-dist/"
-          git archive --format=zip --prefix=moskom-openwrt-source/ -o "$RUNNER_TEMP/mkr-dist/moskom-openwrt-0.1.0-source.zip" HEAD openwrt-updater module .github/workflows/openwrt-router.yml
+          git archive --format=zip --prefix=moskom-openwrt-source/ -o "$RUNNER_TEMP/mkr-dist/moskom-openwrt-0.1.1-source.zip" HEAD openwrt-updater module .github/workflows/openwrt-router.yml
           cd "$RUNNER_TEMP/mkr-dist"
           sha256sum *.ipk *.apk *.zip *.md > SHA256SUMS.txt
       - name: Publish permanent downloads
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          moskom_tag=moskom-openwrt-v0.1.0
+          moskom_tag=moskom-openwrt-v0.1.1
           if ! gh release view "$moskom_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$moskom_tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title 'МосКомпРемонт · OpenWrt 0.1.0' --notes-file openwrt-updater/RELEASE.md
+            gh release create "$moskom_tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title 'МосКомпРемонт · OpenWrt 0.1.1' --notes-file openwrt-updater/RELEASE.md
           fi
           gh release upload "$moskom_tag" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/mkr-dist/"*.ipk "$RUNNER_TEMP/mkr-dist/"*.apk "$RUNNER_TEMP/mkr-dist/"*.zip "$RUNNER_TEMP/mkr-dist/"*.md "$RUNNER_TEMP/mkr-dist/SHA256SUMS.txt"
           gh release edit "$moskom_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
