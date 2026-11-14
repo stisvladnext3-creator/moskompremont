@@ -56,6 +56,7 @@ public sealed class MoskomLauncherView : UserControl
         {
             var item = new MenuItem { Header = text, Name = name }; item.Click += async (_, _) => await action(); context.Items.Add(item); return item;
         }
+        Entry("Управление подписками", "MoskomManageSubscriptions", () => MoskomSubscriptionViews.ShowAsync(owner));
         Entry("Обновить правила Russia", "MoskomRulesUpdate", () => MoskomSettingsViews.ShowRoutingAsync(owner));
         Entry("Проверить обновления приложения", "MoskomAppUpdates", () => MoskomSettingsViews.CheckApplicationAsync(owner));
         Entry("DNS", "MoskomDns", () => MoskomSettingsViews.ShowDnsAsync(owner));

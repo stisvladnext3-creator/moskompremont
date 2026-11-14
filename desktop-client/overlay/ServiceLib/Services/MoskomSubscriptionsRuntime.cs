@@ -7,6 +7,34 @@ public sealed record MoskomSubscriptionGroup(string Id, string Name, IReadOnlyLi
 
 public static partial class MoskomLauncherRuntime
 {
+    public static async Task<IReadOnlyList<MoskomSubscriptionGroup>> ManualSubscriptionsAsync()
+    {
+        var subscriptions = await AppManager.Instance.SubItems() ?? [];
+        var manualIds = subscriptions.Where(s => s.Memo?.StartsWith(CabinetPrefix, StringComparison.Ordinal) != true).Select(s => s.Id).ToHashSet();
+        return (await SubscriptionGroupsAsync()).Where(g => manualIds.Contains(g.Id)).ToList();
+    }
+
+    public static async Task DeleteManualSubscriptionAsync(string id)
+    {
+        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения текущего действия.");
+        try
+        {
+            if (string.IsNullOrEmpty(id)) throw new InvalidOperationException("Выберите добавленную вручную подписку.");
+            var subscription = await AppManager.Instance.GetSubItem(id)
+                ?? throw new InvalidOperationException("Подписка уже удалена. Обновите список.");
+            if (subscription.Memo?.StartsWith(CabinetPrefix, StringComparison.Ordinal) == true)
+                throw new InvalidOperationException("Подписки из личного кабинета управляются на сайте.");
+            var config = AppManager.Instance.Config;
+            var selected = await AppManager.Instance.GetProfileItem(config.IndexId);
+            if (Connection?.IsConnected == true && selected?.Subid == id) await Connection.DisconnectAsync();
+            await ConfigHandler.DeleteSubItem(config, id);
+            await EnsureServerAsync();
+            if (ViewModel != null) await ViewModel.RefreshForLauncherAsync();
+            await ConfigHandler.SaveConfig(config); ListsChanged?.Invoke();
+        }
+        finally { Operations.Release(); }
+    }
+
     public static async Task<IReadOnlyList<MoskomSubscriptionGroup>> SubscriptionGroupsAsync()
     {
         var subscriptions = await AppManager.Instance.SubItems() ?? [];

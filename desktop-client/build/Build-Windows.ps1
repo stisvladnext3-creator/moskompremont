@@ -98,6 +98,7 @@ function ValidateSmokeReport([string]$Destination, [string]$AppDirectory) {
     if (!$Report.vectorIcon) { throw 'Power icon is not a vector.' }
     foreach ($Name in @('LoginForm','MultipleSubscriptions','RotatedLink','ExpiredSkipped','RevokedRemoved','SessionEncrypted','LogoutPreservedManual','AvailabilityChecked','SubscriptionPicker','ServerIsolation','SelectionPreserved','EmptySubscriptionSafe','StandaloneGroup','SameSelectionKeptConnection','RefreshKeptConnection','BackgroundSyncKeptConnection','OtherSubscriptionKeptConnection','UnchangedSubscriptionKeptConnection','FailedDownloadKeptConnection','ActiveChangeReconnected','ManualSelectionReconnected','RevocationStoppedConnection')) { if (!$Report.website.$Name) { throw "Website smoke failed: $Name" } }
     foreach ($Name in @('Burger','Brand','Dns','RulesApplied','RulesRollback','UpdatePrompt','LaterDefers','Help')) { if (!$Report.settings.$Name) { throw "Settings smoke failed: $Name" } }
+    if (!$Report.management.Passed) { throw "Subscription management failed: $($Report.management | ConvertTo-Json -Compress)" }
     $Xray = Get-ChildItem "$AppDirectory/bin" -Recurse -File -Filter xray.exe | Select-Object -First 1
     if (!$Xray) { throw 'Packaged Xray is missing.' }
     $OldAsset = $env:XRAY_LOCATION_ASSET; $env:XRAY_LOCATION_ASSET = Join-Path $AppDirectory 'bin'

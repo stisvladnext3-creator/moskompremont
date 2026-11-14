@@ -32,7 +32,7 @@ internal static class MoskomSettingsSmoke
         var burgerButton = Control<Button>(owner,"MoskomMenu"); var menu = burgerButton.ContextMenu!;
         menu.Open(burgerButton); await Task.Delay(150);
         var names = menu.Items.OfType<MenuItem>().Select(i=>i.Name).ToList();
-        var burger = new[]{"MoskomRulesUpdate","MoskomAppUpdates","MoskomDns"}.All(names.Contains);
+        var burger = new[]{"MoskomManageSubscriptions","MoskomRulesUpdate","MoskomAppUpdates","MoskomDns"}.All(names.Contains);
         Capture(menu,output,"menu.png"); menu.Close();
         Control<Button>(owner,"MoskomHelp").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(150);
         var helpWindow = Child(owner,"Справка");

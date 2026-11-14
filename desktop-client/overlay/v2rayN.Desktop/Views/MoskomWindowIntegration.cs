@@ -46,6 +46,7 @@ public partial class MainWindow
                     await MoskomLauncherRuntime.Connection!.DisconnectAsync();
                     var website = await MoskomWebsiteSmoke.RunAsync(this, vm);
                     var settings = await MoskomSettingsSmoke.RunAsync(this, vm);
+                    var management = await MoskomSubscriptionSmoke.RunAsync(this, vm);
                     await Task.Delay(200);
                     var report = new
                     {
@@ -62,12 +63,13 @@ public partial class MainWindow
                         status = MoskomLauncherRuntime.Connection?.State.ToString()
                         , website
                         , settings
+                        , management
                         , vectorIcon = this.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any(p => p.Name == "MoskomPowerIcon" && p.Data != null)
                     };
                     var folder = Environment.GetEnvironmentVariable("MOSKOM_SMOKE_OUTPUT") ?? Utils.StartupPath(); Directory.CreateDirectory(folder);
                     await File.WriteAllTextAsync(System.IO.Path.Combine(folder, "smoke.json"), System.Text.Json.JsonSerializer.Serialize(report));
                     using var bitmap = new RenderTargetBitmap(new PixelSize((int)Bounds.Width, (int)Bounds.Height)); bitmap.Render(this); bitmap.Save(System.IO.Path.Combine(folder, "launcher.png"));
-                    if (report.routing.Length < 3 || !report.proxyUnchanged || !report.tunDisabled || report.status != "Disconnected" || !report.subscriptionImported || !report.allServersVisible || !report.smokeConnectionBlocked || !report.routingRulesLoaded || !report.vectorIcon || !website.LoginForm || !website.MultipleSubscriptions || !website.RotatedLink || !website.ExpiredSkipped || !website.RevokedRemoved || !website.SessionEncrypted || !website.LogoutPreservedManual || !website.AvailabilityChecked || !website.SubscriptionPicker || !website.ServerIsolation || !website.SelectionPreserved || !website.EmptySubscriptionSafe || !website.StandaloneGroup || !website.SameSelectionKeptConnection || !website.RefreshKeptConnection || !website.BackgroundSyncKeptConnection || !website.OtherSubscriptionKeptConnection || !website.UnchangedSubscriptionKeptConnection || !website.FailedDownloadKeptConnection || !website.ActiveChangeReconnected || !website.ManualSelectionReconnected || !website.RevocationStoppedConnection || !settings.Burger || !settings.Brand || !settings.Dns || !settings.RulesApplied || !settings.RulesRollback || !settings.UpdatePrompt || !settings.LaterDefers || !settings.Help) Environment.ExitCode = 3;
+                    if (report.routing.Length < 3 || !report.proxyUnchanged || !report.tunDisabled || report.status != "Disconnected" || !report.subscriptionImported || !report.allServersVisible || !report.smokeConnectionBlocked || !report.routingRulesLoaded || !report.vectorIcon || !website.LoginForm || !website.MultipleSubscriptions || !website.RotatedLink || !website.ExpiredSkipped || !website.RevokedRemoved || !website.SessionEncrypted || !website.LogoutPreservedManual || !website.AvailabilityChecked || !website.SubscriptionPicker || !website.ServerIsolation || !website.SelectionPreserved || !website.EmptySubscriptionSafe || !website.StandaloneGroup || !website.SameSelectionKeptConnection || !website.RefreshKeptConnection || !website.BackgroundSyncKeptConnection || !website.OtherSubscriptionKeptConnection || !website.UnchangedSubscriptionKeptConnection || !website.FailedDownloadKeptConnection || !website.ActiveChangeReconnected || !website.ManualSelectionReconnected || !website.RevocationStoppedConnection || !settings.Burger || !settings.Brand || !settings.Dns || !settings.RulesApplied || !settings.RulesRollback || !settings.UpdatePrompt || !settings.LaterDefers || !settings.Help || !management.Passed) Environment.ExitCode = 3;
                 }
                 catch (Exception ex)
                 {
