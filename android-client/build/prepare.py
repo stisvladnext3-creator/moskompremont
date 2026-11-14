@@ -46,6 +46,7 @@ edit('V2rayNG/app/src/main/java/com/v2ray/ang/handler/MmkvManager.kt','    fun r
             require(decodeSubscription(subid) != null)
             val servers = decodeServerList(subid).toList()
             val referenced = decodeServersReferencedByOtherGroups(subid)
+                ?: throw ProfileStorageException("Failed to inspect other subscription references")
             val removable = servers.filterNot { it in referenced }
             val backup = mutableListOf<Triple<MMKV, String, String?>>()
             fun capture(storage: MMKV, key: String) { backup.add(Triple(storage, key, storage.decodeString(key))) }
