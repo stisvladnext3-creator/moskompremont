@@ -49,7 +49,7 @@ sealed interface MoskomEvent {
 /** Owns the branded account/routing/update feature for the lifetime of MainViewModel. */
 class MoskomMainController(
     private val context:Context,parent:CoroutineScope,
-    private val native:StateFlow<MainUiState>,private val refresh:(String)->Unit,
+    private val native:StateFlow<MainUiState>,private val refresh:suspend (String)->Unit,
 ) {
     private val ownerJob=SupervisorJob(parent.coroutineContext[Job])
     private val scope=CoroutineScope(parent.coroutineContext+ownerJob)

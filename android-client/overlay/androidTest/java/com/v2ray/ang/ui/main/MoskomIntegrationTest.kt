@@ -2,7 +2,7 @@ package com.v2ray.ang.ui.main
 
 import android.content.Intent
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -34,7 +34,13 @@ class MoskomIntegrationTest {
     private fun click(tag:String){compose.onNodeWithTag(tag).performScrollTo().performClick()}
     private fun text(id:Int)=context.getString(id)
     private fun closeSheet(){compose.onNodeWithText(text(R.string.moskom_close)).performScrollTo().performClick()}
-    private fun screenshot(name:String){val dir=File(context.getExternalFilesDir(null),"review");dir.mkdirs();device.takeScreenshot(File(dir,"$name.png"))}
+    private fun screenshot(name:String){
+        val file=File(context.cacheDir,"$name.png");device.takeScreenshot(file)
+        val connection=URL("http://10.0.2.2:18080/fixture/screenshot?name=$name.png").openConnection() as java.net.HttpURLConnection
+        connection.requestMethod="POST";connection.doOutput=true
+        connection.outputStream.use{out->file.inputStream().use{it.copyTo(out)}}
+        connection.inputStream.close();connection.disconnect();file.delete()
+    }
     private fun approveSystemDialog(){
         val allow=device.wait(Until.findObject(By.res("android:id/button1")),15_000)
         if(allow!=null)allow.click()
@@ -77,8 +83,10 @@ class MoskomIntegrationTest {
         runBlocking(Dispatchers.IO){MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL,"http://127.0.0.1:18080/ping")}
         click("moskom_availability")
         compose.waitUntil(60_000){model.serversForGroup(model.moskom().state.value.group).value.firstOrNull{it.guid==selected}?.testDelayMillis?.let{it>0}==true}
+        compose.waitUntil(30_000){!model.uiState.value.isTesting}
         screenshot("03-real-availability")
         // Real Android permission flow and daemon IPC running/stopped state, repeated.
+        compose.onNodeWithTag("moskom_power").assertIsEnabled()
         click("moskom_power");approveSystemDialog()
         compose.waitUntil(60_000){model.uiState.value.isRunning};screenshot("04-connected")
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}

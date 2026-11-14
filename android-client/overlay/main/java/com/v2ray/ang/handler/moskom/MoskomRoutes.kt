@@ -54,12 +54,15 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
         fun setting(key:String,fallback:String):String=simple.entrySet().firstOrNull { it.key.equals(key,true) }?.value?.asString?.takeIf { it.isNotBlank() }?:fallback
         val remote=MoskomPolicy.dns(dns,custom)?:setting("remoteDNS","https://1.1.1.1/dns-query")
         val direct=setting("directDNS","77.88.8.8")
-        val keys=listOf("moskom_route_mode","moskom_dns","moskom_custom_dns",AppConfig.PREF_REMOTE_DNS,AppConfig.PREF_DOMESTIC_DNS)
+        val index=when(mode){"all"->0;"except_ru"->1;"blocked"->2;else->error("Unknown routing mode")}
+        val strategy=read(File(active,"template.json")).getAsJsonArray("routingItems")[index].asJsonObject.text("domainStrategy","AsIs")
+        require(strategy in listOf("AsIs","IPOnDemand","IPIfNonMatch"))
+        val keys=listOf("moskom_route_mode","moskom_dns","moskom_custom_dns",AppConfig.PREF_REMOTE_DNS,AppConfig.PREF_DOMESTIC_DNS,AppConfig.PREF_ROUTING_DOMAIN_STRATEGY)
         val old=keys.associateWith { MmkvManager.decodeSettingsString(it) };val oldRules=MmkvManager.decodeRoutingRulesets()
         val oldLocalDns=MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED,false)
         try {
             MmkvManager.encodeRoutingRulesets(next)
-            val values=listOf(mode,dns,custom,remote,direct)
+            val values=listOf(mode,dns,custom,remote,direct,strategy)
             keys.zip(values).forEach { (key,value)->require(MmkvManager.encodeSettings(key,value)) }
             require(MmkvManager.encodeSettings(AppConfig.PREF_LOCAL_DNS_ENABLED,true))
         } catch(error:Exception) {MmkvManager.encodeRoutingRulesets(oldRules);old.forEach { (k,v)->MmkvManager.encodeSettings(k,v) };MmkvManager.encodeSettings(AppConfig.PREF_LOCAL_DNS_ENABLED,oldLocalDns);throw error}
@@ -69,7 +72,7 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
         val target=File(root,"moskom-bundle-${UUID.randomUUID()}");require(stage.renameTo(target))
         val previous=active;val oldName=MmkvManager.decodeSettingsString("moskom_route_bundle")
         val oldRules=MmkvManager.decodeRoutingRulesets()
-        val oldSettings=listOf("moskom_route_mode","moskom_dns","moskom_custom_dns",AppConfig.PREF_REMOTE_DNS,AppConfig.PREF_DOMESTIC_DNS,"moskom_rules_stamp").associateWith { MmkvManager.decodeSettingsString(it) }
+        val oldSettings=listOf("moskom_route_mode","moskom_dns","moskom_custom_dns",AppConfig.PREF_REMOTE_DNS,AppConfig.PREF_DOMESTIC_DNS,AppConfig.PREF_ROUTING_DOMAIN_STRATEGY,"moskom_rules_stamp").associateWith { MmkvManager.decodeSettingsString(it) }
         val oldLocalDns=MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED,false)
         try {active=target;apply(mode(),dns(),customDns());require(MmkvManager.encodeSettings("moskom_route_bundle",target.name));MmkvManager.encodeSettings("moskom_rules_stamp",read(File(target,"manifest.json")).text("geoRelease"))}
         catch(error:Exception){active=previous;MmkvManager.encodeSettings("moskom_route_bundle",oldName);MmkvManager.encodeRoutingRulesets(oldRules);oldSettings.forEach{(k,v)->MmkvManager.encodeSettings(k,v)};MmkvManager.encodeSettings(AppConfig.PREF_LOCAL_DNS_ENABLED,oldLocalDns);target.deleteRecursively();throw error}

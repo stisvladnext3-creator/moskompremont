@@ -2,7 +2,8 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
 from datetime import datetime, timezone
-import base64, json, socketserver, socket, threading, select
+import base64, json, socketserver, socket, threading, select, os, re
+from pathlib import Path
 
 PHASE=0
 USER={'id':41,'first_name':'Тестовый','last_name':'Клиент','email':'client@example.test'}
@@ -18,6 +19,9 @@ class Handler(BaseHTTPRequestHandler):
  def do_GET(self):
   global PHASE
   url=urlsplit(self.path);query=parse_qs(url.query);action=query.get('action',[''])[0]
+  if url.path=='/fixture/screenshot' and self.command=='POST':
+   name=query.get('name',[''])[0];size=int(self.headers.get('Content-Length',0));assert re.fullmatch('[a-z0-9-]+\.png',name) and 0<size<=4*1024*1024
+   target=Path(os.environ.get('RUNNER_TEMP','/tmp'))/'moskom-result/review';target.mkdir(parents=True,exist_ok=True);(target/name).write_bytes(self.rfile.read(size));return self.answer({'saved':True})
   authenticated='internet_account=fixture-session' in self.headers.get('Cookie','')
   stamp=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
   if url.path=='/fixture/phase':PHASE=int(query.get('value',['0'])[0]);return self.answer({'phase':PHASE})

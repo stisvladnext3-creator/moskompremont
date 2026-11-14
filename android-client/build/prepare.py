@@ -27,6 +27,7 @@ res=root/'V2rayNG/app/src/main/res';(res/'drawable').mkdir(exist_ok=True)
 shutil.copyfile(own.parent/'desktop-client/branding/app-logo.png',res/'drawable/moskom_logo.png')
 manifest='V2rayNG/app/src/main/AndroidManifest.xml'
 edit(manifest,'android:banner="@mipmap/ic_banner"\n        android:icon="@mipmap/ic_launcher"','android:banner="@mipmap/ic_banner"\n        android:icon="@drawable/moskom_logo"')
+edit(manifest,'android:icon="@mipmap/ic_launcher"','android:icon="@drawable/moskom_logo"')
 # Do not export account/session data through Android backup.
 edit(manifest,'android:allowBackup="true"','android:allowBackup="false"')
 for p in res.glob('values*/strings.xml'):
@@ -42,11 +43,9 @@ edit(main+'MainViewModel.kt','    val uiState: StateFlow<MainUiState> = _uiState
     fun moskom(): MoskomMainController = moskomHolder ?: MoskomMainController(
         getApplication<Application>(), viewModelScope, uiState
     ) { groupId ->
-        viewModelScope.launch {
-            setupGroupTab(forceRefresh = true).join()
-            subscriptionIdChanged(groupId)
-            refreshSelectedGuid()
-        }
+        setupGroupTab(forceRefresh = true).join()
+        subscriptionIdChanged(groupId)
+        refreshSelectedGuid()
     }.also { moskomHolder = it }''')
 edit(main+'MainViewModel.kt','            MainAction.Initialize -> initialize()', '''            is MainAction.Moskom -> moskom().onAction(action.value)
             MainAction.MoskomAvailability -> testAllRealPing(selectedOnly = true)
@@ -90,19 +89,27 @@ edit(main+'MainActivity.kt','''        super.onCreate(savedInstanceState)
         }
         mainViewModel.onAction(MainAction.Initialize)''')
 edit(main+'MainActivity.kt','    private fun shareToClipboard(guid: String): Boolean =','''    private fun installMoskomUpdate(path: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
-            toast(R.string.moskom_install_permission)
-            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + packageName)))
-            return
-        }
-        try {
-            val file = java.io.File(path).canonicalFile
-            require(file.path.startsWith(java.io.File(cacheDir, "moskomupdates").canonicalPath + "/"))
-            val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".cache", file)
-            startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-        } catch (error: Exception) {
-            LogUtil.e(AppConfig.TAG, "Moskom APK install intent failed", IllegalStateException(error.javaClass.simpleName))
-            toast(R.string.moskom_install_error)
+        lifecycleScope.launch {
+            try {
+                // Android 8+ requires per-source permission before its system APK installer opens.
+                val allowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    withContext(Dispatchers.IO) { packageManager.canRequestPackageInstalls() }
+                } else true
+                if (!allowed) {
+                    toast(R.string.moskom_install_permission)
+                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + packageName)))
+                    return@launch
+                }
+                val uri = withContext(Dispatchers.IO) {
+                    val file = java.io.File(path).canonicalFile
+                    require(file.path.startsWith(java.io.File(cacheDir, "moskomupdates").canonicalPath + "/"))
+                    androidx.core.content.FileProvider.getUriForFile(this@MainActivity, packageName + ".cache", file)
+                }
+                startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            } catch (error: Exception) {
+                LogUtil.e(AppConfig.TAG, "Moskom APK install intent failed", IllegalStateException(error.javaClass.simpleName))
+                toast(R.string.moskom_install_error)
+            }
         }
     }
 

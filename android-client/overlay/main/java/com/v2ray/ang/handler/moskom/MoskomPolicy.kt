@@ -64,7 +64,7 @@ object MoskomPolicy {
     }
     fun release(array: JsonArray, current: String): MoskomRelease? = array.mapNotNull { element ->
         val release = element.asJsonObject
-        if (release.text("draft") == "true") return@mapNotNull null
+        if (release.text("draft") == "true" || release.text("prerelease") == "true") return@mapNotNull null
         val tag = release.text("tag_name"); if (!tag.startsWith("moskom-android-v")) return@mapNotNull null
         val version = tag.removePrefix("moskom-android-v"); if (versionParts(version) == null || compareVersions(version, current) <= 0) return@mapNotNull null
         val filename = "MoskomVPN-Android-$version.apk"; val prefix = "https://github.com/$REPOSITORY/releases/download/$tag/"
