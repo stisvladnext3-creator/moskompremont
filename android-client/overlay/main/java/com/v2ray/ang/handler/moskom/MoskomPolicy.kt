@@ -23,6 +23,7 @@ object MoskomPolicy {
     const val SITE = "https://moskompremont.ru/"
     const val CABINET = "moskom-cabinet-"
     fun groupId(user: Long, sub: Long) = "$CABINET$user-$sub"
+    fun removableSubscription(id: String, defaultId: String) = id.isNotBlank() && id != defaultId && !id.startsWith(CABINET)
     fun selectedGroup(groups: List<MoskomGroup>, groupId: String, serverId: String): MoskomGroup? = groups.firstOrNull { it.id==groupId }
         ?: groups.firstOrNull { it.servers.any { server->server.id==serverId } } ?: groups.firstOrNull()
     fun versionParts(value: String): List<Int>? {

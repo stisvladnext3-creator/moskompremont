@@ -38,6 +38,45 @@ edit(manifest,'android:allowBackup="true"','android:allowBackup="false"')
 for p in res.glob('values*/strings.xml'):
  s=p.read_text();s=re.sub(r'(<string name="app_name"[^>]*>).*?(</string>)',r'\1МосКомпРемонт VPN\2',s);p.write_text(s)
 write_resources(root,own)
+# Keep subscription deletion in the existing storage owner. Snapshot the records
+# under its cross-process index lock so a failed multi-record write can roll back.
+edit('V2rayNG/app/src/main/java/com/v2ray/ang/handler/MmkvManager.kt','    fun removeSubscription(subid: String) {','''    internal fun removeSubscriptionWithRollback(subid: String) {
+        require(subid.isNotBlank() && subid != DEFAULT_SUBSCRIPTION_ID)
+        withProfileIndexLock {
+            require(decodeSubscription(subid) != null)
+            val servers = decodeServerList(subid).toList()
+            val referenced = decodeServersReferencedByOtherGroups(subid)
+            val removable = servers.filterNot { it in referenced }
+            val backup = mutableListOf<Triple<MMKV, String, String?>>()
+            fun capture(storage: MMKV, key: String) { backup.add(Triple(storage, key, storage.decodeString(key))) }
+            capture(subStorage, subid)
+            capture(mainStorage, KEY_SUB_IDS)
+            capture(mainStorage, serverListKey(subid))
+            capture(mainStorage, KEY_SELECTED_SERVER)
+            removable.forEach { guid ->
+                capture(profileFullStorage, guid); capture(serverRawStorage, guid); capture(serverAffStorage, guid)
+            }
+            try {
+                requireStorageWrite(mainStorage.encode(KEY_SUB_IDS, JsonUtil.toJson(decodeSubsList().filterNot { it == subid })), "Failed to remove subscription index")
+                requireStorageWrite(persistServerList(emptyList(), subid), "Failed to remove subscription servers")
+                if (getSelectServer() in removable) mainStorage.remove(KEY_SELECTED_SERVER)
+                subStorage.remove(subid)
+                require(!subStorage.containsKey(subid))
+                removeProfilePayloads(removable)
+                require(removable.none { profileFullStorage.containsKey(it) || serverRawStorage.containsKey(it) || serverAffStorage.containsKey(it) })
+            } catch (error: Exception) {
+                backup.forEach { (storage, key, value) ->
+                    try {
+                        if (value == null) storage.remove(key)
+                        else requireStorageWrite(storage.encode(key, value), "Failed to restore subscription data")
+                    } catch (restore: Exception) { error.addSuppressed(restore) }
+                }
+                throw error
+            }
+        }
+    }
+
+    fun removeSubscription(subid: String) {''')
 main='V2rayNG/app/src/main/java/com/v2ray/ang/ui/main/'
 edit(main+'MainActivity.kt','import androidx.lifecycle.lifecycleScope','import androidx.lifecycle.lifecycleScope\nimport androidx.lifecycle.repeatOnLifecycle')
 edit(main+'MainContract.kt','sealed interface MainAction {','''sealed interface MainAction {

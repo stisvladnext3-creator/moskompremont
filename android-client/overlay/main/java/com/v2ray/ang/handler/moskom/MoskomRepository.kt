@@ -53,6 +53,12 @@ class MoskomRepository(private val context: Context) {
     }
     fun chooseGroup(id: String) { require(groups().any { it.id==id });MmkvManager.encodeSettings(groupKey,id);ensureSelection() }
     fun chooseServer(id: String) { require(ensureSelection()?.servers?.any { it.id==id }==true);MmkvManager.setSelectServer(id) }
+    fun canDeleteSubscription(id: String) = MoskomPolicy.removableSubscription(id,AppConfig.DEFAULT_SUBSCRIPTION_ID) && MmkvManager.decodeSubscription(id)!=null
+    fun deleteManualSubscription(id: String) {
+        require(canDeleteSubscription(id))
+        MmkvManager.removeSubscriptionWithRollback(id)
+        ensureSelection()
+    }
 
     fun login(email: String,password: String) {
         require(email.trim().contains('@') && password.isNotEmpty())

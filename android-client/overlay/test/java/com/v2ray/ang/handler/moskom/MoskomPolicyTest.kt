@@ -6,6 +6,13 @@ import org.junit.jupiter.api.Test
 import java.time.Instant
 
 class MoskomPolicyTest {
+    @Test fun `only manual subscription groups can be removed`() {
+        assertTrue(MoskomPolicy.removableSubscription("moskom-manual-123","default"))
+        assertTrue(MoskomPolicy.removableSubscription("legacy-imported-group","default"))
+        for(id in listOf(""," ","default","moskom-cabinet-41-802","moskom-cabinet-")) {
+            assertFalse(MoskomPolicy.removableSubscription(id,"default"))
+        }
+    }
     @Test fun `subscriptions keep ID URL revision and reject duplicate or foreign protocols`() {
         val body="""[{"id":1,"name":"VPN-A","url":"https://example.test/sub/a","content_updated_at":"1"},{"id":2,"name":"VPN-B","is_expired":true}]"""
         val rows=MoskomPolicy.subscriptions(JsonParser.parseString(body).asJsonArray)

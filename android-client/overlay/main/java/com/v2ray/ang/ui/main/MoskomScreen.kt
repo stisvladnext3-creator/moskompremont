@@ -82,6 +82,7 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                                 Canvas(Modifier.size(25.dp)){for(y in listOf(.2f,.5f,.8f))drawLine(Cyan,Offset(1f,size.height*y),Offset(size.width-1,size.height*y),2.dp.toPx(),StrokeCap.Round)}
                             }
                             DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                                MenuEntry(R.string.moskom_manage_subscriptions){menu=false;dialog="subscriptions"}
                                 MenuEntry(R.string.moskom_rules){menu=false;dialog="rules"}
                                 MenuEntry(R.string.moskom_check_update){menu=false;dialog="updates";action(MoskomAction.CheckUpdate)}
                                 MenuEntry(R.string.moskom_dns){menu=false;dialog="dns"}
@@ -148,6 +149,7 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                 titles.forEachIndexed { index,title->key(index){Surface(shape=RoundedCornerShape(12.dp),color=CardInk){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(title,color=Cyan,fontWeight=FontWeight.Bold,fontSize=14.sp);Text(bodies[index],fontSize=13.sp,color=Muted)}}} }
             }
             "account"->AccountSheet(state,action){dialog=""}
+            "subscriptions"->SubscriptionSheet(state,busy,action){dialog=""}
             "dns"->DnsSheet(state,action){dialog=""}
             "rules"->Sheet(stringResource(R.string.moskom_rules),{dialog=""}){Text(stringResource(R.string.moskom_rules_description));Text(stringResource(R.string.moskom_rules_stamp,state.rulesStamp),color=Muted,fontSize=12.sp);OperationStatus(state);PrimaryButton(R.string.moskom_rules,!busy,{action(MoskomAction.Rules)})}
             "updates"->Sheet(stringResource(R.string.moskom_check_update),{dialog=""}){Text(stringResource(R.string.moskom_version,BuildConfig.VERSION_NAME));OperationStatus(state);PrimaryButton(R.string.moskom_check_update,!busy,{action(MoskomAction.CheckUpdate)})}
@@ -158,6 +160,31 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                 SmallButton(R.string.moskom_refresh,true,{action(MoskomAction.Service)},Modifier.fillMaxWidth())
             }
         }
+    }
+}
+
+@Composable private fun SubscriptionSheet(state:MoskomState,busy:Boolean,action:(MoskomAction)->Unit,close:()->Unit) {
+    var pendingId by rememberSaveable{mutableStateOf("")}
+    val pending=state.manualSubscriptions.firstOrNull{it.id==pendingId}
+    Sheet(stringResource(R.string.moskom_manage_subscriptions),close) {
+        if(pending!=null) {
+            Text(stringResource(R.string.moskom_delete_subscription_title),fontWeight=FontWeight.Bold)
+            Text(stringResource(R.string.moskom_delete_subscription_description,pending.name),color=Muted)
+            PrimaryButton(R.string.moskom_confirm_subscription_delete,!busy,{action(MoskomAction.DeleteSubscription(pending.id))},Modifier.testTag("moskom_confirm_subscription_delete"))
+            SmallButton(R.string.moskom_cancel_subscription_delete,!busy,{pendingId=""},Modifier.fillMaxWidth().testTag("moskom_cancel_subscription_delete"))
+        } else {
+            Text(stringResource(R.string.moskom_manage_description),color=Muted,fontSize=13.sp)
+            if(state.manualSubscriptions.isEmpty()) Text(stringResource(R.string.moskom_manual_subscriptions_empty),modifier=Modifier.testTag("moskom_manual_subscriptions_empty"))
+            state.manualSubscriptions.forEach { subscription->key(subscription.id) {
+                Column(Modifier.fillMaxWidth().background(CardInk,RoundedCornerShape(12.dp)).padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Text(subscription.name,fontWeight=FontWeight.Bold)
+                    Text(stringResource(R.string.moskom_subscription_server_count,subscription.servers.size),color=Muted,fontSize=12.sp)
+                    val removeName=stringResource(R.string.moskom_delete_subscription_named,subscription.name)
+                    SmallButton(R.string.moskom_delete_subscription,!busy,{pendingId=subscription.id},Modifier.fillMaxWidth().testTag("moskom_delete_subscription_${subscription.id}").semantics{contentDescription=removeName})
+                }
+            }}
+        }
+        OperationStatus(state)
     }
 }
 

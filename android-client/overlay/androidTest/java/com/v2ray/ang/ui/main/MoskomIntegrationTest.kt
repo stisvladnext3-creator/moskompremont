@@ -104,6 +104,15 @@ class MoskomIntegrationTest {
         compose.waitUntil(60_000){model.uiState.value.isRunning};screenshot("04-connected")
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        // The deletion handler rejects account subscriptions before stopping VPN.
+        val protectedGroup=model.moskom().state.value.group
+        dispatch(MoskomAction.DeleteSubscription(protectedGroup))
+        assertEquals(R.string.moskom_subscription_not_removable,model.moskom().state.value.error)
+        assertTrue(model.uiState.value.isRunning)
+        assertEquals(protectedGroup,model.moskom().state.value.group)
+        click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_manage_subscriptions)).performClick()
+        compose.onNodeWithTag("moskom_manual_subscriptions_empty").assertExists()
+        compose.onNodeWithTag("moskom_delete_subscription_$protectedGroup").assertDoesNotExist();closeSheet()
         // Revocation stops the selected B group before it is removed; A's changed URL is imported.
         phase(1);dispatch(MoskomAction.Sync)
         assertFalse(model.uiState.value.isRunning)
@@ -133,6 +142,54 @@ class MoskomIntegrationTest {
         compose.onNodeWithTag("moskom_menu").assertContentDescriptionEquals(text(R.string.moskom_menu))
         compose.onNodeWithTag("moskom_add").assertContentDescriptionEquals(text(R.string.moskom_add))
         screenshot("06-manual-after-logout")
+        // Management is available from the real menu. Standalone keys and account
+        // subscriptions do not appear among manually imported subscriptions.
+        click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_manage_subscriptions)).performClick()
+        compose.onNodeWithTag("moskom_manual_subscriptions_empty").assertExists();closeSheet()
+        phase(0)
+        dispatch(MoskomAction.Import("http://10.0.2.2:18080/sub/a"))
+        val manualA=model.moskom().state.value.group
+        val aServers=model.moskom().state.value.groups.first{it.id==manualA}.servers.map{it.id}
+        dispatch(MoskomAction.Import("http://10.0.2.2:18080/sub/b"))
+        val manualB=model.moskom().state.value.group
+        val bServers=model.moskom().state.value.groups.first{it.id==manualB}.servers.map{it.id}
+        assertEquals(setOf(manualA,manualB),model.moskom().state.value.manualSubscriptions.map{it.id}.toSet())
+        dispatch(MoskomAction.Group(manualA));click("moskom_power")
+        compose.waitUntil(60_000){model.uiState.value.isRunning}
+        click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_manage_subscriptions)).performClick()
+        click("moskom_delete_subscription_$manualB")
+        compose.onNodeWithTag("moskom_confirm_subscription_delete").assertExists()
+        click("moskom_cancel_subscription_delete")
+        assertTrue(model.moskom().state.value.groups.any{it.id==manualB})
+        // Keyboard/D-pad activation reaches the same confirmation and cancellation.
+        for(key in listOf(Key.Enter,Key.DirectionCenter)) {
+            device.pressDPadDown();compose.waitForIdle()
+            compose.onNodeWithTag("moskom_delete_subscription_$manualB").performScrollTo().performSemanticsAction(SemanticsActions.RequestFocus){it()}
+            compose.onNodeWithTag("moskom_delete_subscription_$manualB").assertIsFocused().performKeyInput{pressKey(key)}
+            click("moskom_cancel_subscription_delete")
+        }
+        click("moskom_delete_subscription_$manualB");click("moskom_confirm_subscription_delete");waitReady()
+        assertTrue("Deleting an inactive group must keep VPN running",model.uiState.value.isRunning)
+        assertEquals(manualA,model.moskom().state.value.group)
+        assertTrue(model.moskom().state.value.groups.none{it.id==manualB})
+        runBlocking(Dispatchers.IO){assertNull(MmkvManager.decodeSubscription(manualB));bServers.forEach{assertNull(MmkvManager.decodeServerConfig(it))}}
+        closeSheet();click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_manage_subscriptions)).performClick()
+        compose.onNodeWithTag("moskom_delete_subscription_$manualB").assertDoesNotExist()
+        screenshot("07-subscription-management")
+        click("moskom_delete_subscription_$manualA")
+        scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
+        compose.onNodeWithTag("moskom_confirm_subscription_delete").assertExists()
+        click("moskom_confirm_subscription_delete");waitReady()
+        compose.waitUntil(30_000){!model.uiState.value.isRunning}
+        assertTrue(model.moskom().state.value.manualSubscriptions.isEmpty())
+        runBlocking(Dispatchers.IO){assertNull(MmkvManager.decodeSubscription(manualA));aServers.forEach{assertNull(MmkvManager.decodeServerConfig(it))}}
+        compose.onNodeWithTag("moskom_manual_subscriptions_empty").assertExists()
+        closeSheet();scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
+        assertTrue(model.moskom().state.value.manualSubscriptions.isEmpty())
+        assertEquals("Manual-key",model.moskom().state.value.groups.single().servers.single().name)
+        dispatch(MoskomAction.DeleteSubscription("missing-group"))
+        assertEquals(R.string.moskom_subscription_not_removable,model.moskom().state.value.error)
+        assertEquals("Manual-key",model.moskom().state.value.groups.single().servers.single().name)
         scenario.close()
     }
 }

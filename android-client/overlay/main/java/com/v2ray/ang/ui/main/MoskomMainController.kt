@@ -15,7 +15,7 @@ import kotlin.coroutines.resume
 
 data class MoskomState(
     val loaded: Boolean=false,val busy:Boolean=false,val connecting:Boolean=false,
-    val groups:List<MoskomGroup> = emptyList(),val group:String="",val server:String="",
+    val groups:List<MoskomGroup> = emptyList(),val manualSubscriptions:List<MoskomGroup> = emptyList(),val group:String="",val server:String="",
     val user:MoskomUser?=null,val notice:MoskomNotice=MoskomNotice(),val nodes:List<MoskomNode> = emptyList(),
     val serviceFailed:Boolean=false,val mode:String="all",val dns:String="auto",val customDns:String="",val rulesStamp:String="",
     val message:Int=0,val error:Int=0,val progress:Int?=null,val release:MoskomRelease?=null,val updateFile:String?=null,
@@ -24,6 +24,7 @@ sealed interface MoskomAction {
     data class Import(val text:String):MoskomAction
     data class Group(val id:String):MoskomAction
     data class Server(val id:String):MoskomAction
+    data class DeleteSubscription(val id:String):MoskomAction
     data class Login(val email:String,val password:String):MoskomAction
     data class Mode(val id:String):MoskomAction
     data class Dns(val id:String,val custom:String):MoskomAction
@@ -84,7 +85,8 @@ class MoskomMainController(
     private fun repo()=repository?:error("Repository not initialized")
     private suspend fun catalog() {
         val data=withContext(Dispatchers.IO){val r=repo();r.ensureSelection();MoskomState(groups=r.groups(),group=r.selectedGroup(),server=r.selectedServer(),user=r.user,mode=r.routes.mode(),dns=r.routes.dns(),customDns=r.routes.customDns(),rulesStamp=r.routes.stamp())}
-        _state.update {it.copy(groups=data.groups,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp)}
+        val manual=withContext(Dispatchers.Default){data.groups.filter{MoskomPolicy.removableSubscription(it.id,AppConfig.DEFAULT_SUBSCRIPTION_ID)}}
+        _state.update {it.copy(groups=data.groups,manualSubscriptions=manual,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp)}
         refresh(data.group)
     }
     fun onNativeState(running:Boolean) {
@@ -130,6 +132,20 @@ class MoskomMainController(
             }
             is MoskomAction.Group->execute {changeSelection{repo().chooseGroup(action.id)}}
             is MoskomAction.Server->execute {changeSelection{repo().chooseServer(action.id)}}
+            is MoskomAction.DeleteSubscription->execute {
+                if(!withContext(Dispatchers.IO){repo().canDeleteSubscription(action.id)}) {
+                    _state.update{it.copy(error=R.string.moskom_subscription_not_removable)};return@execute
+                }
+                if(_state.value.group==action.id)stop()
+                try {
+                    withContext(Dispatchers.IO){repo().deleteManualSubscription(action.id)};catalog()
+                    _state.update{it.copy(message=R.string.moskom_subscription_deleted)}
+                }catch(cancelled:CancellationException){throw cancelled}
+                catch(error:Exception){
+                    LogUtil.e(AppConfig.TAG,"Manual subscription deletion failed: ${action.id}",IllegalStateException(error.javaClass.simpleName))
+                    catalog();_state.update{it.copy(error=R.string.moskom_subscription_delete_error)}
+                }
+            }
             is MoskomAction.Mode->execute {reconfigure{repo().routes.apply(action.id,_state.value.dns,_state.value.customDns)}}
             is MoskomAction.Dns->execute {
                 try{withContext(Dispatchers.Default){MoskomPolicy.dns(action.id,action.custom)}}catch(_:IllegalArgumentException){_state.update{it.copy(error=R.string.moskom_dns_invalid)};return@execute}
