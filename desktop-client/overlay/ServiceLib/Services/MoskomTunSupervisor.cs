@@ -31,11 +31,11 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
    var nonce=Guid.NewGuid().ToString("N");string endpoint;Task<Stream> accept;
    if(OperatingSystem.IsWindows()){
     endpoint="MoskomVPN-Tun-"+nonce;var pipe=SecurePipe(endpoint);owner._listener=pipe;
-    accept=Task.Run(async()=>{await pipe.WaitForConnectionAsync(ct);var authenticated=false;pipe.RunAsClient(()=>authenticated=new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator));if(!authenticated)throw new InvalidOperationException("Служба TUN не получила права администратора.");return (Stream)pipe;},ct);
+    accept=Task.Run(async()=>{await pipe.WaitForConnectionAsync(ct);if(Encoding.UTF8.GetString(await Read(pipe,ct))!="hello:"+nonce)throw new IOException("Не подтверждён канал TUN.");var authenticated=false;pipe.RunAsClient(()=>authenticated=new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator));if(!authenticated)throw new InvalidOperationException("Служба TUN не получила права администратора.");return (Stream)pipe;},ct);
    }else{
     owner._socketDirectory=Path.Combine(Path.GetTempPath(),"mkr-"+nonce[..12]);Directory.CreateDirectory(owner._socketDirectory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);endpoint=Path.Combine(owner._socketDirectory,"tun.sock");
     var listener=new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);listener.Bind(new UnixDomainSocketEndPoint(endpoint));File.SetUnixFileMode(endpoint,UnixFileMode.UserRead|UnixFileMode.UserWrite);listener.Listen(1);owner._listener=listener;
-    accept=Task.Run(async()=>{var socket=await listener.AcceptAsync(ct);if(VerifyUnixPeer?.Invoke((int)socket.Handle,0,0)!=true){socket.Dispose();throw new InvalidOperationException("Не подтверждены права службы TUN.");}return (Stream)new NetworkStream(socket,true);},ct);
+    accept=Task.Run(async()=>{var socket=await listener.AcceptAsync(ct);if(VerifyUnixPeer?.Invoke((int)socket.Handle,0,0)!=true){socket.Dispose();throw new InvalidOperationException("Не подтверждены права службы TUN.");}var channel=new NetworkStream(socket,true);if(Encoding.UTF8.GetString(await Read(channel,ct))!="hello:"+nonce){channel.Dispose();throw new IOException("Не подтверждён канал TUN.");}return (Stream)channel;},ct);
    }
    var args=new[]{"--moskom-tun-helper",Environment.ProcessId.ToString(),Started,endpoint,nonce,OperatingSystem.IsWindows()?"0":(UnixUid?.Invoke()??uint.MaxValue).ToString()};
    ProcessStartInfo start;
@@ -64,7 +64,7 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
    var socket=new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));await socket.ConnectAsync(new UnixDomainSocketEndPoint(args[3]),timeout.Token);if(VerifyUnixPeer?.Invoke((int)socket.Handle,uid,pid)!=true){socket.Dispose();return 2;}channel=new NetworkStream(socket,true);
   }
   await using(channel){
-   using var setup=new CancellationTokenSource(TimeSpan.FromSeconds(20));var bytes=await Read(channel,setup.Token);var json=JsonNode.Parse(bytes) as JsonObject;
+   using var setup=new CancellationTokenSource(TimeSpan.FromSeconds(20));await Write(channel,Encoding.UTF8.GetBytes("hello:"+args[4]),setup.Token);var bytes=await Read(channel,setup.Token);var json=JsonNode.Parse(bytes) as JsonObject;
    if(json?["inbounds"] is not JsonArray inbounds||!inbounds.OfType<JsonObject>().Any(i=>i["type"]?.GetValue<string>()=="tun")||inbounds.OfType<JsonObject>().Where(i=>i["type"]?.GetValue<string>()!="tun").Any(i=>i["listen"]?.GetValue<string>()!="127.0.0.1"))return 2;
    var core=Utils.GetBinPath(OperatingSystem.IsWindows()?"sing-box.exe":"sing-box","sing_box");if(!File.Exists(core))return 2;
    var directory=Directory.CreateTempSubdirectory("moskom-tun-").FullName;Process? process=null;WindowsJobService? job=null;
