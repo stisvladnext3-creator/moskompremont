@@ -1,0 +1,54 @@
+name: Publish signed Android release
+on:
+  workflow_dispatch:
+    inputs:
+      payload_ref:
+        description: Branch containing the verified signed release payload
+        required: true
+        default: distribution/android-0.1.13
+  push:
+    branches: ['distribution/android-*']
+    paths: ['release-payload/**']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.payload_ref || github.ref }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Validate the prepared release manifest
+        run: |
+          python - <<'PY'
+          import json,re,os
+          from pathlib import Path
+          manifest=json.loads(Path('release-payload/release.json').read_text())
+          version=manifest['version'];source=manifest['source']
+          assert re.fullmatch(r'\d+\.\d+\.\d+',version)
+          assert re.fullmatch(r'[a-f0-9]{40}',source)
+          with open(os.environ['GITHUB_ENV'],'a') as out:
+            out.write(f'MOSKOM_RELEASE_VERSION={version}\nMOSKOM_RELEASE_SOURCE={source}\n')
+          PY
+      - name: Verify hashes and the publisher signature
+        run: |
+          cd "release-payload/android-$MOSKOM_RELEASE_VERSION"
+          sha256sum -c SHA256SUMS.txt
+          java -jar apksigner.jar verify --verbose --print-certs "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION.apk" > signature.txt
+          grep -F 'certificate SHA-256 digest: 8309db39687334c10a96d86240bb18d8723832e74d64b33b1033a498a5e39b96' signature.txt
+      - name: Upload the complete release and publish it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "release-payload/android-$MOSKOM_RELEASE_VERSION"
+          moskom_release_tag="moskom-android-v$MOSKOM_RELEASE_VERSION"
+          if ! gh release view "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --draft --target "$MOSKOM_RELEASE_SOURCE" --title "МосКомпРемонт VPN · Android $MOSKOM_RELEASE_VERSION" --notes-file NOTES.md
+          fi
+          gh release upload "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --clobber "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION.apk" "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION-source.zip" moskompremont-app-download-update.zip MoskomVPN-Android-preview.png VALIDATION.md SHA256SUMS.txt
+          gh release edit "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
