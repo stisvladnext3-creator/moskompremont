@@ -7,7 +7,7 @@ namespace ServiceLib.Services;
 public static partial class MoskomLauncherRuntime {
  public static bool SelectiveMode=>MoskomSelectivePolicy.Enabled(Preferences.Selective);
  public static MoskomServiceCatalog ServiceCatalog=>MoskomServiceCatalog.Read(File.ReadAllText(Path.Combine(Utils.GetBaseDirectory(),"service-catalog.json")));
- public static bool SelectionReady=>!SelectiveMode||MoskomSelectivePolicy.HasSelection(Preferences.Selective,ServiceCatalog);
+ public static bool SelectionReady=>!SelectiveMode||(MoskomSelectivePolicy.HasSelection(Preferences.Selective,ServiceCatalog)&&(Preferences.Selective.Mode!="apps"||Preferences.Selective.Apps.Any(a=>File.Exists(a.Path))));
  public static Func<Task<List<MoskomAppChoice>>>? MacApplications {get;set;}
  public static async Task<List<MoskomAppChoice>> RunningApplicationsAsync(){
   if(OperatingSystem.IsMacOS())return MacApplications==null?[]:await MacApplications();
@@ -18,7 +18,7 @@ public static partial class MoskomLauncherRuntime {
     var path=process.MainModule?.FileName;if(string.IsNullOrEmpty(path))continue;
     var name=FileVersionInfo.GetVersionInfo(path).ProductName;if(string.IsNullOrWhiteSpace(name))name=process.ProcessName;
     rows.TryAdd(path,new(path,name,path));
-   }catch(Exception e)when(e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException){}}
+   }catch(Exception e)when(e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException or IOException or UnauthorizedAccessException){}}
    return rows.Values.OrderBy(x=>x.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
   });
  }

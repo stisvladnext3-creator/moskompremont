@@ -23,7 +23,7 @@ internal static class MoskomSettingsSmoke
     private static void Copy(string source, string target)
     {
         Directory.CreateDirectory(target);
-        foreach(var file in Directory.GetFiles(source))File.Copy(file,Path.Combine(target,Path.GetFileName(file)),true);
+        foreach(var file in Directory.GetFiles(source)){var copy=Path.Combine(target,Path.GetFileName(file));File.Copy(file,copy,true);if(!OperatingSystem.IsWindows())File.SetUnixFileMode(copy,UnixFileMode.UserRead|UnixFileMode.UserWrite);}
         foreach(var folder in Directory.GetDirectories(source))Copy(folder,Path.Combine(target,Path.GetFileName(folder)));
     }
     public static async Task<Report> RunAsync(Window owner, MainWindowViewModel vm)

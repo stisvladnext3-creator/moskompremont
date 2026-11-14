@@ -98,6 +98,7 @@ class MoskomIntegrationTest {
         assertEquals(27,model.moskom().state.value.services.size)
         val meet=compose.onNodeWithTag("moskom_choice_google-meet").performScrollTo()
         meet.assertIsOff().performClick();meet.assertIsOn()
+        device.pressDPadDown();compose.waitForIdle() // Enter hardware-keyboard input mode before requesting checkbox focus.
         for(key in listOf(Key.Enter,Key.Spacebar,Key.DirectionCenter)) {
             meet.performSemanticsAction(SemanticsActions.RequestFocus){it()}
             meet.assertIsFocused().performKeyInput{pressKey(key)}
