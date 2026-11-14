@@ -10,6 +10,7 @@ public sealed class MoskomMacProxyLease : IMoskomProxyLease
     public async Task AcquireAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        if (MoskomLauncherRuntime.SelectiveMode) return;
         Session=Guid.NewGuid().ToString("N");
         if(File.Exists(LeasePath))await RecoverAfterCrashAsync();
         if(File.Exists(LeasePath))throw new InvalidOperationException("Сначала разрешите восстановление прежних настроек прокси macOS.");

@@ -16,9 +16,10 @@ assert subprocess.check_output(['git','-C',str(upstream),'rev-parse','HEAD'],tex
 run('git','-C',upstream,'submodule','update','--init','--recursive','--depth','1')
 run('python3',OWN/'build/prepare.py',upstream,'--version',a.version,'--flavor',a.flavor,'--rid',a.rid)
 app=work/'MoskomVPN.app';payload=app/'Contents/MacOS';resources=app/'Contents/Resources';resources.mkdir(parents=True);payload.mkdir(parents=True)
-run('dotnet','publish',upstream/'v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj','-c','Release','-r',a.rid,'--self-contained','true','-p:PublishSingleFile=false','-p:DebugType=None','-p:Version='+a.version,'-o',payload)
+run('dotnet','publish',upstream/'v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj','-c','Release','-r',a.rid,'--self-contained','true','-p:PublishSingleFile=true','-p:DebugType=None','-p:Version='+a.version,'-o',payload)
 (payload/'v2rayN').rename(payload/'MoskomVPN')
-run('clang','-dynamiclib','-fobjc-arc','-mmacosx-version-min='+minimum,'-arch','x86_64' if arch=='x64' else 'arm64','-framework','Foundation','-framework','Security','-framework','SystemConfiguration','-install_name','@rpath/libMoskomPlatform.dylib',OWN/'native/MoskomPlatform.m','-o',payload/'libMoskomPlatform.dylib')
+shutil.copyfile(REPO/'shared/service-catalog.json',payload/'service-catalog.json')
+run('clang','-dynamiclib','-fobjc-arc','-mmacosx-version-min='+minimum,'-arch','x86_64' if arch=='x64' else 'arm64','-framework','Foundation','-framework','Security','-framework','SystemConfiguration','-framework','AppKit','-install_name','@rpath/libMoskomPlatform.dylib',OWN/'native/MoskomPlatform.m','-o',payload/'libMoskomPlatform.dylib')
 # The upstream SQLite native package now targets macOS 13.5. Compile its same
 # public-domain SQLite engine for the advertised OS rather than editing Mach-O headers.
 sqlite=src['sqlite'];archive=download(sqlite['url'],work/'sqlite-source.zip',sqlite['sha256'])

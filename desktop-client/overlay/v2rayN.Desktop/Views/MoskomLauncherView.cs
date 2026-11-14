@@ -57,6 +57,8 @@ public sealed class MoskomLauncherView : UserControl
             var item = new MenuItem { Header = text, Name = name }; item.Click += async (_, _) => await action(); context.Items.Add(item); return item;
         }
         Entry("Управление подписками", "MoskomManageSubscriptions", () => MoskomSubscriptionViews.ShowAsync(owner));
+        Entry("Приложения", "MoskomApplications", () => MoskomSelectiveViews.ApplicationsAsync(owner));
+        Entry("Сервисы", "MoskomServices", () => MoskomSelectiveViews.ServicesAsync(owner));
         Entry("Обновить правила Russia", "MoskomRulesUpdate", () => MoskomSettingsViews.ShowRoutingAsync(owner));
         Entry("Проверить обновления приложения", "MoskomAppUpdates", () => MoskomSettingsViews.CheckApplicationAsync(owner));
         Entry("DNS", "MoskomDns", () => MoskomSettingsViews.ShowDnsAsync(owner));
@@ -92,7 +94,7 @@ public sealed class MoskomLauncherView : UserControl
         _servers.ItemTemplate = new FuncDataTemplate<ComboItem>((x, _) => new TextBlock { Text = x?.Text, TextTrimming = TextTrimming.CharacterEllipsis });
         _routing.ItemTemplate = new FuncDataTemplate<RoutingItem>((x, _) => new TextBlock { Text = x?.Remarks?.Replace("RUv1-", ""), TextTrimming = TextTrimming.CharacterEllipsis });
         _subscriptions.ItemTemplate = new FuncDataTemplate<MoskomSubscriptionGroup>((x, _) => new TextBlock { Text = x?.DisplayName, TextTrimming = TextTrimming.CharacterEllipsis });
-        _routing.ItemsSource = vm.StatusBarViewModel.RoutingItems;
+        _routing.ItemsSource = MoskomLauncherRuntime.RoutingChoices(vm.StatusBarViewModel.RoutingItems);
         _power.Click += async (_, _) =>
         {
             var c = MoskomLauncherRuntime.Connection!;
@@ -156,7 +158,8 @@ public sealed class MoskomLauncherView : UserControl
                 _subscriptionInfo.Text = "В этой подписке пока нет серверов. Нажмите «Обновить серверы».";
                 if (_checkedServer != null && _checkedServer != AppManager.Instance.Config.IndexId) ResetAvailability();
                 var active = (await AppManager.Instance.RoutingItems()).FirstOrDefault(x => x.IsActive);
-                _routing.SelectedItem = _vm.StatusBarViewModel.RoutingItems.FirstOrDefault(x => x.Id == active?.Id);
+                _routing.ItemsSource = MoskomLauncherRuntime.RoutingChoices(_vm.StatusBarViewModel.RoutingItems);
+                _routing.SelectedItem = _routing.Items.OfType<RoutingItem>().FirstOrDefault(x => x.Id == (MoskomLauncherRuntime.CustomRoutingId ?? active?.Id));
             } while (_refreshQueued);
         }
         finally { _refreshing = false; RefreshEnabled(); }
@@ -182,7 +185,7 @@ public sealed class MoskomLauncherView : UserControl
         _subscriptions.IsEnabled = !busy && _subscriptions.Items.Count > 0;
         _servers.IsEnabled = !busy && _servers.Items.Count > 0;
         _availability.IsEnabled = !busy && _servers.SelectedItem is ComboItem;
-        _power.IsEnabled = state == MoskomConnectionState.Connecting || !busy && (state == MoskomConnectionState.Connected || _servers.SelectedItem is ComboItem);
+        _power.IsEnabled = state == MoskomConnectionState.Connecting || !busy && (state == MoskomConnectionState.Connected || _servers.SelectedItem is ComboItem && MoskomLauncherRuntime.SelectionReady);
     }
     private void RenderState(MoskomConnectionState state)
     {

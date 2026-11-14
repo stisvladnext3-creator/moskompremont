@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "updated": "2026-11-15",
+  "services": [
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "domains": [
+        "domain:youtube.com",
+        "domain:youtu.be",
+        "domain:googlevideo.com",
+        "domain:ytimg.com",
+        "domain:youtube-nocookie.com",
+        "domain:youtubei.googleapis.com"
+      ]
+    },
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT",
+      "domains": [
+        "domain:chatgpt.com",
+        "domain:openai.com",
+        "domain:oaistatic.com",
+        "domain:oaiusercontent.com",
+        "domain:sora.com"
+      ]
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "domains": [
+        "domain:telegram.org",
+        "domain:t.me",
+        "domain:telegram.me",
+        "domain:telegra.ph",
+        "domain:tdesktop.com",
+        "domain:telegram-cdn.org"
+      ],
+      "ips": [
+        "149.154.160.0/20",
+        "91.108.4.0/22",
+        "91.108.8.0/22",
+        "91.108.12.0/22",
+        "91.108.16.0/22",
+        "91.108.20.0/22",
+        "91.108.56.0/22",
+        "185.76.151.0/24",
+        "2001:b28:f23d::/48",
+        "2001:b28:f23f::/48",
+        "2001:67c:4e8::/48",
+        "2a0a:f280::/32"
+      ],
+      "calls": true
+    },
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp",
+      "domains": [
+        "domain:whatsapp.com",
+        "domain:whatsapp.net"
+      ],
+      "calls": true
+    },
+    {
+      "id": "flibusta",
+      "name": "Flibusta",
+      "domains": [
+        "domain:flibusta.is",
+        "domain:flibusta.site",
+        "domain:flibusta.net",
+        "domain:flibusta.club"
+      ]
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "domains": [
+        "full:gemini.google.com",
+        "full:aistudio.google.com",
+        "full:generativelanguage.googleapis.com",
+        "full:ai.google.dev"
+      ]
+    },
+    {
+      "id": "kimi",
+      "name": "Kimi",
+      "domains": [
+        "domain:kimi.com",
+        "domain:kimi.ai",
+        "domain:moonshot.cn",
+        "domain:moonshot.ai"
+      ]
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "domains": [
+        "domain:deepseek.com"
+      ]
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity",
+      "domains": [
+        "domain:perplexity.ai",
+        "domain:pplx.ai"
+      ]
+    },
+    {
+      "id": "claude",
+      "name": "Claude",
+      "domains": [
+        "domain:claude.ai",
+        "domain:anthropic.com",
+        "domain:claudeusercontent.com"
+      ]
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor.ai",
+      "domains": [
+        "domain:cursor.com",
+        "domain:cursor.ai",
+        "domain:cursor.sh",
+        "domain:cursorapi.com"
+      ]
+    },
+    {
+      "id": "instagram",
+      "name": "Instagram",
+      "domains": [
+        "domain:instagram.com",
+        "domain:cdninstagram.com",
+        "domain:ig.me"
+      ]
+    },
+    {
+      "id": "speedtest",
+      "name": "Speedtest.net",
+      "domains": [
+        "domain:speedtest.net",
+        "domain:ooklaserver.net",
+        "domain:ookla.com"
+      ]
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "domains": [
+        "domain:discord.com",
+        "domain:discord.gg",
+        "domain:discordapp.com",
+        "domain:discordapp.net",
+        "domain:discord.media",
+        "domain:discordstatus.com"
+      ],
+      "calls": true
+    },
+    {
+      "id": "viber",
+      "name": "Viber",
+      "domains": [
+        "domain:viber.com",
+        "domain:vibercdn.com"
+      ],
+      "calls": true
+    },
+    {
+      "id": "snapchat",
+      "name": "Snapchat",
+      "domains": [
+        "domain:snapchat.com",
+        "domain:snap.com",
+        "domain:sc-cdn.net",
+        "domain:snapkit.com",
+        "domain:snapads.com"
+      ],
+      "calls": true
+    },
+    {
+      "id": "netflix",
+      "name": "Netflix",
+      "domains": [
+        "domain:netflix.com",
+        "domain:netflix.net",
+        "domain:nflxvideo.net",
+        "domain:nflxext.com",
+        "domain:nflximg.net",
+        "domain:nflximg.com",
+        "domain:nflxso.net",
+        "domain:nflxsearch.net"
+      ]
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "domains": [
+        "domain:spotify.com",
+        "domain:spotify.net",
+        "domain:scdn.co",
+        "domain:spotifycdn.com",
+        "domain:spotifycdn.net",
+        "full:audio-ak-spotify-com.akamaized.net",
+        "full:audio4-ak-spotify-com.akamaized.net"
+      ]
+    },
+    {
+      "id": "x",
+      "name": "X.com",
+      "domains": [
+        "domain:x.com",
+        "domain:twitter.com",
+        "domain:t.co",
+        "domain:twimg.com",
+        "domain:pscp.tv",
+        "domain:periscope.tv"
+      ]
+    },
+    {
+      "id": "facebook",
+      "name": "Facebook",
+      "domains": [
+        "domain:facebook.com",
+        "domain:facebook.net",
+        "domain:fb.com",
+        "domain:fbcdn.net",
+        "domain:fbsbx.com",
+        "domain:messenger.com",
+        "domain:m.me"
+      ]
+    },
+    {
+      "id": "tiktok",
+      "name": "TikTok",
+      "domains": [
+        "domain:tiktok.com",
+        "domain:tiktokv.com",
+        "domain:tiktokcdn.com",
+        "domain:tiktokcdn-us.com",
+        "domain:musical.ly",
+        "domain:byteoversea.com",
+        "domain:ibytedtos.com",
+        "domain:ibyteimg.com"
+      ]
+    },
+    {
+      "id": "playstation",
+      "name": "PlayStation Store",
+      "domains": [
+        "domain:playstation.com",
+        "domain:playstation.net",
+        "domain:sonyentertainmentnetwork.com",
+        "full:store.playstation.com",
+        "full:psn-rsc.prod.dl.playstation.net"
+      ]
+    },
+    {
+      "id": "signal",
+      "name": "Signal",
+      "domains": [
+        "domain:signal.org",
+        "domain:signal.art",
+        "domain:signal.group",
+        "domain:signal.link",
+        "domain:signal.me",
+        "domain:signal.tube"
+      ],
+      "calls": true
+    },
+    {
+      "id": "notion",
+      "name": "Notion",
+      "domains": [
+        "domain:notion.so",
+        "domain:notion.com",
+        "domain:notion.site",
+        "domain:notion-static.com",
+        "domain:notionusercontent.com"
+      ]
+    },
+    {
+      "id": "miro",
+      "name": "Miro",
+      "domains": [
+        "domain:miro.com",
+        "domain:mirostatic.com",
+        "domain:realtimeboard.com"
+      ]
+    },
+    {
+      "id": "facetime",
+      "name": "FaceTime",
+      "domains": [
+        "full:facetime.apple.com",
+        "full:facetime.apple-dns.net",
+        "full:facetime.g.aaplimg.com",
+        "full:identity.apple.com",
+        "full:ess.apple.com",
+        "full:turn.apple.com"
+      ],
+      "macProcessNames": [
+        "FaceTime",
+        "avconferenced"
+      ],
+      "mediaPorts": [
+        "3478:3497",
+        "16384:16472"
+      ],
+      "mediaIps": [
+        "17.0.0.0/8"
+      ],
+      "calls": true
+    },
+    {
+      "id": "google-meet",
+      "name": "Google Meet",
+      "domains": [
+        "full:meet.google.com",
+        "full:meet.googleusercontent.com",
+        "full:stun.l.google.com",
+        "full:stun1.l.google.com",
+        "full:stun2.l.google.com",
+        "full:stun3.l.google.com",
+        "full:stun4.l.google.com"
+      ],
+      "mediaPorts": [
+        "19302:19309",
+        "3478"
+      ],
+      "mediaIps": [
+        "74.125.250.0/24",
+        "142.250.82.0/24",
+        "192.178.72.0/24"
+      ],
+      "calls": true
+    }
+  ]
+}

@@ -2,6 +2,7 @@ namespace ServiceLib.Services;
 
 public sealed class MoskomPreferences
 {
+    public MoskomSelectiveSettings Selective { get; set; } = new();
     public string? SelectedSubscriptionId { get; set; }
     public string Dns { get; set; } = "auto";
     public string CustomDns { get; set; } = "";
@@ -55,6 +56,7 @@ public static partial class MoskomLauncherRuntime
     public static async Task InitializeLauncherSettingsAsync(Config config)
     {
         try { if (File.Exists(PreferencesFile)) Preferences = JsonSerializer.Deserialize<MoskomPreferences>(File.ReadAllText(PreferencesFile)) ?? new(); } catch { Preferences = new(); }
+        Preferences.Selective ??= new();
         try { _ = MoskomDnsChoices.RemoteAddress(Preferences.Dns, Preferences.CustomDns); } catch { Preferences.Dns = "auto"; Preferences.CustomDns = ""; }
         var folder = CachedRulesDirectory ?? BundledRules;
         var manifest = ReadManifest(folder) ?? throw new InvalidOperationException("Отсутствует версия пресета Russia.");

@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
 #import <Security/Security.h>
 #import <SystemConfiguration/SystemConfiguration.h>
 #include <sys/stat.h>
@@ -109,3 +110,24 @@ int mkr_keychain_load(const char *account,unsigned char *buffer,int capacity) {
  @autoreleasepool {NSMutableDictionary *query=[key(account) mutableCopy];query[(__bridge id)kSecReturnData]=@YES;CFTypeRef value=NULL;OSStatus s=SecItemCopyMatching((__bridge CFDictionaryRef)query,&value);if(s==errSecItemNotFound)return 0;if(s!=errSecSuccess)return -1;NSData *data=CFBridgingRelease(value);if(data.length>(NSUInteger)capacity)return -1;memcpy(buffer,data.bytes,data.length);return (int)data.length;}
 }
 int mkr_keychain_delete(const char *account) {@autoreleasepool {OSStatus s=SecItemDelete((__bridge CFDictionaryRef)key(account));return s==errSecSuccess||s==errSecItemNotFound?0:1;}}
+
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <libproc.h>
+unsigned int mkr_uid(void){return getuid();}
+int mkr_check_peer(int fd,unsigned int expectedUid,int expectedPid){
+ uid_t uid;gid_t gid;if(getpeereid(fd,&uid,&gid)!=0||uid!=expectedUid)return 1;
+ if(expectedPid>0){pid_t pid=0;socklen_t length=sizeof(pid);if(getsockopt(fd,SOL_LOCAL,LOCAL_PEERPID,&pid,&length)!=0||pid!=expectedPid)return 1;}
+ return 0;
+}
+
+int mkr_running_apps(unsigned char *buffer,int capacity){
+ @autoreleasepool {
+  NSMutableArray *rows=[NSMutableArray array];
+  for(NSRunningApplication *app in NSWorkspace.sharedWorkspace.runningApplications){
+   NSString *path=app.executableURL.path;if(!path||app.processIdentifier==getpid())continue;
+   [rows addObject:@{@"id":path,@"name":app.localizedName?:path.lastPathComponent,@"path":path,@"bundle":app.bundleURL.path?:@""}];
+  }
+  NSData *data=[NSJSONSerialization dataWithJSONObject:rows options:0 error:NULL];if(!data||data.length>(NSUInteger)capacity)return -1;memcpy(buffer,data.bytes,data.length);return (int)data.length;
+ }
+}

@@ -11,7 +11,7 @@ subprocess.run(['hdiutil','verify',str(dmg)],check=True)
 # Source: complete prepared v2rayN and pinned submodules plus both build overlays.
 source=out/f'MoskomVPN-macOS-{flavor}-{rid}-{version}-source.zip'
 with zipfile.ZipFile(source,'w',zipfile.ZIP_DEFLATED) as z:
- for base,prefix in [(work/'upstream','v2rayN-source'),(OWN,'macos-client'),(REPO/'desktop-client','desktop-client')]:
+ for base,prefix in [(work/'upstream','v2rayN-source'),(OWN,'macos-client'),(REPO/'desktop-client','desktop-client'),(REPO/'shared','shared')]:
   for file in sorted(base.rglob('*')):
    rel=file.relative_to(base)
    if not file.is_file() or any(p in {'.git','bin','obj','__pycache__'} for p in rel.parts) or file.suffix=='.pyc':continue

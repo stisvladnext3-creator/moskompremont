@@ -2,6 +2,9 @@ using System.Runtime.InteropServices;
 namespace ServiceLib.Services;
 public static class MoskomMacNative
 {
+    [DllImport("MoskomPlatform")] public static extern uint mkr_uid();
+    [DllImport("MoskomPlatform")] public static extern int mkr_check_peer(int fd,uint uid,int pid);
+    [DllImport("MoskomPlatform")] public static extern int mkr_running_apps([Out] byte[] data,int capacity);
     private const string Library = "MoskomPlatform";
     [DllImport(Library)] private static extern IntPtr mkr_error();
     public static void Check(int result) { if (result != 0) throw new InvalidOperationException(Marshal.PtrToStringUTF8(mkr_error()) ?? "Не удалось изменить настройки macOS."); }

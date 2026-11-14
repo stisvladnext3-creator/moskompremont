@@ -27,6 +27,7 @@ New-Item -ItemType Directory $Payload | Out-Null
 Copy-Item "$Publish/*" $Payload -Recurse -Force
 Rename-Item "$Payload/v2rayN.exe" 'MoskomVPN.exe'
 Copy-Item "$Client/branding" "$Payload/brand" -Recurse -Force
+Copy-Item "$Client/../shared/service-catalog.json" "$Payload/service-catalog.json"
 $StockZip = Join-Path $Work 'stock.zip'
 Download $Sources.upstream.url $StockZip $Sources.upstream.sha256
 $Stock = Join-Path $Work 'stock'

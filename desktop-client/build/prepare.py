@@ -109,3 +109,6 @@ s=s[:a]+'''                    <NativeMenu>
                         <NativeMenuItem Click="MenuExit_Click" Header="Выход" />
                     </NativeMenu>'''+s[b:];s=s.replace('ToolTipText="{Binding RunningServerToolTipText}"','ToolTipText="МосКомпРемонт VPN"');p.write_text(s,encoding='utf-8')
 print('Prepared MosKomRemont VPN launcher over upstream 7.25.6.')
+
+# TUN helper runs without opening the GUI or touching account storage.
+edit(program, '        if (OperatingSystem.IsWindows() && args.Length == 3', '        if (args.Length == 6 && args[0] == "--moskom-tun-helper")\n        {\n            try { Environment.ExitCode = ServiceLib.Services.MoskomTunSupervisor.RunHelperAsync(args).GetAwaiter().GetResult(); } catch { Environment.ExitCode = 2; }\n            return;\n        }\n        if (OperatingSystem.IsWindows() && args.Length == 3')

@@ -86,7 +86,7 @@ public static partial class MoskomLauncherRuntime
         public Task AcquireAsync(CancellationToken ct)
         {
             if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Эта сборка подключает системный прокси Windows.");
-            return new MoskomProxyLease().AcquireAsync(ct);
+            return SelectiveMode ? Task.CompletedTask : new MoskomProxyLease().AcquireAsync(ct);
         }
         public Task RestoreAsync() { if (OperatingSystem.IsWindows()) return new MoskomProxyLease().RestoreAsync(); return Task.CompletedTask; }
     }
@@ -97,6 +97,7 @@ public static partial class MoskomLauncherRuntime
     }
     private sealed class Engine(MainWindowViewModel vm) : IMoskomEngine
     {
+        private SelectiveCore? _selective;
         public async Task StartAndVerifyAsync(CancellationToken token)
         {
             var config = AppManager.Instance.Config;
@@ -108,9 +109,9 @@ public static partial class MoskomLauncherRuntime
                 if (_connectionFixture == null) throw new InvalidOperationException("В проверочном режиме подключение отключено.");
                 await _connectionFixture.StartAndVerifyAsync(token); return;
             }
-            AllowCoreReload = true;
-            await vm.Reload();
-            var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
+            if (SelectiveMode) { await vm.StopForLauncherAsync(); _selective = new(); await _selective.StartAsync(selected,token); }
+            else { AllowCoreReload = true; await vm.Reload(); }
+            var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks) + (SelectiveMode ? 3 : 0);
             var ready = false;
             for (var i = 0; i < 25; i++)
             {
@@ -134,6 +135,7 @@ public static partial class MoskomLauncherRuntime
         public async Task StopAsync()
         {
             AllowCoreReload = false;
+            if (_selective != null) { await _selective.DisposeAsync(); _selective = null; }
             if (SmokeTest && _connectionFixture != null) await _connectionFixture.StopAsync();
             else await vm.StopForLauncherAsync();
         }
@@ -243,11 +245,14 @@ public static partial class MoskomLauncherRuntime
         if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
         try
         {
-            if ((await AppManager.Instance.RoutingItems()).Any(r => r.Id == item.Id && r.IsActive)) return;
+            var next = item.Id == MoskomSelectivePolicy.AppsId ? "apps" : item.Id == MoskomSelectivePolicy.ServicesId ? "services" : "";
+            if (Preferences.Selective.Mode == next && (next != "" || (await AppManager.Instance.RoutingItems()).Any(r => r.Id == item.Id && r.IsActive))) return;
             var wasOn = Connection?.IsConnected == true;
             if (wasOn) await Connection!.DisconnectAsync();
-            await ConfigHandler.SetDefaultRouting(AppManager.Instance.Config, item);
-            if (wasOn) await Connection!.ConnectAsync();
+            Preferences.Selective.Mode = next; SavePreferences();
+            if (next == "") await ConfigHandler.SetDefaultRouting(AppManager.Instance.Config, item);
+            ListsChanged?.Invoke(); SettingsChanged?.Invoke();
+            if (wasOn && SelectionReady) await Connection!.ConnectAsync();
         }
         finally { Operations.Release(); }
     }

@@ -9,6 +9,7 @@ namespace ServiceLib.Services {
 #endif
   public static string Rid=>RuntimeInformation.ProcessArchitecture==Architecture.Arm64?"osx-arm64":"osx-x64";
  }
+ public static class MoskomLauncherRuntime {public static bool SelectiveMode=>false;}
  public static class Utils {public static string StartupPath()=>Environment.GetEnvironmentVariable("MOSKOM_PLATFORM_HOME")??throw new Exception("Test profile missing");}
  public enum EInboundProtocol {socks}
  public static class AppManager {public static TestApp Instance{get;}=new();public sealed class TestApp {public int GetLocalPort(EInboundProtocol _)=>18989;}}
