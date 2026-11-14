@@ -128,6 +128,11 @@ function SmokeCheck([string]$Exe, [string]$Profile, [string]$Destination) {
         Remove-Item Env:MOSKOM_SMOKE_TEST,Env:MOSKOM_SMOKE_HOME,Env:MOSKOM_SMOKE_OUTPUT
     }
 }
+$TunHost=Join-Path $Work 'tun-tests'
+Run { dotnet publish "$Client/tun-tests/Moskom.Tun.Tests.csproj" -c Release -r win-x64 --self-contained true "-p:UpstreamSource=$Upstream" -o $TunHost }
+$env:MOSKOM_TUN_BIN=Join-Path $Payload 'bin'
+try { Run { & "$TunHost/Moskom.Tun.Tests.exe" (Join-Path $Output 'tun-tests') } }
+finally { Remove-Item Env:MOSKOM_TUN_BIN }
 SmokeCheck "$Payload/MoskomVPN.exe" (Join-Path $Work 'smoke-profile') (Join-Path $Output 'smoke')
 $Compiler = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
 if (!(Test-Path $Compiler)) { throw 'Inno Setup compiler not found.' }

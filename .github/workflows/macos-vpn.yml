@@ -41,6 +41,13 @@ jobs:
         run: python3 macos-client/build/build.py --work "$MAC_WORK" --version "$MOSKOM_VERSION" --flavor ${{ matrix.flavor }} --rid ${{ matrix.rid }} > "$RUNNER_TEMP/build.log" 2>&1 || { tail -90 "$RUNNER_TEMP/build.log"; exit 1; }
       - name: Test native Keychain, proxy lifecycle and platform updater
         run: python3 macos-client/build/platform-tests.py "$MAC_WORK" --rid ${{ matrix.rid }} --flavor ${{ matrix.flavor }}
+      - name: Verify real TUN process and service routing, including crash cleanup
+        run: |
+          moskom_target=net10.0
+          if [ '${{ matrix.flavor }}' = legacy ]; then moskom_target=net8.0; fi
+          dotnet publish desktop-client/tun-tests/Moskom.Tun.Tests.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:TargetFramework=$moskom_target -p:UpstreamSource="$MAC_WORK/upstream" -o "$MAC_WORK/tun-tests"
+          cp "$MAC_WORK/MoskomVPN.app/Contents/MacOS/libMoskomPlatform.dylib" "$MAC_WORK/tun-tests/"
+          sudo -n env MOSKOM_TUN_BIN="$MAC_WORK/MoskomVPN.app/Contents/Resources/bin" "$MAC_WORK/tun-tests/Moskom.Tun.Tests" "$MAC_WORK/tun-results"
       - name: Exercise the actual Mac UI and native core configurations
         run: python3 macos-client/build/smoke.py "$MAC_WORK"
       - name: Package DMG and corresponding source
@@ -52,6 +59,7 @@ jobs:
           path: |
             ${{ env.MAC_WORK }}/release/*
             ${{ env.MAC_WORK }}/smoke/*
+            ${{ env.MAC_WORK }}/tun-results/*
             ${{ env.MAC_WORK }}/native-audit.json
             ${{ env.MAC_WORK }}/application.log
             ${{ runner.temp }}/build.log

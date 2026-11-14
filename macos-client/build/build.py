@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import argparse,hashlib,json,os,plistlib,re,shutil,subprocess,tarfile,urllib.request,zipfile,io,sys
-from macho import audit
+from macho import audit,images
 OWN=Path(__file__).resolve().parents[1];REPO=OWN.parent
 p=argparse.ArgumentParser();p.add_argument('--work',type=Path,required=True);p.add_argument('--version',required=True);p.add_argument('--flavor',choices=['legacy','modern'],required=True);p.add_argument('--rid',choices=['osx-x64','osx-arm64'],required=True);a=p.parse_args();work=a.work.resolve();work.mkdir(exist_ok=True,parents=True)
 assert re.fullmatch(r'0\.2\.\d+',a.version);src=json.loads((OWN/'build/sources.json').read_text());arch=a.rid.removeprefix('osx-');minimum='11.0' if a.flavor=='legacy' else '13.0'
@@ -18,7 +18,10 @@ run('python3',OWN/'build/prepare.py',upstream,'--version',a.version,'--flavor',a
 app=work/'MoskomVPN.app';payload=app/'Contents/MacOS';resources=app/'Contents/Resources';resources.mkdir(parents=True);payload.mkdir(parents=True)
 run('dotnet','publish',upstream/'v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj','-c','Release','-r',a.rid,'--self-contained','true','-p:PublishSingleFile=true','-p:DebugType=None','-p:Version='+a.version,'-o',payload)
 (payload/'v2rayN').rename(payload/'MoskomVPN')
-shutil.copyfile(REPO/'shared/service-catalog.json',payload/'service-catalog.json')
+# Keep non-code files out of Contents/MacOS, where codesign expects executable code.
+for entry in list(payload.iterdir()):
+ if entry.is_dir() or not images(entry.read_bytes()):shutil.move(str(entry),resources/entry.name)
+shutil.copyfile(REPO/'shared/service-catalog.json',resources/'service-catalog.json')
 run('clang','-dynamiclib','-fobjc-arc','-mmacosx-version-min='+minimum,'-arch','x86_64' if arch=='x64' else 'arm64','-framework','Foundation','-framework','Security','-framework','SystemConfiguration','-framework','AppKit','-install_name','@rpath/libMoskomPlatform.dylib',OWN/'native/MoskomPlatform.m','-o',payload/'libMoskomPlatform.dylib')
 # The upstream SQLite native package now targets macOS 13.5. Compile its same
 # public-domain SQLite engine for the advertised OS rather than editing Mach-O headers.
@@ -29,7 +32,7 @@ run('clang','-dynamiclib','-O2','-mmacosx-version-min='+minimum,'-arch','x86_64'
 audit(payload,arch,tuple(map(int,minimum.split('.')))+(0,))
 # Cores are self-contained. Legacy sing-box is built with the last Go branch
 # whose genuine Darwin deployment target includes Big Sur; no header patching.
-bin=payload/'bin';bin.mkdir(exist_ok=True)
+bin=resources/'bin';bin.mkdir(exist_ok=True)
 for core,spec in src['cores'][a.flavor].items():
  coreDir=bin/('xray' if core=='xray' else 'sing_box');coreDir.mkdir(exist_ok=True);corePath=coreDir/core
  if 'assets' in spec:
@@ -45,7 +48,7 @@ for core,spec in src['cores'][a.flavor].items():
   env=os.environ.copy();env.update({'GOTOOLCHAIN':'local','CGO_ENABLED':'0','GOOS':'darwin','GOARCH':'amd64' if arch=='x64' else 'arm64'})
   run('go','build','-trimpath','-tags',spec['tags'],'-ldflags','-s -w -X github.com/sagernet/sing-box/constant.Version='+spec['version'].lstrip('v'),'-o',corePath,'./cmd/sing-box',cwd=tree,env=env)
  corePath.chmod(0o755)
-preset=payload/'preset-russia';preset.mkdir();russia=src['russia'];base=f'https://raw.githubusercontent.com/runetfreedom/russia-v2ray-custom-routing-list/{russia["routingCommit"]}/v2rayN/'
+preset=resources/'preset-russia';preset.mkdir();russia=src['russia'];base=f'https://raw.githubusercontent.com/runetfreedom/russia-v2ray-custom-routing-list/{russia["routingCommit"]}/v2rayN/'
 download(base+'template.json',preset/'template.json');template=json.loads((preset/'template.json').read_text());allrules=[]
 for i,rule in enumerate(template['routingItems']):
  file=download(base+rule['url'].split('/')[-1],preset/f'route-{i}.json');allrules.append(file.read_text())
@@ -71,9 +74,9 @@ info={'CFBundleExecutable':'MoskomVPN','CFBundleIdentifier':'ru.moskompremont.vp
 with (app/'Contents/Info.plist').open('wb') as f:plistlib.dump(info,f)
 shutil.copyfile(REPO/'desktop-client/LICENSE',resources/'LICENSE-v2rayN-GPL-3.0.txt');shutil.copyfile(REPO/'desktop-client/THIRD-PARTY-NOTICES.txt',resources/'THIRD-PARTY-NOTICES.txt');shutil.copyfile(OWN/'build/sources.json',resources/'sources.json')
 # Do not publish any native library that demands an OS above the advertised target.
-report=audit(payload,arch,tuple(map(int,minimum.split('.')))+(0,));(work/'native-audit.json').write_text(json.dumps(report,indent=2))
+report=audit(app,arch,tuple(map(int,minimum.split('.')))+(0,));(work/'native-audit.json').write_text(json.dumps(report,indent=2))
 for item in report:
- file=payload/item['path']
+ file=app/item['path']
  if file==payload/'MoskomVPN':continue
  run('codesign','--force','--sign','-','--timestamp=none',file,stdout=subprocess.DEVNULL)
 run('codesign','--force','--sign','-','--timestamp=none',app,stdout=subprocess.DEVNULL)

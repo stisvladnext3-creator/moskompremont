@@ -39,7 +39,8 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
    }
    var args=new[]{"--moskom-tun-helper",Environment.ProcessId.ToString(),Started,endpoint,nonce,OperatingSystem.IsWindows()?"0":(UnixUid?.Invoke()??uint.MaxValue).ToString()};
    ProcessStartInfo start;
-   if(OperatingSystem.IsWindows()) {start=new(OwnExecutable){UseShellExecute=true,Verb="runas",WindowStyle=ProcessWindowStyle.Hidden};foreach(var arg in args)start.ArgumentList.Add(arg);}
+   if(Admin){start=new(OwnExecutable){UseShellExecute=false,CreateNoWindow=true};foreach(var arg in args)start.ArgumentList.Add(arg);}
+   else if(OperatingSystem.IsWindows()) {start=new(OwnExecutable){UseShellExecute=true,Verb="runas",WindowStyle=ProcessWindowStyle.Hidden};foreach(var arg in args)start.ArgumentList.Add(arg);}
    else {
     start=new("/usr/bin/osascript"){UseShellExecute=false,CreateNoWindow=true};var command="exec "+QuoteShell(OwnExecutable)+" "+string.Join(' ',args.Select(QuoteShell));start.ArgumentList.Add("-e");start.ArgumentList.Add("do shell script "+QuoteApple(command)+" with administrator privileges with prompt \"МосКомпРемонт VPN: разрешите избирательную маршрутизацию TUN\"");
    }
@@ -69,7 +70,7 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
    var directory=Directory.CreateTempSubdirectory("moskom-tun-").FullName;Process? process=null;WindowsJobService? job=null;
    try{
     if(!OperatingSystem.IsWindows())File.SetUnixFileMode(directory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);
-    var file=Path.Combine(directory,"config.json");await File.WriteAllBytesAsync(file,bytes,setup.Token);if(!OperatingSystem.IsWindows())File.SetUnixFileMode(file,UnixFileMode.UserRead|UnixFileMode.UserWrite);
+    var file=Path.Combine(directory,"config.json");var options=new FileStreamOptions{Mode=FileMode.CreateNew,Access=FileAccess.Write,Share=FileShare.None};if(!OperatingSystem.IsWindows())options.UnixCreateMode=UnixFileMode.UserRead|UnixFileMode.UserWrite;await using(var output=new FileStream(file,options)){await output.WriteAsync(bytes,setup.Token);}
     var start=new ProcessStartInfo(core){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=directory,RedirectStandardOutput=true,RedirectStandardError=true};foreach(var arg in new[]{"run","-c",file,"--disable-color"})start.ArgumentList.Add(arg);
     process=Process.Start(start)??throw new IOException("Не запущено ядро.");if(OperatingSystem.IsWindows()){job=new();if(!job.AddProcess(process.Id))throw new IOException("Не подготовлено завершение ядра.");}
     _=process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);_=process.StandardError.BaseStream.CopyToAsync(Stream.Null);

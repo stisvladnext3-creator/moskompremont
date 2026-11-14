@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import argparse,os,json,subprocess,plistlib,shutil,hashlib
-p=argparse.ArgumentParser();p.add_argument('work',type=Path);a=p.parse_args();work=a.work.resolve();app=work/'MoskomVPN.app';payload=app/'Contents/MacOS';output=work/'smoke';output.mkdir();profile=work/'smoke-profile'
+p=argparse.ArgumentParser();p.add_argument('work',type=Path);a=p.parse_args();work=a.work.resolve();app=work/'MoskomVPN.app';payload=app/'Contents/MacOS';data=app/'Contents/Resources';output=work/'smoke';output.mkdir();profile=work/'smoke-profile'
 def contents():return {str(p.relative_to(app)):hashlib.sha256(p.read_bytes()).hexdigest() for p in app.rglob('*') if p.is_file()}
 before=contents();env=os.environ.copy();env.update({'MOSKOM_SMOKE_TEST':'1','MOSKOM_SMOKE_HOME':str(profile),'MOSKOM_SMOKE_OUTPUT':str(output)})
 # An installed application may be owned by another administrator. The normal
@@ -15,7 +15,7 @@ report=json.loads((output/'smoke.json').read_text());assert report['status']=='D
 assert before==contents(),'Application wrote inside its signed bundle'
 subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
 for file in sorted(output.glob('dns-*.json')):
- subprocess.run([str(payload/'bin/xray/xray'),'run','-test','-c',str(file)],env={**env,'XRAY_LOCATION_ASSET':str(payload/'bin')},check=True)
+ subprocess.run([str(data/'bin/xray/xray'),'run','-test','-c',str(file)],env={**env,'XRAY_LOCATION_ASSET':str(data/'bin')},check=True)
 for file in sorted(output.glob('singbox-*.json')):
- subprocess.run([str(payload/'bin/sing_box/sing-box'),'check','-c',str(file)],check=True)
+ subprocess.run([str(data/'bin/sing_box/sing-box'),'check','-c',str(file)],check=True)
 print('PASS: actual Mac launcher UI, cabinet/keychain/sync/isolation, DNS, Russia, updates, help, manual subscription removal and immutable app bundle.')

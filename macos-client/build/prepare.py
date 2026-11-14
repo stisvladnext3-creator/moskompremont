@@ -31,6 +31,7 @@ if a.flavor=='legacy':
 
 '''+code[end:];q.write_text(code)
 edit('ServiceLib/Services/MoskomLauncherRuntime.cs','config.UiItem.AutoHideStartup = false;','config.UiItem.AutoHideStartup = false;\n        config.UiItem.MacOSShowInDock = true;')
+edit('ServiceLib/Common/Utils.cs','return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName);','return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "Resources", fileName);')
 edit('ServiceLib/Common/Utils.cs','Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MosKomRemontVPN")','Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "MosKomRemontVPN")')
 edit('v2rayN.Desktop/Program.cs','_ = new Mutex(true, "v2rayN", out var bOnlyOneInstance);','MoskomAppMutex = new Mutex(true, "MosKomRemontVPN.Mac", out var bOnlyOneInstance);')
 for file in ['v2rayN.Desktop/Views/MoskomLauncherView.cs','v2rayN.Desktop/Views/MoskomHelpView.cs']:

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>preview</LangVersion></PropertyGroup>
+<ItemGroup>
+<Compile Include="../overlay/ServiceLib/Services/MoskomTunSupervisor.cs" Link="Supervisor.cs"/>
+<Compile Include="../overlay/ServiceLib/Services/MoskomSelectivePolicy.cs" Link="Policy.cs"/>
+<Compile Include="../../macos-client/overlay/ServiceLib/Services/MoskomMacNative.cs" Link="MacNative.cs"/>
+<Compile Include="$(UpstreamSource)/v2rayN/ServiceLib/Services/WindowsJobService.cs" Link="WindowsJob.cs"/>
+</ItemGroup>
+</Project>
