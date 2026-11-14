@@ -20,7 +20,7 @@ class Handler(BaseHTTPRequestHandler):
   global PHASE
   url=urlsplit(self.path);query=parse_qs(url.query);action=query.get('action',[''])[0]
   if url.path=='/fixture/screenshot' and self.command=='POST':
-   name=query.get('name',[''])[0];size=int(self.headers.get('Content-Length',0));assert re.fullmatch('[a-z0-9-]+\.png',name) and 0<size<=4*1024*1024
+   name=query.get('name',[''])[0];size=int(self.headers.get('Content-Length',0));assert re.fullmatch(r'[a-z0-9-]+\.png',name) and 0<size<=4*1024*1024
    target=Path(os.environ.get('RUNNER_TEMP','/tmp'))/'moskom-result/review';target.mkdir(parents=True,exist_ok=True);(target/name).write_bytes(self.rfile.read(size));return self.answer({'saved':True})
   authenticated='internet_account=fixture-session' in self.headers.get('Cookie','')
   stamp=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')

@@ -43,7 +43,10 @@ def write_resources(root,own):
  topics[6]=('Статус сервиса','Открывает объявление и состояние серверов с сайта. Проверка на сервере сервиса может отличаться от результата на вашем телефоне.')
  topics[10]=('Проверить обновления приложения','Проверяет новую версию. «Обновить сейчас» скачивает и проверяет APK. Затем нажмите «Установить обновление» и подтвердите системный запрос Android. «Позже» откладывает предложение на сутки. Подписки и настройки сохраняются.')
  topics[-1]=('Выход и кнопка «Назад»','«Выход» отключает VPN и закрывает приложение. Кнопка «Назад» на главном экране сворачивает приложение; VPN продолжает работать. Открыть приложение можно значком или через уведомление Android.')
- for folder in ('values','values-ru','values-en'):
+ # Keep the branded Russian labels consistent. Default values are also the English fallback;
+ # creating a new values-en locale would incorrectly require translating all upstream core keys.
+ folders={'values','values-ru'}|{p.parent.name for p in (root/'V2rayNG/app/src/main/res').glob('values*/strings.xml')}
+ for folder in sorted(folders):
   doc=ET.Element('resources')
   for key,value in STRINGS.items():ET.SubElement(doc,'string',name='moskom_'+key).text=value.replace('\n',r'\n')
   for name,items in [('titles',[x[0] for x in topics]),('bodies',[x[1] for x in topics])]:
