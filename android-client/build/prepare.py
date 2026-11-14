@@ -18,6 +18,9 @@ edit(gradle,'applicationId = "com.v2ray.ang"','applicationId = "ru.moskompremont
 edit(gradle,'applicationIdSuffix = ".fdroid"','// Direct APK distribution uses the service application ID.')
 edit(gradle,'versionCode = 755',f'versionCode = {code}')
 edit(gradle,'versionName = "2.3.15"',f'versionName = "{version}"')
+catalog=root/'V2rayNG/gradle/libs.versions.toml'
+catalog.write_text(catalog.read_text().replace('[libraries]','uiautomator = "2.3.0"\n[libraries]\nandroidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }\nandroidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }'))
+edit(gradle,'    androidTestImplementation(libs.androidx.espresso.core)','    androidTestImplementation(libs.androidx.espresso.core)\n    androidTestImplementation(libs.androidx.compose.ui.test.junit4)\n    androidTestImplementation(libs.androidx.uiautomator)')
 # The service UI follows the Russian Windows client; retain English fallback resources.
 g=root/gradle;s=g.read_text();s=re.sub(r'localeFilters \+= listOf\(.*?\n        \)', 'localeFilters += listOf("en", "ru")',s,flags=re.S);g.write_text(s)
 res=root/'V2rayNG/app/src/main/res';(res/'drawable').mkdir(exist_ok=True)

@@ -53,11 +53,35 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Compile and test the Android application
         working-directory: ${{ runner.temp }}/moskom-android/V2rayNG
-        run: ./gradlew :app:testFdroidDebugUnitTest :app:compileFdroidDebugKotlin :app:assembleFdroidDebug --stacktrace
+        run: ./gradlew :app:testFdroidDebugUnitTest :app:compileFdroidDebugKotlin :app:assembleFdroidDebug :app:assembleFdroidDebugAndroidTest :app:assembleFdroidRelease --stacktrace
+      - name: Enable Android emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          python android-client/build/fixture.py > "$RUNNER_TEMP/moskom-fixture.log" 2>&1 &
+      - name: Check Android UI, account and native VPN lifecycle
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: |
+            bash "$GITHUB_WORKSPACE/android-client/build/emulator-check.sh"
+      - name: Collect production APK and review files
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/moskom-result"
+          cp "$ANDROID_HOME/build-tools/37.0.0/lib/apksigner.jar" "$RUNNER_TEMP/moskom-result/"
+          cp "$RUNNER_TEMP/moskom-android/V2rayNG/app/build/outputs/apk/fdroid/release/"*universal*.apk "$RUNNER_TEMP/moskom-result/" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: moskom-android-build-review
           path: |
             ${{ runner.temp }}/moskom-android/V2rayNG/app/build/reports/**
-            ${{ runner.temp }}/moskom-android/V2rayNG/app/build/outputs/apk/fdroid/debug/**
+            ${{ runner.temp }}/moskom-android/V2rayNG/app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/moskom-result/**
