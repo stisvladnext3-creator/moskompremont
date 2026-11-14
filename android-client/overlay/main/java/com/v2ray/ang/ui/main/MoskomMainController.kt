@@ -136,7 +136,7 @@ class MoskomMainController(
                 if(!withContext(Dispatchers.IO){repo().canDeleteSubscription(action.id)}) {
                     _state.update{it.copy(error=R.string.moskom_subscription_not_removable)};return@execute
                 }
-                if(_state.value.group==action.id)stop()
+                if(_state.value.group==action.id&&(native.value.isRunning||_state.value.connecting))stop()
                 try {
                     withContext(Dispatchers.IO){repo().deleteManualSubscription(action.id)};catalog()
                     _state.update{it.copy(message=R.string.moskom_subscription_deleted)}

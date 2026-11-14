@@ -32,7 +32,7 @@ class MoskomIntegrationTest {
     private val context get()=InstrumentationRegistry.getInstrumentation().targetContext
     private val device get()=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     private fun waitReady(){compose.waitForIdle();compose.waitUntil(120_000){model.moskom().state.value.let{it.loaded&&!it.busy&&!it.connecting}};compose.waitForIdle()}
-    private fun dispatch(action:MoskomAction){compose.runOnIdle{model.onAction(MainAction.Moskom(action))};waitReady()}
+    private fun dispatch(action:MoskomAction){waitReady();compose.runOnIdle{model.onAction(MainAction.Moskom(action))};waitReady()}
     private fun phase(value:Int){URL("http://10.0.2.2:18080/fixture/phase?value=$value").openStream().close()}
     private fun click(tag:String){compose.onNodeWithTag(tag).performScrollTo().performClick()}
     private fun text(id:Int)=context.getString(id)
