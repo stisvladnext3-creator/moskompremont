@@ -37,6 +37,7 @@ class MoskomIntegrationTest {
     private fun text(id:Int)=context.getString(id)
     private fun closeSheet(){compose.onNodeWithText(text(R.string.moskom_close)).performScrollTo().performClick()}
     private fun screenshot(name:String){
+        compose.waitForIdle()
         val file=File(context.cacheDir,"$name.png");device.takeScreenshot(file)
         val connection=URL("http://10.0.2.2:18080/fixture/screenshot?name=$name.png").openConnection() as java.net.HttpURLConnection
         connection.requestMethod="POST";connection.doOutput=true
@@ -121,6 +122,8 @@ class MoskomIntegrationTest {
         compose.onNodeWithText("Режим «Всё» — полная маршрутизация",substring=true).assertExists();screenshot("05-help");closeSheet()
         // Standard focus activation must match touch for keyboard and D-pad users.
         for(key in listOf(Key.Enter,Key.Spacebar,Key.DirectionCenter)) {
+            // Real hardware navigation leaves Android touch mode before a button requests focus.
+            device.pressDPadDown();compose.waitForIdle()
             compose.onNodeWithTag("moskom_help").performScrollTo().performSemanticsAction(SemanticsActions.RequestFocus){it()}
             compose.onNodeWithTag("moskom_help").assertIsFocused().performKeyInput{pressKey(key)}
             compose.onNodeWithText("Режим «Всё» — полная маршрутизация",substring=true).assertExists();closeSheet()
