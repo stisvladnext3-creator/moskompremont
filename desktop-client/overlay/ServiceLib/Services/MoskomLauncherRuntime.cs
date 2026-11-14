@@ -16,6 +16,14 @@ public static partial class MoskomLauncherRuntime
     public static event Action? ListsChanged;
     private static readonly SemaphoreSlim Operations = new(1, 1);
     private static readonly CancellationTokenSource Lifetime = new();
+    private static IMoskomEngine? _connectionFixture;
+    // The disposable Windows test profile exercises the same coordinator and UI
+    // with a loopback core, while the NoProxy lease keeps real Windows settings intact.
+    public static void UseConnectionFixture(IMoskomEngine? engine)
+    {
+        if (!SmokeTest || Connection?.IsConnected == true) throw new InvalidOperationException("Недопустимое тестовое подключение.");
+        _connectionFixture = engine;
+    }
     private static string PresetPath(string file) => Path.Combine(Utils.GetBaseDirectory(), "preset-russia", file);
 
     public static async Task PrepareAsync(Config config)
@@ -95,7 +103,11 @@ public static partial class MoskomLauncherRuntime
             var selected = await ConfigHandler.GetDefaultServer(config);
             if (selected == null) throw new InvalidOperationException("Сначала добавьте ссылку кнопкой «+» и выберите сервер.");
             if (Preferences.SelectedSubscriptionId is { } group && (selected.Subid ?? "") != group) throw new InvalidOperationException("Выберите сервер выбранной подписки.");
-            if (SmokeTest) throw new InvalidOperationException("В проверочном режиме подключение отключено.");
+            if (SmokeTest)
+            {
+                if (_connectionFixture == null) throw new InvalidOperationException("В проверочном режиме подключение отключено.");
+                await _connectionFixture.StartAndVerifyAsync(token); return;
+            }
             AllowCoreReload = true;
             await vm.Reload();
             var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
@@ -119,7 +131,12 @@ public static partial class MoskomLauncherRuntime
             token.ThrowIfCancellationRequested();
             throw new InvalidOperationException("Сервер не прошёл проверку. Выберите другой сервер и повторите подключение.");
         }
-        public async Task StopAsync() { AllowCoreReload = false; await vm.StopForLauncherAsync(); }
+        public async Task StopAsync()
+        {
+            AllowCoreReload = false;
+            if (SmokeTest && _connectionFixture != null) await _connectionFixture.StopAsync();
+            else await vm.StopForLauncherAsync();
+        }
     }
     private static async Task<bool> HasSocksAsync(int port, CancellationToken token)
     {
