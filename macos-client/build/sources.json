@@ -61,16 +61,10 @@
       },
       "sing-box": {
         "version": "v1.14.4",
-        "assets": {
-          "x64": {
-            "url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-darwin-amd64.tar.gz",
-            "sha256": "eae86b9b033bba50b7c44ab719e4bfac0aca05efd28483390ed3aa510f32db25"
-          },
-          "arm64": {
-            "url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-darwin-arm64.tar.gz",
-            "sha256": "0d8c7f5ed5d587b0f1a5e9772a708ec3bfa4ac4c9329604b01d8d9c2ba406838"
-          }
-        }
+        "repository": "https://github.com/SagerNet/sing-box.git",
+        "commit": "c005f35300ce76427dc285481ec5695f5b179cd2",
+        "go": "1.26.9",
+        "tags": "with_quic,with_utls,with_acme,with_clash_api,with_dhcp,with_wireguard"
       }
     }
   },

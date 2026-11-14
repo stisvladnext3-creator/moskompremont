@@ -72,7 +72,9 @@ shutil.copyfile(REPO/'desktop-client/LICENSE',resources/'LICENSE-v2rayN-GPL-3.0.
 # Do not publish any native library that demands an OS above the advertised target.
 report=audit(payload,arch,tuple(map(int,minimum.split('.')))+(0,));(work/'native-audit.json').write_text(json.dumps(report,indent=2))
 for item in report:
- file=payload/item['path'];run('codesign','--force','--sign','-','--timestamp=none',file,stdout=subprocess.DEVNULL)
+ file=payload/item['path']
+ if file==payload/'MoskomVPN':continue
+ run('codesign','--force','--sign','-','--timestamp=none',file,stdout=subprocess.DEVNULL)
 run('codesign','--force','--sign','-','--timestamp=none',app,stdout=subprocess.DEVNULL)
 run('codesign','--verify','--deep','--strict',app)
 (work/'build.json').write_text(json.dumps({'version':a.version,'flavor':a.flavor,'rid':a.rid,'minimumOS':minimum,'upstream':src['upstream']['commit']},indent=2))
