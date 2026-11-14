@@ -23,6 +23,8 @@ object MoskomPolicy {
     const val SITE = "https://moskompremont.ru/"
     const val CABINET = "moskom-cabinet-"
     fun groupId(user: Long, sub: Long) = "$CABINET$user-$sub"
+    fun selectedGroup(groups: List<MoskomGroup>, groupId: String, serverId: String): MoskomGroup? = groups.firstOrNull { it.id==groupId }
+        ?: groups.firstOrNull { it.servers.any { server->server.id==serverId } } ?: groups.firstOrNull()
     fun versionParts(value: String): List<Int>? {
         if (!Regex("\\d+\\.\\d+\\.\\d+").matches(value)) return null
         return value.split('.').map { it.toIntOrNull() ?: return null }

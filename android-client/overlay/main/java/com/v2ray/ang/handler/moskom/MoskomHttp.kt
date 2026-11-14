@@ -41,6 +41,7 @@ class MoskomHttp(private val context: Context) {
     }).build()
     private val publicClient = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).connectTimeout(15, TimeUnit.SECONDS).callTimeout(10, TimeUnit.MINUTES).build()
     private var csrf = ""
+    @Volatile private var closed = false
     init { restore() }
     private fun bytes(request: Request, limit: Long, public: Boolean = false): ByteArray = (if (public) publicClient else client).newCall(request).execute().use { response ->
         if (response.code == 401) throw MoskomAuthException()
@@ -53,6 +54,7 @@ class MoskomHttp(private val context: Context) {
         data
     }
     fun api(action: String, body: JsonObject? = null): JsonObject {
+        check(!closed)
         if (body != null && csrf.isBlank()) me()
         fun request(): Request = Request.Builder().url(site + "api/account.php?action=" + action).apply {
             if (body != null) { header("Origin", site.trimEnd('/')); header("X-CSRF-Token", csrf); post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())) }
@@ -72,6 +74,7 @@ class MoskomHttp(private val context: Context) {
         return data
     }
     fun me(): JsonObject = api("me")
+    fun siteJson(path: String): JsonObject = JsonParser.parseString(String(bytes(Request.Builder().url(site + path).build(),2L*1024*1024, true))).asJsonObject
     fun save() {
         val plain = synchronized(cookies) { cookies.joinToString("\n") }.toByteArray()
         val cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key())
@@ -96,6 +99,7 @@ class MoskomHttp(private val context: Context) {
         }.generateKey()
     }
     fun subscription(url: String): String {
+        check(!closed)
         require(MoskomPolicy.validSubscriptionUrl(url))
         var next = url.toHttpUrl()
         repeat(6) {
@@ -113,6 +117,7 @@ class MoskomHttp(private val context: Context) {
     fun json(url: String): JsonObject = JsonParser.parseString(String(githubBytes(url,2 * 1024 * 1024))).asJsonObject
     fun githubBytes(url: String, limit: Int): ByteArray = openGithub(url).use { r -> r.body.byteStream().use { it.readBytesBounded(limit) } }
     private fun openGithub(url: String): okhttp3.Response {
+        check(!closed)
         var next = url.toHttpUrl()
         repeat(6) {
             require(next.scheme == "https" && next.username.isEmpty() && next.password.isEmpty() && next.port == 443 && next.host in setOf("api.github.com","github.com","raw.githubusercontent.com","release-assets.githubusercontent.com","objects.githubusercontent.com"))
@@ -137,6 +142,7 @@ class MoskomHttp(private val context: Context) {
         } finally { part.delete() }
     }
     fun cancel() { client.dispatcher.cancelAll(); publicClient.dispatcher.cancelAll() }
+    fun close() { closed=true;cancel() }
     private fun java.io.InputStream.readBytesBounded(limit: Int): ByteArray {
         val output=java.io.ByteArrayOutputStream();val buffer=ByteArray(16384)
         while(true){val n=read(buffer);if(n<0)break;if(output.size()+n>limit)throw IOException("Response too large");output.write(buffer,0,n)}

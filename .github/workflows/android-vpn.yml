@@ -30,7 +30,7 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;30.0.16248370'
           echo "NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: native-cache
         with:
           path: ${{ runner.temp }}/moskom-android/libs
@@ -39,6 +39,11 @@ jobs:
         if: steps.native-cache.outputs.cache-hit != 'true'
         working-directory: ${{ runner.temp }}/moskom-android
         run: bash compile-hevtun.sh
+      - uses: actions/cache/save@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/moskom-android/libs
+          key: moskom-hev-c5584feca8f6df70ee53eb2879e034b849a3d15a-ndk30
       - name: Prepare service build
         run: |
           cp -r "$RUNNER_TEMP/moskom-android/libs" "$RUNNER_TEMP/moskom-android/V2rayNG/app/"

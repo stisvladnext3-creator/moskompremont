@@ -1,6 +1,7 @@
 """Apply the branded Android overlay to the pinned, unmodified v2rayNG source."""
 from pathlib import Path
 import sys, shutil, re
+from resources import write_resources
 
 root=Path(sys.argv[1]).resolve(); own=Path(__file__).resolve().parents[1]
 version=sys.argv[2]; code=int(sys.argv[3])
@@ -27,4 +28,82 @@ edit(manifest,'android:banner="@mipmap/ic_banner"\n        android:icon="@mipmap
 edit(manifest,'android:allowBackup="true"','android:allowBackup="false"')
 for p in res.glob('values*/strings.xml'):
  s=p.read_text();s=re.sub(r'(<string name="app_name"[^>]*>).*?(</string>)',r'\1МосКомпРемонт VPN\2',s);p.write_text(s)
+write_resources(root,own)
+main='V2rayNG/app/src/main/java/com/v2ray/ang/ui/main/'
+edit(main+'MainActivity.kt','import androidx.lifecycle.lifecycleScope','import androidx.lifecycle.lifecycleScope\nimport androidx.lifecycle.repeatOnLifecycle')
+edit(main+'MainContract.kt','sealed interface MainAction {','''sealed interface MainAction {
+    data class Moskom(val value: MoskomAction) : MainAction
+    data object MoskomAvailability : MainAction''')
+edit(main+'MainViewModel.kt','    val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()', '''    val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+    private var moskomHolder: MoskomMainController? = null
+    fun moskom(): MoskomMainController = moskomHolder ?: MoskomMainController(
+        getApplication<Application>(), viewModelScope, uiState
+    ) { groupId ->
+        viewModelScope.launch {
+            setupGroupTab(forceRefresh = true).join()
+            subscriptionIdChanged(groupId)
+            refreshSelectedGuid()
+        }
+    }.also { moskomHolder = it }''')
+edit(main+'MainViewModel.kt','            MainAction.Initialize -> initialize()', '''            is MainAction.Moskom -> moskom().onAction(action.value)
+            MainAction.MoskomAvailability -> testAllRealPing(selectedOnly = true)
+            MainAction.Initialize -> initialize()''')
+edit(main+'MainViewModel.kt','    fun testAllRealPing(onlyTcp: Boolean = false) {','    fun testAllRealPing(onlyTcp: Boolean = false, selectedOnly: Boolean = false) {')
+edit(main+'MainViewModel.kt','        val servers = currentServers()\n        if (servers.isEmpty())', '        val servers = currentServers().let { list -> if (selectedOnly) list.filter { it.guid == dataSource.getSelectServer() } else list }\n        if (servers.isEmpty())')
+edit(main+'MainViewModel.kt','serverGuids = if (keywordFilter.isNotEmpty()) serverGuids else emptyList(),','serverGuids = if (selectedOnly || keywordFilter.isNotEmpty()) serverGuids else emptyList(),')
+edit(main+'MainViewModel.kt','    private fun updateRunningState(running: Boolean, clearTestingText: Boolean = true) {','    private fun updateRunningState(running: Boolean, clearTestingText: Boolean = true) {\n        moskomHolder?.onNativeState(running)')
+edit(main+'MainViewModel.kt','    override fun onCleared() {','    override fun onCleared() {\n        moskomHolder?.close()')
+edit(main+'MainActivity.kt','        MainScreen(','        MoskomScreen(')
+edit(main+'MainActivity.kt','mainViewModel.onAction(MainAction.ImportBatchConfig(text))','mainViewModel.onAction(MainAction.Moskom(MoskomAction.Import(text)))')
+edit(main+'MainActivity.kt','            if (it.resultCode == RESULT_OK) startV2Ray()','            if (it.resultCode == RESULT_OK) startV2Ray() else mainViewModel.onAction(MainAction.Moskom(MoskomAction.PermissionCancelled))')
+edit(main+'MainActivity.kt','''        } else {
+            requestServiceStart()
+        }
+    }
+
+    private fun requestServiceStart()''','''        } else {
+            mainViewModel.onAction(MainAction.Moskom(MoskomAction.Connecting))
+            requestServiceStart()
+        }
+    }
+
+    private fun requestServiceStart()''')
+edit(main+'MainActivity.kt','        if (mainViewModel.uiState.value.selectedGuid.isNullOrEmpty()) {','        if (MmkvManager.getSelectServer().isNullOrEmpty()) {\n            mainViewModel.onAction(MainAction.Moskom(MoskomAction.PermissionCancelled))')
+edit(main+'MainActivity.kt','''        super.onCreate(savedInstanceState)
+        mainViewModel.onAction(MainAction.Initialize)''','''        if (com.v2ray.ang.BuildConfig.DEBUG) {
+            com.v2ray.ang.handler.moskom.MoskomHttp.fixtureSite = intent.getStringExtra("moskom_fixture")
+        }
+        super.onCreate(savedInstanceState)
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                mainViewModel.moskom().events.collect { event ->
+                    when(event) {
+                        MoskomEvent.Start -> requestServiceStart()
+                        MoskomEvent.Exit -> finishAndRemoveTask()
+                        is MoskomEvent.Install -> installMoskomUpdate(event.path)
+                    }
+                }
+            }
+        }
+        mainViewModel.onAction(MainAction.Initialize)''')
+edit(main+'MainActivity.kt','    private fun shareToClipboard(guid: String): Boolean =','''    private fun installMoskomUpdate(path: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            toast(R.string.moskom_install_permission)
+            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + packageName)))
+            return
+        }
+        try {
+            val file = java.io.File(path).canonicalFile
+            require(file.path.startsWith(java.io.File(cacheDir, "moskomupdates").canonicalPath + "/"))
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".cache", file)
+            startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (error: Exception) {
+            LogUtil.e(AppConfig.TAG, "Moskom APK install intent failed", IllegalStateException(error.javaClass.simpleName))
+            toast(R.string.moskom_install_error)
+        }
+    }
+
+    private fun shareToClipboard(guid: String): Boolean =''')
+edit(manifest,'    <uses-permission android:name="android.permission.INTERNET" />','    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />')
+shortcuts=res/'xml/shortcuts.xml';shortcuts.write_text(shortcuts.read_text().replace('android:targetPackage="com.v2ray.ang"','android:targetPackage="ru.moskompremont.vpn"'))
 print(f'Prepared MosKomRemont Android {version}')
