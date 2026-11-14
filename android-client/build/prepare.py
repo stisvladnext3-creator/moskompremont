@@ -27,7 +27,12 @@ res=root/'V2rayNG/app/src/main/res';(res/'drawable').mkdir(exist_ok=True)
 shutil.copyfile(own.parent/'desktop-client/branding/app-logo.png',res/'drawable/moskom_logo.png')
 manifest='V2rayNG/app/src/main/AndroidManifest.xml'
 edit(manifest,'android:banner="@mipmap/ic_banner"\n        android:icon="@mipmap/ic_launcher"','android:banner="@mipmap/ic_banner"\n        android:icon="@drawable/moskom_logo"')
-edit(manifest,'android:icon="@mipmap/ic_launcher"','android:icon="@drawable/moskom_logo"')
+edit(manifest,'android:icon="@mipmap/ic_launcher"','android:icon="@drawable/moskom_status"')
+# Android system notifications and quick settings require a monochrome small icon.
+# Use the shell's power symbol there; the launcher keeps the original full-color site logo.
+for relative,count in [('helper/NotificationHelper.kt',1),('handler/NotificationManager.kt',2),('service/QSTileService.kt',1)]:
+ p=root/'V2rayNG/app/src/main/java/com/v2ray/ang'/relative;s=p.read_text();assert s.count('R.drawable.ic_stat_name')==count,relative
+ p.write_text(s.replace('R.drawable.ic_stat_name','R.drawable.moskom_status'))
 # Do not export account/session data through Android backup.
 edit(manifest,'android:allowBackup="true"','android:allowBackup="false"')
 for p in res.glob('values*/strings.xml'):
