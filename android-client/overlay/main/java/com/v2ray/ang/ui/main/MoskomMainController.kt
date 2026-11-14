@@ -110,17 +110,18 @@ class MoskomMainController(
             MoskomAction.Exit->execute {stop();eventChannel.send(MoskomEvent.Exit)}
             is MoskomAction.Login->execute {
                 withContext(Dispatchers.IO){repo().login(action.email,action.password)}
-                sync(true,true);catalog();_state.update{it.copy(message=R.string.moskom_login_success)}
+                val failures=sync(true,true);catalog()
+                if(failures==0)_state.update{it.copy(message=R.string.moskom_login_success)}
             }
             MoskomAction.Logout->execute {
                 if(_state.value.group.startsWith(MoskomPolicy.CABINET))stop()
                 withContext(Dispatchers.IO){repo().logout()};catalog();_state.update{it.copy(message=R.string.moskom_logout_success)}
             }
             MoskomAction.Sync->execute {
-                sync(true,false)
+                val cabinetFailures=sync(true,false)
                 val failed=withContext(Dispatchers.IO){repo().updateManual()};catalog()
                 if(native.value.isRunning)LauncherManager.restartService(context)
-                _state.update{it.copy(message=if(failed==0)R.string.moskom_synced else R.string.moskom_partial_sync)}
+                _state.update{it.copy(message=if(failed==0&&cabinetFailures==0)R.string.moskom_synced else R.string.moskom_partial_sync)}
             }
             is MoskomAction.Import->execute {
                 val running=native.value.isRunning;if(running)stop()
@@ -166,9 +167,9 @@ class MoskomMainController(
             finally{mutex.unlock();_state.update{it.copy(busy=false,progress=null)}}
         }
     }
-    private suspend fun sync(force:Boolean,prefer:Boolean) {
-        if(repository==null)return
-        try {
+    private suspend fun sync(force:Boolean,prefer:Boolean):Int {
+        if(repository==null)return -1
+        return try {
             val snapshot=withContext(Dispatchers.IO){repo().accountSnapshot()}
             val revoked=withContext(Dispatchers.IO){repo().selectedWillBeRemoved(snapshot)}
             if(revoked)stop()
@@ -176,9 +177,10 @@ class MoskomMainController(
             val changed=withContext(Dispatchers.IO){repo().changed}
             catalog();if(changed&&native.value.isRunning)LauncherManager.restartService(context)
             _state.update{it.copy(message=if(failures>0)R.string.moskom_partial_sync else 0)}
+            failures
         }catch(cancelled:CancellationException){throw cancelled}
-        catch(_:MoskomAuthException){if(_state.value.group.startsWith(MoskomPolicy.CABINET))stop();withContext(Dispatchers.IO){repo().forgetAccount()};catalog();_state.update{it.copy(error=R.string.moskom_login_again)}}
-        catch(error:Exception){failure(error)}
+        catch(_:MoskomAuthException){if(_state.value.group.startsWith(MoskomPolicy.CABINET))stop();withContext(Dispatchers.IO){repo().forgetAccount()};catalog();_state.update{it.copy(error=R.string.moskom_login_again)};-1}
+        catch(error:Exception){failure(error);-1}
     }
     private suspend fun service() {
         if(repository==null)return

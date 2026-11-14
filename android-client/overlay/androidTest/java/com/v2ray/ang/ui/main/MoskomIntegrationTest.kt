@@ -111,6 +111,7 @@ class MoskomIntegrationTest {
         // A transient download failure preserves the previous working group.
         phase(3);dispatch(MoskomAction.Sync)
         assertEquals(listOf("A-NEW-1","A-NEW-2"),model.moskom().state.value.groups.first{it.name=="VPN-A"}.servers.map{it.name})
+        assertEquals(R.string.moskom_partial_sync,model.moskom().state.value.message)
         dispatch(MoskomAction.Import("vless://33333333-3333-4333-8333-333333333333@10.0.2.2:18081?encryption=none&security=none&type=tcp#Manual-key"))
         assertTrue(model.moskom().state.value.groups.any{it.id==AppConfig.DEFAULT_SUBSCRIPTION_ID})
         dispatch(MoskomAction.Logout)
