@@ -3,6 +3,8 @@ package com.v2ray.ang.ui.main
 import android.content.Intent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -28,7 +30,7 @@ class MoskomIntegrationTest {
     private lateinit var model: MainViewModel
     private val context get()=InstrumentationRegistry.getInstrumentation().targetContext
     private val device get()=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    private fun waitReady()=compose.waitUntil(120_000){model.moskom().state.value.let{it.loaded&&!it.busy&&!it.connecting}}
+    private fun waitReady(){compose.waitForIdle();compose.waitUntil(120_000){model.moskom().state.value.let{it.loaded&&!it.busy&&!it.connecting}};compose.waitForIdle()}
     private fun dispatch(action:MoskomAction){compose.runOnIdle{model.onAction(MainAction.Moskom(action))};waitReady()}
     private fun phase(value:Int){URL("http://10.0.2.2:18080/fixture/phase?value=$value").openStream().close()}
     private fun click(tag:String){compose.onNodeWithTag(tag).performScrollTo().performClick()}
@@ -47,10 +49,12 @@ class MoskomIntegrationTest {
     }
     @Test fun accountGroupsRoutingDnsNativeLifecycleAndRevocation() {
         phase(0)
+        device.executeShellCommand("pm grant ru.moskompremont.vpn android.permission.POST_NOTIFICATIONS")
         scenario=ActivityScenario.launch(Intent(context,MainActivity::class.java).putExtra("moskom_fixture","http://10.0.2.2:18080/").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]}
-        device.wait(Until.findObject(By.res("com.android.permissioncontroller:id/permission_allow_button")),5_000)?.click()
+        compose.mainClock.advanceTimeByFrame()
         waitReady()
+        compose.waitUntil(30_000){compose.onAllNodesWithTag("moskom_power").fetchSemanticsNodes(atLeastOneRootRequired=false).isNotEmpty()}
         assertTrue(model.moskom().state.value.groups.isEmpty())
         compose.onNodeWithTag("moskom_power").assertIsNotEnabled()
         screenshot("01-empty")
@@ -75,6 +79,10 @@ class MoskomIntegrationTest {
         compose.onNodeWithText(text(R.string.moskom_dns_auto)).performClick();compose.onNodeWithText(text(R.string.moskom_dns_google)).performClick()
         compose.onNodeWithText(text(R.string.moskom_save_dns)).performScrollTo().performClick();waitReady();closeSheet()
         assertEquals("google",model.moskom().state.value.dns)
+        dispatch(MoskomAction.Rules)
+        assertEquals(0,model.moskom().state.value.error)
+        assertEquals("google",model.moskom().state.value.dns)
+        assertEquals("except_ru",model.moskom().state.value.mode)
         val selected=model.moskom().state.value.server
         scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
         assertEquals(selected,model.moskom().state.value.server);assertEquals("google",model.moskom().state.value.dns)
@@ -84,6 +92,7 @@ class MoskomIntegrationTest {
         click("moskom_availability")
         compose.waitUntil(60_000){model.serversForGroup(model.moskom().state.value.group).value.firstOrNull{it.guid==selected}?.testDelayMillis?.let{it>0}==true}
         compose.waitUntil(30_000){!model.uiState.value.isTesting}
+        waitReady()
         screenshot("03-real-availability")
         // Real Android permission flow and daemon IPC running/stopped state, repeated.
         compose.onNodeWithTag("moskom_power").assertIsEnabled()
@@ -108,6 +117,14 @@ class MoskomIntegrationTest {
         // Help stays inside the branded activity and includes the owner's routing descriptions.
         click("moskom_help")
         compose.onNodeWithText("Всё, кроме РФ",substring=true).assertExists();screenshot("05-help");closeSheet()
+        // Standard focus activation must match touch for keyboard and D-pad users.
+        for(key in listOf(Key.Enter,Key.Spacebar,Key.DirectionCenter)) {
+            compose.onNodeWithTag("moskom_help").performScrollTo().performSemanticsAction(SemanticsActions.RequestFocus){it()}
+            compose.onNodeWithTag("moskom_help").assertIsFocused().performKeyInput{pressKey(key)}
+            compose.onNodeWithText("Всё, кроме РФ",substring=true).assertExists();closeSheet()
+        }
+        compose.onNodeWithTag("moskom_menu").assertContentDescriptionEquals(text(R.string.moskom_menu))
+        compose.onNodeWithTag("moskom_add").assertContentDescriptionEquals(text(R.string.moskom_add))
         screenshot("06-manual-after-logout")
         scenario.close()
     }

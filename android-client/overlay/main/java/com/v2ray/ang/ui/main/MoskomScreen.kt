@@ -105,7 +105,7 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                     Box(Modifier.fillMaxWidth().padding(top=12.dp,bottom=2.dp),contentAlignment=Alignment.Center) {
                         Button(onClick={onAction(MainAction.ToggleService)},enabled=native.isRunning||(!busy&&state.loaded&&server!=null),shape=CircleShape,colors=ButtonDefaults.buttonColors(containerColor=Color.Transparent,disabledContainerColor=Color.Transparent,contentColor=Color.White),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(154.dp).background(if(native.isRunning)Brush.linearGradient(listOf(Color(0xFF157D6A),Color(0xFF12696A)))else Brush.linearGradient(listOf(Color(0xFF087A9D),Color(0xFF3B5DD5),Color(0xFF7041C9))),CircleShape).testTag("moskom_power")) {
                             Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                                Canvas(Modifier.size(66.dp)){val stroke=Stroke(7.dp.toPx(),cap=StrokeCap.Round);drawArc(Color.White,135f,270f,false,Offset(size.width*.1f,size.height*.1f),Size(size.width*.8f,size.height*.8f),style=stroke);drawLine(Color.White,Offset(size.width/2,0f),Offset(size.width/2,size.height*.43f),7.dp.toPx(),StrokeCap.Round)}
+                                Canvas(Modifier.size(66.dp)){val stroke=Stroke(7.dp.toPx(),cap=StrokeCap.Round);drawArc(Color.White,315f,270f,false,Offset(size.width*.1f,size.height*.1f),Size(size.width*.8f,size.height*.8f),style=stroke);drawLine(Color.White,Offset(size.width/2,0f),Offset(size.width/2,size.height*.43f),7.dp.toPx(),StrokeCap.Round)}
                                 Text(powerLabel,fontWeight=FontWeight.Bold,fontSize=13.sp)
                             }
                         }

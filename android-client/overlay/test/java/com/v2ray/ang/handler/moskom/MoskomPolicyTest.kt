@@ -36,7 +36,8 @@ class MoskomPolicyTest {
             val tag="moskom-android-v$version";val prefix="https://github.com/${if(wrong)"foreign/repo" else MoskomPolicy.REPOSITORY}/releases/download/$tag/"
             return """{"tag_name":"$tag","draft":false,"assets":[{"name":"MoskomVPN-Android-$version.apk","browser_download_url":"${prefix}MoskomVPN-Android-$version.apk","size":100},{"name":"SHA256SUMS.txt","browser_download_url":"${prefix}SHA256SUMS.txt"}]}"""
         }
-        val array=JsonParser.parseString("[${release("0.1.9")},${release("0.1.10")},${release("0.1.99",true)},{\"tag_name\":\"moskom-vpn-v0.3.99\"}]").asJsonArray
+        val preview=release("9.9.9").replace("\"draft\":false","\"draft\":false,\"prerelease\":true")
+        val array=JsonParser.parseString("[${release("0.1.9")},${release("0.1.10")},${release("0.1.99",true)},$preview,{\"tag_name\":\"moskom-vpn-v0.3.99\"}]").asJsonArray
         assertEquals("0.1.10",MoskomPolicy.release(array,"0.1.8")?.version);assertNull(MoskomPolicy.release(array,"0.1.10"))
         assertNull(MoskomPolicy.versionParts("0.1.x"));assertNull(MoskomPolicy.versionParts("0.1.1.2"))
     }

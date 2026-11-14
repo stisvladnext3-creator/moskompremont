@@ -186,7 +186,7 @@ class MoskomMainController(
         catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){_state.update{it.copy(serviceFailed=true)}}
     }
     private suspend fun checkUpdate(manual:Boolean) {
-        if(repository==null)return
+        if(repository==null||(!manual&&_state.value.busy))return
         try{
             val release=withContext(Dispatchers.IO){repo().appUpdate()}
             val deferred=release!=null&&!manual&&withContext(Dispatchers.IO){repo().deferred(release)}
