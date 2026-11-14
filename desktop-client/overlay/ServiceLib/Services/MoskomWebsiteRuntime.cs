@@ -117,9 +117,12 @@ public static partial class MoskomLauncherRuntime
         {
             var config = AppManager.Instance.Config; var vm = ViewModel!;
             var selected = await ConfigHandler.GetDefaultServer(config);
+            var connectionSettings = ConnectionSettings(selected);
             var activeRemoved = selected != null && remove.Any(g => g.Id == selected.Subid);
             var wasOn = Connection?.IsConnected == true;
-            if (wasOn) await Connection!.DisconnectAsync();
+            // Revocation is immediate. Ordinary downloads/imports do not need to
+            // stop the independent core, especially for an unrelated/empty group.
+            if (wasOn && activeRemoved) await Connection!.DisconnectAsync();
             try
             {
                 foreach (var group in remove) await ConfigHandler.DeleteSubItem(config, group.Id);
@@ -150,7 +153,15 @@ public static partial class MoskomLauncherRuntime
             }
             finally
             {
-                if (wasOn && !activeRemoved && await ConfigHandler.GetDefaultServer(config) != null) await Connection!.ConnectAsync();
+                if (wasOn && !activeRemoved && Connection?.IsConnected == true)
+                {
+                    var current = await ConfigHandler.GetDefaultServer(config);
+                    if (connectionSettings != ConnectionSettings(current))
+                    {
+                        await Connection.DisconnectAsync();
+                        if (current != null) await Connection.ConnectAsync();
+                    }
+                }
             }
         }
         var time = DateTimeOffset.Now.ToString("HH:mm");
@@ -167,10 +178,20 @@ public static partial class MoskomLauncherRuntime
     {
         var groups = (await AppManager.Instance.SubItems() ?? []).Where(s => s.Memo?.StartsWith(CabinetPrefix, StringComparison.Ordinal) == true).ToList();
         if (groups.Count == 0) return;
-        if (Connection?.IsConnected == true) await Connection.DisconnectAsync();
+        var selected = await ConfigHandler.GetDefaultServer(AppManager.Instance.Config);
+        if (Connection?.IsConnected == true && groups.Any(g => g.Id == selected?.Subid)) await Connection.DisconnectAsync();
         foreach (var group in groups) await ConfigHandler.DeleteSubItem(AppManager.Instance.Config, group.Id);
         if (ViewModel != null) { await ViewModel.RefreshForLauncherAsync(); await EnsureServerAsync(); }
         await ConfigHandler.SaveConfig(AppManager.Instance.Config); ListsChanged?.Invoke();
+    }
+    private static string? ConnectionSettings(ProfileItem? profile)
+    {
+        if (profile == null) return null;
+        // Imports assign fresh database IDs even when the endpoint is unchanged.
+        // Compare every stored connection option, excluding identity and labels.
+        var copy = JsonUtils.Deserialize<ProfileItem>(JsonUtils.Serialize(profile))!;
+        copy.IndexId = ""; copy.Subid = ""; copy.Remarks = ""; copy.IsSub = false;
+        return JsonUtils.Serialize(copy, false);
     }
     public static async Task RefreshServiceAsync()
     {

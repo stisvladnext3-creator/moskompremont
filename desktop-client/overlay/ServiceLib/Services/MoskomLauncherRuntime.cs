@@ -226,6 +226,10 @@ public static partial class MoskomLauncherRuntime
         {
             var config = AppManager.Instance.Config;
             var profile = await AppManager.Instance.GetProfileItem(item.ID) ?? throw new InvalidOperationException("Сервер больше недоступен. Обновите подписку.");
+            if (config.IndexId == item.ID && Preferences.SelectedSubscriptionId == (profile.Subid ?? ""))
+            {
+                config.SubIndexId = profile.Subid ?? ""; return;
+            }
             var wasOn = Connection?.IsConnected == true;
             if (wasOn) await Connection!.DisconnectAsync();
             config.SubIndexId = profile.Subid ?? ""; RememberSubscription(config.SubIndexId);
@@ -239,6 +243,7 @@ public static partial class MoskomLauncherRuntime
         if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
         try
         {
+            if ((await AppManager.Instance.RoutingItems()).Any(r => r.Id == item.Id && r.IsActive)) return;
             var wasOn = Connection?.IsConnected == true;
             if (wasOn) await Connection!.DisconnectAsync();
             await ConfigHandler.SetDefaultRouting(AppManager.Instance.Config, item);

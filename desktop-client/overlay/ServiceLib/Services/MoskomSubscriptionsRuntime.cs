@@ -65,6 +65,14 @@ public static partial class MoskomLauncherRuntime
         {
             var group = (await SubscriptionGroupsAsync()).FirstOrDefault(g => g.Id == id)
                 ?? throw new InvalidOperationException("Эта подписка больше недоступна. Обновите список подписок.");
+            var config = AppManager.Instance.Config;
+            var serverId = group.Servers.Any(s => s.ID == config.IndexId) ? config.IndexId : group.Servers.FirstOrDefault()?.ID ?? "";
+            // UI list refreshes create new objects for the same subscription.
+            // Re-selecting its existing server must leave the running core intact.
+            if (Preferences.SelectedSubscriptionId == id && config.IndexId == serverId)
+            {
+                config.SubIndexId = id; return;
+            }
             var wasOn = Connection?.IsConnected == true;
             if (wasOn) await Connection!.DisconnectAsync();
             await ApplySubscriptionSelectionAsync(group); ListsChanged?.Invoke();
