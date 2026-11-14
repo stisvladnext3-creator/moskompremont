@@ -18,6 +18,9 @@ data class MoskomState(
     val groups:List<MoskomGroup> = emptyList(),val manualSubscriptions:List<MoskomGroup> = emptyList(),val group:String="",val server:String="",
     val user:MoskomUser?=null,val notice:MoskomNotice=MoskomNotice(),val nodes:List<MoskomNode> = emptyList(),
     val serviceFailed:Boolean=false,val mode:String="all",val dns:String="auto",val customDns:String="",val rulesStamp:String="",
+    val installedApps:List<MoskomInstalledApp> = emptyList(),val services:List<MoskomServiceChoice> = emptyList(),
+    val chosenApps:Set<String> = emptySet(),val chosenServices:Set<String> = emptySet(),val selectionReady:Boolean=true,
+    val choiceLoading:Boolean=false,val choiceError:Int=0,
     val message:Int=0,val error:Int=0,val progress:Int?=null,val release:MoskomRelease?=null,val updateFile:String?=null,
 )
 sealed interface MoskomAction {
@@ -28,6 +31,10 @@ sealed interface MoskomAction {
     data class Login(val email:String,val password:String):MoskomAction
     data class Mode(val id:String):MoskomAction
     data class Dns(val id:String,val custom:String):MoskomAction
+    data class AppChoice(val id:String,val checked:Boolean):MoskomAction
+    data class ServiceChoice(val id:String,val checked:Boolean):MoskomAction
+    data object LoadChoices:MoskomAction
+    data object SaveChoices:MoskomAction
     data object Sync:MoskomAction
     data object Logout:MoskomAction
     data object Service:MoskomAction
@@ -62,6 +69,7 @@ class MoskomMainController(
     @Volatile private var repository:MoskomRepository?=null
     private var operation:Job?=null
     private var connectionTimeout:Job?=null
+    private var choicesJob:Job?=null
     private val daemon=MutableStateFlow(0L to false)
 
     init {
@@ -84,9 +92,9 @@ class MoskomMainController(
     }
     private fun repo()=repository?:error("Repository not initialized")
     private suspend fun catalog() {
-        val data=withContext(Dispatchers.IO){val r=repo();r.ensureSelection();MoskomState(groups=r.groups(),group=r.selectedGroup(),server=r.selectedServer(),user=r.user,mode=r.routes.mode(),dns=r.routes.dns(),customDns=r.routes.customDns(),rulesStamp=r.routes.stamp())}
+        val data=withContext(Dispatchers.IO){val r=repo();r.ensureSelection();MoskomState(groups=r.groups(),group=r.selectedGroup(),server=r.selectedServer(),user=r.user,mode=r.routes.mode(),dns=r.routes.dns(),customDns=r.routes.customDns(),rulesStamp=r.routes.stamp(),services=r.routes.services(),chosenApps=r.routes.selectedApps(),chosenServices=r.routes.selectedServices(),selectionReady=r.routes.ready())}
         val manual=withContext(Dispatchers.Default){data.groups.filter{MoskomPolicy.removableSubscription(it.id,AppConfig.DEFAULT_SUBSCRIPTION_ID)}}
-        _state.update {it.copy(groups=data.groups,manualSubscriptions=manual,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp)}
+        _state.update {it.copy(groups=data.groups,manualSubscriptions=manual,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp,services=data.services,chosenApps=data.chosenApps,chosenServices=data.chosenServices,selectionReady=data.selectionReady)}
         refresh(data.group)
     }
     fun onNativeState(running:Boolean) {
@@ -102,6 +110,24 @@ class MoskomMainController(
             MoskomAction.Cancel->{repository?.http?.cancel();operation?.cancel();_state.update{it.copy(busy=false,progress=null,message=R.string.moskom_cancelled)}}
             MoskomAction.Later->execute { _state.value.release?.let { release->withContext(Dispatchers.IO){repo().defer(release.version)} };_state.update{it.copy(release=null,updateFile=null)} }
             MoskomAction.Service->scope.launch {service()}
+            MoskomAction.LoadChoices->{
+                choicesJob?.cancel()
+                choicesJob=scope.launch {
+                    _state.update{it.copy(choiceLoading=true,choiceError=0)}
+                    try {
+                        val data=withContext(Dispatchers.IO){val routes=repo().routes;Triple(routes.installedApps(),routes.selectedApps(),routes.selectedServices())}
+                        _state.update{it.copy(installedApps=data.first,chosenApps=data.second,chosenServices=data.third)}
+                    }catch(cancelled:CancellationException){throw cancelled}
+                    catch(error:Exception){LogUtil.e(AppConfig.TAG,"VPN application list load failed",IllegalStateException(error.javaClass.simpleName));_state.update{it.copy(choiceError=R.string.moskom_selection_error)}}
+                    finally{_state.update{it.copy(choiceLoading=false)}}
+                }
+            }
+            is MoskomAction.AppChoice->{if(_state.value.installedApps.any{it.id==action.id})_state.update{it.copy(chosenApps=if(action.checked)it.chosenApps+action.id else it.chosenApps-action.id)}}
+            is MoskomAction.ServiceChoice->{if(_state.value.services.any{it.id==action.id})_state.update{it.copy(chosenServices=if(action.checked)it.chosenServices+action.id else it.chosenServices-action.id)}}
+            MoskomAction.SaveChoices->execute {
+                val apps=_state.value.chosenApps;val services=_state.value.chosenServices
+                reconfigure{repo().routes.saveChoices(apps,services)};_state.update{it.copy(message=R.string.moskom_selection_saved)}
+            }
             MoskomAction.CheckUpdate->execute {checkUpdate(true)}
             MoskomAction.DownloadUpdate->execute {
                 val release=_state.value.release?:return@execute
@@ -128,7 +154,7 @@ class MoskomMainController(
             is MoskomAction.Import->execute {
                 val running=native.value.isRunning;if(running)stop()
                 withContext(Dispatchers.IO){repo().importClipboard(action.text)};catalog()
-                _state.update{it.copy(message=R.string.moskom_imported)};if(running&&_state.value.server.isNotBlank())eventChannel.send(MoskomEvent.Start)
+                _state.update{it.copy(message=R.string.moskom_imported)};if(running&&_state.value.server.isNotBlank()&&_state.value.selectionReady)eventChannel.send(MoskomEvent.Start)
             }
             is MoskomAction.Group->execute {changeSelection{repo().chooseGroup(action.id)}}
             is MoskomAction.Server->execute {changeSelection{repo().chooseServer(action.id)}}
@@ -160,11 +186,11 @@ class MoskomMainController(
     private suspend fun changeSelection(change:()->Unit) {
         val running=native.value.isRunning;if(running)stop()
         withContext(Dispatchers.IO){change()};catalog()
-        if(running&&_state.value.server.isNotBlank())eventChannel.send(MoskomEvent.Start)
+        if(running&&_state.value.server.isNotBlank()&&_state.value.selectionReady)eventChannel.send(MoskomEvent.Start)
     }
     private suspend fun reconfigure(change:()->Unit) {
         val running=native.value.isRunning;if(running)stop()
-        try {withContext(Dispatchers.IO){change()};catalog()}finally {if(running&&_state.value.server.isNotBlank())eventChannel.send(MoskomEvent.Start)}
+        try {withContext(Dispatchers.IO){change()};catalog()}finally {if(running&&_state.value.server.isNotBlank()&&_state.value.selectionReady)eventChannel.send(MoskomEvent.Start)}
     }
     private suspend fun stop() {
         val previous=daemon.value.first

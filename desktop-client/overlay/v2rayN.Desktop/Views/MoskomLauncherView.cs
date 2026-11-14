@@ -32,6 +32,7 @@ public sealed class MoskomLauncherView : UserControl
     private readonly TextBlock _status = new() { Name = "MoskomStatus", Text = "VPN выключен", FontSize = 22, FontWeight = FontWeight.SemiBold, TextAlignment = TextAlignment.Center };
     private readonly TextBlock _hint = new() { Name = "MoskomHint", Text = "Скопируйте ссылку-подписку и нажмите «+».", FontSize = 13, Foreground = Brush.Parse("#A7B7D0"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, MinHeight = 42 };
     private readonly TextBlock _powerLabel = new() { Text = "Включить VPN", Foreground = Brushes.White, FontSize = 13, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly TextBlock _connectionMode = new() { FontSize=12, Foreground=Brush.Parse("#8D9DB6"), TextAlignment=TextAlignment.Center };
     private bool _refreshing;
     private bool _refreshQueued;
     private bool _operation;
@@ -84,7 +85,7 @@ public sealed class MoskomLauncherView : UserControl
         var routingPanel = new StackPanel(); routingPanel.Children.Add(Label("Маршрутизация · Russia")); routingPanel.Children.Add(_routing); shell.Children.Add(routingPanel);
         var actions = new Grid { ColumnDefinitions = new("*,*"), ColumnSpacing = 8 }; _update.FontSize = 12;
         actions.Children.Add(_update); Grid.SetColumn(_availability, 1); actions.Children.Add(_availability); shell.Children.Add(actions); shell.Children.Add(_availabilityResult);
-        shell.Children.Add(new TextBlock { Text = "Режим: системный прокси Windows", FontSize = 12, Foreground = Brush.Parse("#8D9DB6"), TextAlignment = TextAlignment.Center });
+        shell.Children.Add(_connectionMode);
         var foot = new Grid { ColumnDefinitions = new("*,*"), ColumnSpacing = 8, Margin = new(0, 4, 0, 0) };
         var help = new Button { Name = "MoskomHelp", Content = "Справка", HorizontalAlignment = HorizontalAlignment.Stretch };
         var exit = new Button { Content = "Выход", HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -180,6 +181,8 @@ public sealed class MoskomLauncherView : UserControl
     private void RefreshEnabled()
     {
         var state = MoskomLauncherRuntime.Connection?.State ?? MoskomConnectionState.Disconnected;
+        _connectionMode.Text = MoskomLauncherRuntime.SelectiveMode ? "Режим: TUN · выбранный трафик" : "Режим: системный прокси Windows";
+        if (!MoskomLauncherRuntime.SelectionReady) _hint.Text = "Выберите приложения или сервисы в меню ☰ перед подключением.";
         var busy = _operation || _refreshing || state is MoskomConnectionState.Connecting or MoskomConnectionState.Disconnecting;
         _routing.IsEnabled = _plus.IsEnabled = _update.IsEnabled = _account.IsEnabled = _menu.IsEnabled = !busy;
         _subscriptions.IsEnabled = !busy && _subscriptions.Items.Count > 0;
@@ -194,7 +197,7 @@ public sealed class MoskomLauncherView : UserControl
         _power.BorderBrush = Brush.Parse(on ? "#51DFC0" : "#59CFEF"); _power.BorderThickness = new(2);
         _powerLabel.Text = state switch { MoskomConnectionState.Connecting => "Отменить", MoskomConnectionState.Connected => "Выключить VPN", _ => "Включить VPN" };
         _status.Text = state switch { MoskomConnectionState.Connecting => "Проверяем подключение…", MoskomConnectionState.Connected => "VPN включён", MoskomConnectionState.Disconnecting => "Выключаем…", MoskomConnectionState.Failed => "Не удалось подключиться", _ => "VPN выключен" };
-        if (on) _hint.Text = "Системный прокси включён. Используется выбранная маршрутизация.";
+        if (on) _hint.Text = MoskomLauncherRuntime.SelectiveMode ? "Подключён TUN. Через VPN идёт выбранный трафик." : "Системный прокси включён. Используется выбранная маршрутизация.";
         else if (state == MoskomConnectionState.Disconnected) _hint.Text = _vm.StatusBarViewModel.Servers.Count == 0 ? "Скопируйте ссылку-подписку и нажмите «+»." : "Выберите подписку, затем сервер и нажмите большую кнопку.";
         RefreshEnabled();
     }

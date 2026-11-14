@@ -92,6 +92,38 @@ class MoskomIntegrationTest {
         scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
         assertEquals(selected,model.moskom().state.value.server);assertEquals("google",model.moskom().state.value.dns)
         assertEquals("moskom-cabinet-41-802",model.moskom().state.value.group)
+        // Real menu, merged checkbox semantics, keyboard and stable-ID persistence.
+        click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_services)).performClick()
+        compose.waitUntil(30_000){!model.moskom().state.value.choiceLoading}
+        assertEquals(27,model.moskom().state.value.services.size)
+        val meet=compose.onNodeWithTag("moskom_choice_google-meet").performScrollTo()
+        meet.assertIsOff().performClick();meet.assertIsOn()
+        for(key in listOf(Key.Enter,Key.Spacebar,Key.DirectionCenter)) {
+            meet.performSemanticsAction(SemanticsActions.RequestFocus){it()}
+            meet.assertIsFocused().performKeyInput{pressKey(key)}
+            compose.waitForIdle()
+        }
+        meet.assertIsOff().performClick();meet.assertIsOn()
+        click("moskom_save_choices");waitReady();screenshot("08-services");closeSheet()
+        dispatch(MoskomAction.Mode("services"));assertTrue(model.moskom().state.value.selectionReady)
+        assertFalse(MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY))
+        assertEquals(setOf("google-meet"),model.moskom().state.value.chosenServices)
+        scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
+        assertEquals("services",model.moskom().state.value.mode);assertEquals(setOf("google-meet"),model.moskom().state.value.chosenServices)
+        dispatch(MoskomAction.Mode("apps"));assertFalse(model.moskom().state.value.selectionReady)
+        compose.onNodeWithTag("moskom_power").assertIsNotEnabled()
+        click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_apps)).performClick()
+        compose.waitUntil(30_000){!model.moskom().state.value.choiceLoading}
+        assertTrue(model.moskom().state.value.installedApps.any{it.id=="com.android.settings"})
+        val settingsApp=compose.onNodeWithTag("moskom_choice_com.android.settings").performScrollTo()
+        settingsApp.assertIsOff().performClick();settingsApp.assertIsOn()
+        click("moskom_save_choices");waitReady();closeSheet()
+        assertTrue(model.moskom().state.value.selectionReady)
+        assertEquals(setOf("com.android.settings"),MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET))
+        assertTrue(MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY))
+        assertFalse(MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS))
+        dispatch(MoskomAction.Mode("except_ru"))
+        assertFalse(MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY))
         // Native real-ping works while VPN is off and must traverse the host Xray inbound.
         runBlocking(Dispatchers.IO){MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL,"http://127.0.0.1:18080/ping")}
         click("moskom_availability")
@@ -104,7 +136,12 @@ class MoskomIntegrationTest {
         click("moskom_power");approveSystemDialog()
         compose.waitUntil(60_000){model.uiState.value.isRunning};screenshot("04-connected")
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
-        click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        // Both new policies must also start and tear down the real Android VPN daemon.
+        dispatch(MoskomAction.Mode("apps"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
+        dispatch(MoskomAction.Mode("services"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
+        dispatch(MoskomAction.Mode("except_ru"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
         // The deletion handler rejects account subscriptions before stopping VPN.
         val protectedGroup=model.moskom().state.value.group
         dispatch(MoskomAction.DeleteSubscription(protectedGroup))

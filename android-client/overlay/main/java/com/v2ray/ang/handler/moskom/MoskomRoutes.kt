@@ -1,6 +1,10 @@
 package com.v2ray.ang.handler.moskom
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.os.Build
+import com.v2ray.ang.BuildConfig
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -21,6 +25,30 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
     fun dns()=MmkvManager.decodeSettingsString("moskom_dns","auto").orEmpty()
     fun customDns()=MmkvManager.decodeSettingsString("moskom_custom_dns").orEmpty()
     fun stamp()=MmkvManager.decodeSettingsString("moskom_rules_stamp").orEmpty()
+    fun selectedApps():Set<String> = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty().toSet()
+    fun selectedServices():Set<String> = MmkvManager.decodeSettingsStringSet("moskom_selected_services").orEmpty().toSet()
+    fun services():List<MoskomServiceChoice> = context.assets.open("moskom/service-catalog.json").bufferedReader().use{MoskomSelective.catalog(it.readText())}
+    // API 33 added typed package flags; remove the legacy adapter when minSdk reaches 33.
+    @Suppress("DEPRECATION")
+    private fun installedPackages():List<ApplicationInfo> = if(Build.VERSION.SDK_INT>=33)
+        context.packageManager.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
+    else context.packageManager.getInstalledApplications(0)
+    fun installedApps():List<MoskomInstalledApp> = installedPackages().filter{it.packageName!=BuildConfig.APPLICATION_ID}.map {
+        MoskomInstalledApp(it.packageName,context.packageManager.getApplicationLabel(it).toString())
+    }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER){it.name})
+    fun ready():Boolean = MoskomSelective.ready(mode(),selectedApps(),selectedServices(),installedPackages().filter{it.packageName!=BuildConfig.APPLICATION_ID}.map{it.packageName}.toSet(),services().map{it.id}.toSet())
+    fun saveChoices(apps:Set<String>,services:Set<String>) {
+        require(apps.size<=1000&&services.size<=200&&services.all{id->this.services().any{it.id==id}})
+        val beforeApps=selectedApps();val beforeServices=selectedServices()
+        try {
+            require(MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET,apps.toMutableSet()))
+            require(MmkvManager.encodeSettings("moskom_selected_services",services.toMutableSet()))
+            apply(mode(),dns(),customDns())
+        }catch(error:Exception) {
+            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET,beforeApps.toMutableSet())
+            MmkvManager.encodeSettings("moskom_selected_services",beforeServices.toMutableSet());throw error
+        }
+    }
     private fun read(file: File)=JsonParser.parseString(file.readText()).asJsonObject
     fun initialize() {
         val name=MmkvManager.decodeSettingsString("moskom_route_bundle").orEmpty()
@@ -36,7 +64,8 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
         apply(mode(),dns(),customDns())
     }
     private fun rules(bundle: File,mode: String): MutableList<RulesetItem> {
-        val index=when(mode){"all"->0;"except_ru"->1;"blocked"->2;else->error("Unknown routing mode")}
+        if(mode=="services")return MoskomSelective.services(selectedServices(),services())
+        val index=when(mode){"apps","all"->0;"except_ru"->1;"blocked"->2;else->error("Unknown routing mode")}
         val source=JsonParser.parseString(File(bundle,"route-$index.json").readText()).asJsonArray
         require(source.size()>0)
         return source.map { element ->
@@ -54,18 +83,22 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
         fun setting(key:String,fallback:String):String=simple.entrySet().firstOrNull { it.key.equals(key,true) }?.value?.asString?.takeIf { it.isNotBlank() }?:fallback
         val remote=MoskomPolicy.dns(dns,custom)?:setting("remoteDNS","https://1.1.1.1/dns-query")
         val direct=setting("directDNS","77.88.8.8")
-        val index=when(mode){"all"->0;"except_ru"->1;"blocked"->2;else->error("Unknown routing mode")}
+        val index=when(mode){"apps","services","all"->0;"except_ru"->1;"blocked"->2;else->error("Unknown routing mode")}
         val strategy=read(File(active,"template.json")).getAsJsonArray("routingItems")[index].asJsonObject.text("domainStrategy","AsIs")
         require(strategy in listOf("AsIs","IPOnDemand","IPIfNonMatch"))
         val keys=listOf("moskom_route_mode","moskom_dns","moskom_custom_dns",AppConfig.PREF_REMOTE_DNS,AppConfig.PREF_DOMESTIC_DNS,AppConfig.PREF_ROUTING_DOMAIN_STRATEGY)
         val old=keys.associateWith { MmkvManager.decodeSettingsString(it) };val oldRules=MmkvManager.decodeRoutingRulesets()
         val oldLocalDns=MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED,false)
+        val oldPerApp=MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY,false)
+        val oldBypass=MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS,false)
         try {
             MmkvManager.encodeRoutingRulesets(next)
             val values=listOf(mode,dns,custom,remote,direct,strategy)
             keys.zip(values).forEach { (key,value)->require(MmkvManager.encodeSettings(key,value)) }
             require(MmkvManager.encodeSettings(AppConfig.PREF_LOCAL_DNS_ENABLED,true))
-        } catch(error:Exception) {MmkvManager.encodeRoutingRulesets(oldRules);old.forEach { (k,v)->MmkvManager.encodeSettings(k,v) };MmkvManager.encodeSettings(AppConfig.PREF_LOCAL_DNS_ENABLED,oldLocalDns);throw error}
+            require(MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY,mode=="apps"))
+            require(MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS,false))
+        } catch(error:Exception) {MmkvManager.encodeRoutingRulesets(oldRules);old.forEach { (k,v)->MmkvManager.encodeSettings(k,v) };MmkvManager.encodeSettings(AppConfig.PREF_LOCAL_DNS_ENABLED,oldLocalDns);MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY,oldPerApp);MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS,oldBypass);throw error}
     }
     private fun activate(stage: File) {
         for(name in listOf("geoip.dat","geosite.dat","route-0.json","route-1.json","route-2.json","manifest.json","simple_dns.json"))require(File(stage,name).isFile)

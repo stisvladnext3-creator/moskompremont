@@ -10,7 +10,7 @@ with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
   relative=source.relative_to(root)
   if source.is_file() and not any(part in excluded for part in relative.parts) and source.suffix.lower() not in {'.aar','.so','.apk','.jks','.p12'} and source.name!='local.properties':
    archive.write(source,f'{prefix}/v2rayNG/{relative}')
- for folder in ('android-client','desktop-client/branding'):
+ for folder in ('android-client','desktop-client/branding','shared'):
   for source in (repo/folder).rglob('*'):
    relative=source.relative_to(repo)
    if source.is_file() and '__pycache__' not in relative.parts:archive.write(source,f'{prefix}/moskom/{relative}')

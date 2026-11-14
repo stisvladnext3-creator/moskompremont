@@ -98,6 +98,7 @@ public static partial class MoskomLauncherRuntime
     private sealed class Engine(MainWindowViewModel vm) : IMoskomEngine
     {
         private SelectiveCore? _selective;
+        public bool SelectiveAlive => _selective?.HasExited == false;
         public async Task StartAndVerifyAsync(CancellationToken token)
         {
             var config = AppManager.Instance.Config;
@@ -154,13 +155,18 @@ public static partial class MoskomLauncherRuntime
     private static async Task MonitorCoreAsync(CancellationToken token)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        var failures=0; long previousRevision=-1;
         try
         {
             while (await timer.WaitForNextTickAsync(token))
             {
-                if (Connection?.IsConnected != true) continue;
+                if (Connection?.IsConnected != true) { failures=0; continue; }
                 var revision = Connection.Revision;
-                if (!await HasSocksAsync(AppManager.Instance.GetLocalPort(EInboundProtocol.socks), token)) await Connection.DisconnectIfCurrentAsync(revision);
+                if (previousRevision!=revision) { previousRevision=revision; failures=0; }
+                if (SelectiveMode) {
+                    if (!await HasSocksAsync(AppManager.Instance.GetLocalPort(EInboundProtocol.socks)+3,token)) failures++; else failures=0;
+                    if(failures>=3)await Connection.DisconnectIfCurrentAsync(revision);
+                } else if (!await HasSocksAsync(AppManager.Instance.GetLocalPort(EInboundProtocol.socks), token)) await Connection.DisconnectIfCurrentAsync(revision);
             }
         }
         catch (OperationCanceledException) { }

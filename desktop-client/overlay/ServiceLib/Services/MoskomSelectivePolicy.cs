@@ -59,8 +59,8 @@ public static class MoskomSelectivePolicy {
    var ips=selected.SelectMany(s=>s.Ips).ToList();if(ips.Count>0)rules.Add(new JsonObject{["ip_cidr"]=Strings(ips),["outbound"]="proxy"});
    foreach(var service in selected.Where(s=>s.MediaIps.Length>0&&s.MediaPorts.Length>0)){
     var range=service.MediaPorts.Where(p=>p.Contains(':')).ToArray();var ports=service.MediaPorts.Where(p=>!p.Contains(':')).Select(int.Parse).ToArray();
-    var rule=new JsonObject{["ip_cidr"]=Strings(service.MediaIps),["network"]="udp",["outbound"]="proxy"};
-    if(range.Length>0)rule["port_range"]=Strings(range);if(ports.Length>0)rule["port"]=new JsonArray(ports.Select(p=>(JsonNode?)JsonValue.Create(p)).ToArray());rules.Add(rule);
+    if(range.Length>0)rules.Add(new JsonObject{["ip_cidr"]=Strings(service.MediaIps),["network"]="udp",["port_range"]=Strings(range),["outbound"]="proxy"});
+    if(ports.Length>0)rules.Add(new JsonObject{["ip_cidr"]=Strings(service.MediaIps),["network"]="udp",["port"]=new JsonArray(ports.Select(p=>(JsonNode?)JsonValue.Create(p)).ToArray()),["outbound"]="proxy"});
    }
    if(mac){var processes=selected.SelectMany(s=>s.MacProcessNames).ToArray();if(processes.Length>0)rules.Add(new JsonObject{["process_name"]=Strings(processes),["outbound"]="proxy"});}
   }

@@ -32,7 +32,9 @@ def audit(root,arch,minimum):
   for item in relevant:
    if item['minimum'] is None or item['minimum']>minimum:raise AssertionError(f'{file}: requires {item["minimum"]}, expected <= {minimum}')
    result.append({'path':file.relative_to(root).as_posix(),**item})
- if len(result)<10:raise AssertionError('Incomplete native application payload')
+ required={'MoskomVPN','libAvaloniaNative.dylib','libHarfBuzzSharp.dylib','libSkiaSharp.dylib','libe_sqlite3.dylib','libMoskomPlatform.dylib'}
+ present={Path(item['path']).name for item in result}
+ if not required<=present:raise AssertionError('Missing native application components: '+str(sorted(required-present)))
  return result
 if __name__=='__main__':
  import argparse,json

@@ -37,6 +37,48 @@ STRINGS={
 'dns_saved':'DNS сохранён и применён.','rules_updated':'Правила Russia обновлены.','rules_current':'У вас уже актуальные правила Russia.',
 'app_current':'У вас установлена последняя доступная версия.','update_ready':'Файл проверен. Можно устанавливать обновление.',
 'install_permission':'Разрешите установку из этого источника, вернитесь в приложение и нажмите «Установить обновление».','install_error':'Не удалось открыть установщик Android.',
+'mode_apps':'Выбранные приложения',
+'mode_services':'Выбранные сервисы',
+'apps':'Приложения',
+'services':'Сервисы',
+'apps_description':'Выберите установленные приложения. В режиме «Выбранные приложения» только они используют VPN. Выбор сохраняется на этом устройстве.',
+'services_description':'Выберите сервисы. Остальные соединения идут напрямую. Домены и адреса сервисов могут пересекаться; для полного охвата звонков выберите приложение в режиме «Выбранные приложения».',
+'select_apps_first':'Сначала выберите хотя бы одно установленное приложение в меню «Приложения».',
+'select_services_first':'Сначала выберите сервисы в меню «Сервисы».',
+'selection_saved':'Выбор сохранён.',
+'selection_count':'Выбрано: %1$d',
+'selection_loading':'Загрузка списка…',
+'selection_error':'Не удалось загрузить список. Нажмите «Обновить».',
+'no_choices':'Список пуст.',
+'save_selection':'Сохранить выбор',
+'selection_needed':'Выберите приложения или сервисы в меню ☰ перед подключением.',
+'service_youtube':'YouTube',
+'service_chatgpt':'ChatGPT',
+'service_telegram':'Telegram',
+'service_whatsapp':'WhatsApp',
+'service_flibusta':'Flibusta',
+'service_gemini':'Gemini',
+'service_kimi':'Kimi',
+'service_deepseek':'DeepSeek',
+'service_perplexity':'Perplexity',
+'service_claude':'Claude',
+'service_cursor':'Cursor.ai',
+'service_instagram':'Instagram',
+'service_speedtest':'Speedtest.net',
+'service_discord':'Discord',
+'service_viber':'Viber',
+'service_snapchat':'Snapchat',
+'service_netflix':'Netflix',
+'service_spotify':'Spotify',
+'service_x':'X.com',
+'service_facebook':'Facebook',
+'service_tiktok':'TikTok',
+'service_playstation':'PlayStation Store',
+'service_signal':'Signal',
+'service_notion':'Notion',
+'service_miro':'Miro',
+'service_facetime':'FaceTime',
+'service_google_meet':'Google Meet',
 }
 
 def write_resources(root,own):
@@ -45,6 +87,7 @@ def write_resources(root,own):
  assert len(topics)==14
  topics=[(title,body.replace('системный прокси Windows','VPN Android').replace('прокси Windows','VPN Android')) for title,body in topics]
  topics[0]=('Включить VPN / Выключить VPN','Большая кнопка подключает выбранный сервер через системный VPN Android. При первом включении подтвердите разрешение на VPN. Повторное нажатие после подключения выключает VPN.')
+ topics[3]=(topics[3][0],topics[3][1].replace('Оба режима используют TUN и запрашивают разрешение администратора.','На Android используется штатный VPN, root не требуется.'))
  topics[5]=('Проверить доступность','Проверяет выбранный сервер с вашего телефона и показывает результат в мс. Для этой проверки включать VPN не требуется.')
  topics[6]=('Статус сервиса','Открывает объявление и состояние серверов с сайта. Проверка на сервере сервиса может отличаться от результата на вашем телефоне.')
  topics[10]=('Проверить обновления приложения','Проверяет новую версию. «Обновить сейчас» скачивает и проверяет APK. Затем нажмите «Установить обновление» и подтвердите системный запрос Android. «Позже» откладывает предложение на сутки. Подписки и настройки сохраняются.')

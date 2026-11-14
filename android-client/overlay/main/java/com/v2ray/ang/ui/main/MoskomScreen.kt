@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +29,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -64,7 +66,7 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
     val latency=servers.firstOrNull{it.guid==state.server}?.testDelayMillis
     val busy=state.busy||state.connecting||native.isTesting
     val addLabel=stringResource(R.string.moskom_add)
-    val modes=listOf("all" to R.string.moskom_mode_all,"except_ru" to R.string.moskom_mode_except,"blocked" to R.string.moskom_mode_blocked)
+    val modes=listOf("all" to R.string.moskom_mode_all,"except_ru" to R.string.moskom_mode_except,"blocked" to R.string.moskom_mode_blocked,"apps" to R.string.moskom_mode_apps,"services" to R.string.moskom_mode_services)
     BackHandler(enabled=dialog.isNotEmpty()){dialog=""}
     MaterialTheme(colorScheme=darkColorScheme(primary=Cyan,onPrimary=Ink,surface=CardInk,onSurface=Color(0xFFF0F4FF),background=Ink,onBackground=Color.White)) {
         Scaffold(containerColor=Color.Transparent,contentColor=Color(0xFFF0F4FF),contentWindowInsets=WindowInsets.safeDrawing) {padding->
@@ -83,6 +85,8 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                             }
                             DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                                 MenuEntry(R.string.moskom_manage_subscriptions){menu=false;dialog="subscriptions"}
+                                MenuEntry(R.string.moskom_apps){menu=false;dialog="apps";action(MoskomAction.LoadChoices)}
+                                MenuEntry(R.string.moskom_services){menu=false;dialog="services";action(MoskomAction.LoadChoices)}
                                 MenuEntry(R.string.moskom_rules){menu=false;dialog="rules"}
                                 MenuEntry(R.string.moskom_check_update){menu=false;dialog="updates";action(MoskomAction.CheckUpdate)}
                                 MenuEntry(R.string.moskom_dns){menu=false;dialog="dns"}
@@ -104,7 +108,7 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                     if(!state.loaded||state.busy)LinearProgressIndicator(Modifier.fillMaxWidth(),color=Cyan)
                     val powerLabel=stringResource(when{state.connecting->R.string.moskom_connecting;native.isRunning->R.string.moskom_power_off;else->R.string.moskom_power_on})
                     Box(Modifier.fillMaxWidth().padding(top=12.dp,bottom=2.dp),contentAlignment=Alignment.Center) {
-                        Button(onClick={onAction(MainAction.ToggleService)},enabled=native.isRunning||(!busy&&state.loaded&&server!=null),shape=CircleShape,colors=ButtonDefaults.buttonColors(containerColor=Color.Transparent,disabledContainerColor=Color.Transparent,contentColor=Color.White),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(154.dp).background(if(native.isRunning)Brush.linearGradient(listOf(Color(0xFF157D6A),Color(0xFF12696A)))else Brush.linearGradient(listOf(Color(0xFF087A9D),Color(0xFF3B5DD5),Color(0xFF7041C9))),CircleShape).testTag("moskom_power")) {
+                        Button(onClick={onAction(MainAction.ToggleService)},enabled=native.isRunning||(!busy&&state.loaded&&server!=null&&state.selectionReady),shape=CircleShape,colors=ButtonDefaults.buttonColors(containerColor=Color.Transparent,disabledContainerColor=Color.Transparent,contentColor=Color.White),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(154.dp).background(if(native.isRunning)Brush.linearGradient(listOf(Color(0xFF157D6A),Color(0xFF12696A)))else Brush.linearGradient(listOf(Color(0xFF087A9D),Color(0xFF3B5DD5),Color(0xFF7041C9))),CircleShape).testTag("moskom_power")) {
                             Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) {
                                 Canvas(Modifier.size(66.dp)){val stroke=Stroke(7.dp.toPx(),cap=StrokeCap.Round);drawArc(Color.White,315f,270f,false,Offset(size.width*.1f,size.height*.1f),Size(size.width*.8f,size.height*.8f),style=stroke);drawLine(Color.White,Offset(size.width/2,0f),Offset(size.width/2,size.height*.43f),7.dp.toPx(),StrokeCap.Round)}
                                 Text(powerLabel,fontWeight=FontWeight.Bold,fontSize=13.sp)
@@ -121,6 +125,7 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                     if(group!=null&&group.servers.isEmpty())Text(stringResource(R.string.moskom_no_servers),color=Muted,fontSize=12.sp)
                     Caption(R.string.moskom_server)
                     Picker(stringResource(R.string.moskom_server),server?.name?:stringResource(R.string.moskom_choose_server),group?.servers.orEmpty().map{it.id to it.name},!busy&&group?.servers?.isNotEmpty()==true,{action(MoskomAction.Server(it))},Modifier.fillMaxWidth(),tag="moskom_server",selectedId=state.server)
+                    if(!state.selectionReady)Text(stringResource(R.string.moskom_selection_needed),color=Cyan,fontSize=12.sp)
                     Caption(R.string.moskom_routing)
                     Picker(stringResource(R.string.moskom_routing),stringResource(modes.firstOrNull{it.first==state.mode}?.second?:R.string.moskom_mode_all),modes.map{it.first to stringResource(it.second)},state.loaded&&!busy,{action(MoskomAction.Mode(it))},Modifier.fillMaxWidth(),tag="moskom_routing",selectedId=state.mode)
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -150,6 +155,8 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
             }
             "account"->AccountSheet(state,action){dialog=""}
             "subscriptions"->SubscriptionSheet(state,busy,action){dialog=""}
+            "apps"->ChoiceSheet(state,true,busy,action){dialog=""}
+            "services"->ChoiceSheet(state,false,busy,action){dialog=""}
             "dns"->DnsSheet(state,action){dialog=""}
             "rules"->Sheet(stringResource(R.string.moskom_rules),{dialog=""}){Text(stringResource(R.string.moskom_rules_description));Text(stringResource(R.string.moskom_rules_stamp,state.rulesStamp),color=Muted,fontSize=12.sp);OperationStatus(state);PrimaryButton(R.string.moskom_rules,!busy,{action(MoskomAction.Rules)})}
             "updates"->Sheet(stringResource(R.string.moskom_check_update),{dialog=""}){Text(stringResource(R.string.moskom_version,BuildConfig.VERSION_NAME));OperationStatus(state);PrimaryButton(R.string.moskom_check_update,!busy,{action(MoskomAction.CheckUpdate)})}
@@ -184,6 +191,28 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                 }
             }}
         }
+        OperationStatus(state)
+    }
+}
+
+@Composable private fun ChoiceSheet(state:MoskomState,apps:Boolean,busy:Boolean,action:(MoskomAction)->Unit,close:()->Unit) {
+    Sheet(stringResource(if(apps)R.string.moskom_apps else R.string.moskom_services),close) {
+        Text(stringResource(if(apps)R.string.moskom_apps_description else R.string.moskom_services_description),color=Muted,fontSize=13.sp)
+        if(state.choiceLoading)Text(stringResource(R.string.moskom_selection_loading),color=Muted)
+        if(state.choiceError!=0)Text(stringResource(state.choiceError),color=Color(0xFFFFB0BB))
+        val rows=if(apps)state.installedApps.map{it.id to it.name}else state.services.mapNotNull { service->moskomServiceLabel(service.id)?.let{service.id to stringResource(it)} }
+        val selected=if(apps)state.chosenApps else state.chosenServices
+        if(!state.choiceLoading&&state.choiceError==0&&rows.isEmpty())Text(stringResource(R.string.moskom_no_choices),color=Muted)
+        rows.forEach{(id,name)->key(id){
+            val checked=id in selected
+            Row(Modifier.fillMaxWidth().testTag("moskom_choice_$id").toggleable(value=checked,enabled=!busy&&!state.choiceLoading,role=Role.Checkbox,onValueChange={value->action(if(apps)MoskomAction.AppChoice(id,value)else MoskomAction.ServiceChoice(id,value))}).padding(vertical=8.dp,horizontal=6.dp),verticalAlignment=Alignment.CenterVertically) {
+                Checkbox(checked=checked,onCheckedChange=null)
+                Text(name,Modifier.weight(1f).padding(start=10.dp),fontSize=14.sp)
+            }
+        }}
+        Text(stringResource(R.string.moskom_selection_count,selected.size),color=Cyan)
+        SmallButton(R.string.moskom_refresh,!state.choiceLoading&&!busy,{action(MoskomAction.LoadChoices)},Modifier.fillMaxWidth())
+        PrimaryButton(R.string.moskom_save_selection,!busy&&!state.choiceLoading&&state.choiceError==0,{action(MoskomAction.SaveChoices)},Modifier.testTag("moskom_save_choices"))
         OperationStatus(state)
     }
 }

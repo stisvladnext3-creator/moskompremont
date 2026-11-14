@@ -38,6 +38,11 @@ edit(manifest,'android:allowBackup="true"','android:allowBackup="false"')
 for p in res.glob('values*/strings.xml'):
  s=p.read_text();s=re.sub(r'(<string name="app_name"[^>]*>).*?(</string>)',r'\1МосКомпРемонт VPN\2',s);p.write_text(s)
 write_resources(root,own)
+for folder in ['main/assets/moskom','test/resources']:
+ target=root/'V2rayNG/app/src'/folder/'service-catalog.json';target.parent.mkdir(parents=True,exist_ok=True)
+ shutil.copyfile(own.parent/'shared/service-catalog.json',target)
+# An empty or uninstalled allow-list must never fall back to routing all apps.
+edit('V2rayNG/app/src/main/java/com/v2ray/ang/service/CoreVpnService.kt','        val selfPackageName = BuildConfig.APPLICATION_ID\n\n        // If per-app proxy','        val selfPackageName = BuildConfig.APPLICATION_ID\n        if (MmkvManager.decodeSettingsString("moskom_route_mode") == "apps") {\n            val selected = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty().filter { it != selfPackageName }\n            var allowed = 0\n            selected.forEach { packageId ->\n                try { builder.addAllowedApplication(packageId); allowed++ }\n                catch (error: PackageManager.NameNotFoundException) {\n                    LogUtil.e(AppConfig.TAG, "VPN selective-app configuration: package unavailable", error)\n                }\n            }\n            check(allowed > 0) { getString(com.v2ray.ang.R.string.moskom_select_apps_first) }\n            return\n        }\n\n        // If per-app proxy')
 # Keep subscription deletion in the existing storage owner. Snapshot the records
 # under its cross-process index lock so a failed multi-record write can roll back.
 edit('V2rayNG/app/src/main/java/com/v2ray/ang/handler/MmkvManager.kt','    fun removeSubscription(subid: String) {','''    internal fun removeSubscriptionWithRollback(subid: String) {
@@ -133,6 +138,7 @@ edit(main+'MainActivity.kt','''        super.onCreate(savedInstanceState)
             }
         }
         mainViewModel.onAction(MainAction.Initialize)''')
+edit(main+'MainActivity.kt','    private fun requestServiceStart() {','    private fun requestServiceStart() {\n        if (!mainViewModel.moskom().state.value.selectionReady) {\n            toast(R.string.moskom_selection_needed)\n            mainViewModel.onAction(MainAction.Moskom(MoskomAction.PermissionCancelled))\n            return\n        }')
 edit(main+'MainActivity.kt','    private fun shareToClipboard(guid: String): Boolean =','''    private fun installMoskomUpdate(path: String) {
         lifecycleScope.launch {
             try {

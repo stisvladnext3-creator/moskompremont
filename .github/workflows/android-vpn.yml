@@ -53,10 +53,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Compile and test the Android application
         working-directory: ${{ runner.temp }}/moskom-android/V2rayNG
-        run: ./gradlew :app:testFdroidDebugUnitTest :app:compileFdroidDebugKotlin :app:assembleFdroidDebug :app:assembleFdroidDebugAndroidTest :app:assembleFdroidRelease --stacktrace
+        run: ./gradlew :app:testPlaystoreDebugUnitTest :app:compilePlaystoreDebugKotlin :app:assemblePlaystoreDebug :app:testFdroidDebugUnitTest :app:compileFdroidDebugKotlin :app:assembleFdroidDebug :app:assembleFdroidDebugAndroidTest :app:assembleFdroidRelease --stacktrace
       - name: Android lint for version guarded installer integration
         working-directory: ${{ runner.temp }}/moskom-android/V2rayNG
-        run: ./gradlew :app:lintFdroidDebug --stacktrace
+        run: ./gradlew :app:lintPlaystoreDebug :app:lintFdroidDebug --stacktrace
       - name: Enable Android emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
