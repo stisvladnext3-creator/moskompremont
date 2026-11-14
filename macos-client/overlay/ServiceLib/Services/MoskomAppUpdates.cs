@@ -65,8 +65,10 @@ public sealed class MoskomAppUpdates(MoskomTransfers downloads)
         var sha = ParseChecksum(manifest, release.FileName); var target = Path.Combine(directory, release.FileName);
         await downloads.DownloadAsync(release.Installer, target, 512L * 1024 * 1024, sha, ct, progress);
         using var file = File.OpenRead(target);
+        if(file.Length<512){file.Dispose();File.Delete(target);throw new InvalidOperationException("Повреждён установочный образ macOS.");}
         file.Seek(-512,SeekOrigin.End);
         if (file.ReadByte() != 'k' || file.ReadByte() != 'o' || file.ReadByte() != 'l' || file.ReadByte() != 'y') { file.Dispose(); File.Delete(target); throw new InvalidOperationException("Получен некорректный установщик."); }
+        MoskomMacUpdateInstaller.RegisterVerified(target,sha);
         return target;
     }
 }

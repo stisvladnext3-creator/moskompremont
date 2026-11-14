@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>preview</LangVersion></PropertyGroup>
+<ItemGroup>
+<Compile Include="../overlay/ServiceLib/Services/MoskomMacNative.cs" Link="MacNative.cs"/>
+<Compile Include="../overlay/ServiceLib/Services/MoskomMacProxyLease.cs" Link="MacProxy.cs"/>
+<Compile Include="../overlay/ServiceLib/Services/MoskomAppUpdates.cs" Link="Updates.cs"/>
+<Compile Include="../overlay/ServiceLib/Services/MoskomMacUpdateInstaller.cs" Link="Installer.cs"/>
+<Compile Include="../../desktop-client/overlay/ServiceLib/Services/MoskomTransfers.cs" Link="Transfers.cs"/>
+<Compile Include="../../desktop-client/overlay/ServiceLib/Services/MoskomConnection.cs" Link="Connection.cs"/>
+</ItemGroup>
+</Project>

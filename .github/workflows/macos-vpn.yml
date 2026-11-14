@@ -1,0 +1,91 @@
+name: Build macOS VPN variants
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish only after all four builds and tests pass
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [legacy, modern]
+        rid: [osx-x64, osx-arm64]
+        include:
+          - rid: osx-x64
+            runner: macos-15-intel
+          - rid: osx-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      MOSKOM_VERSION: 0.2.${{ github.run_number }}
+      MAC_WORK: ${{ runner.temp }}/moskom-mac
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+      - uses: actions/setup-go@v5
+        if: matrix.flavor == 'legacy'
+        with:
+          go-version: '1.24.13'
+          cache: false
+      - name: Build exact upstream and native platform integration
+        run: python3 macos-client/build/build.py --work "$MAC_WORK" --version "$MOSKOM_VERSION" --flavor ${{ matrix.flavor }} --rid ${{ matrix.rid }} > "$RUNNER_TEMP/build.log" 2>&1 || { tail -90 "$RUNNER_TEMP/build.log"; exit 1; }
+      - name: Test native Keychain, proxy lifecycle and platform updater
+        run: python3 macos-client/build/platform-tests.py "$MAC_WORK" --rid ${{ matrix.rid }} --flavor ${{ matrix.flavor }}
+      - name: Exercise the actual Mac UI and native core configurations
+        run: python3 macos-client/build/smoke.py "$MAC_WORK"
+      - name: Package DMG and corresponding source
+        run: python3 macos-client/build/package.py "$MAC_WORK"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-${{ matrix.flavor }}-${{ matrix.rid }}
+          path: |
+            ${{ env.MAC_WORK }}/release/*
+            ${{ env.MAC_WORK }}/smoke/*
+            ${{ env.MAC_WORK }}/native-audit.json
+            ${{ env.MAC_WORK }}/application.log
+            ${{ runner.temp }}/build.log
+          if-no-files-found: warn
+  publish:
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macos-*
+          path: payloads
+      - name: Validate all four variants and assemble permanent downloads
+        run: |
+          mkdir release
+          find payloads -name '*.dmg' -exec cp {} release/ \;
+          find payloads -name '*-source.zip' -exec cp {} release/ \;
+          find payloads -name 'preview-*.png' -exec cp {} release/ \;
+          find payloads -name 'validation-*.json' -exec cp {} release/ \;
+          find payloads -name 'native-audit-*.json' -exec cp {} release/ \;
+          test "$(find release -name '*.dmg' | wc -l)" = 4
+          cp macos-client/INSTALL-RU.md macos-client/VALIDATION.md release/
+          cd release
+          sha256sum *.dmg *.zip *.png *.json *.md > SHA256SUMS.txt
+      - name: Publish checked release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MOSKOM_VERSION: 0.2.${{ github.run_number }}
+        run: |
+          moskom_tag="moskom-mac-v$MOSKOM_VERSION"
+          gh release create "$moskom_tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "МосКомпРемонт VPN · macOS $MOSKOM_VERSION" --notes-file macos-client/RELEASE.md
+          gh release upload "$moskom_tag" --repo "$GITHUB_REPOSITORY" release/*
+          gh release edit "$moskom_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false

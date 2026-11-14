@@ -1,0 +1,77 @@
+{
+  "upstream": {
+    "version": "7.25.6",
+    "commit": "1883178b5f1e222b6c6db2782e7a3d989b7cc18f",
+    "url": "https://github.com/2dust/v2rayN/releases/download/7.25.6/v2rayN-windows-64-desktop.zip",
+    "sha256": "defb18a16dac1d44659c30d0b8934f8b085cf540133574b892919ea29b083b00"
+  },
+  "russia": {
+    "routingCommit": "ecd88540aa9472ee96dbb8b10df008f57fc75555",
+    "rulesCommit": "934f38aeecf88459ab4564dfe134cb0d90460344",
+    "geoRelease": "202611132130",
+    "files": [
+      {
+        "name": "geoip.dat",
+        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611132130/geoip.dat",
+        "sha256": "8ac702eb63ba09f315fc50036ff9955ec6d8ed0ce5b89bf7135ba1c547bd51ae"
+      },
+      {
+        "name": "geosite.dat",
+        "url": "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/download/202611132130/geosite.dat",
+        "sha256": "986fecc3f01f85bd1e319b4d895e7a0d7e77a2bc28a94b5ac3238a916061cda6"
+      }
+    ]
+  },
+  "cores": {
+    "legacy": {
+      "xray": {
+        "version": "v25.8.3",
+        "assets": {
+          "x64": {
+            "url": "https://github.com/XTLS/Xray-core/releases/download/v25.8.3/Xray-macos-64.zip",
+            "sha256": "60cb704460b80449afeea2dc5c9f3ea864c60e0a897ca5be7a4c590c2fcf20e8"
+          },
+          "arm64": {
+            "url": "https://github.com/XTLS/Xray-core/releases/download/v25.8.3/Xray-macos-arm64-v8a.zip",
+            "sha256": "e665c7db644fa2e07ccd93a61202127711cc1e3e90d84ac809d041a15b88d493"
+          }
+        }
+      },
+      "sing-box": {
+        "version": "v1.13.12",
+        "repository": "https://github.com/SagerNet/sing-box.git",
+        "commit": "1086ab2563320e0da0c23b3a491d8dfa0939dff4",
+        "go": "1.24.13",
+        "tags": "with_quic,with_utls,with_acme,with_clash_api,with_dhcp,with_wireguard"
+      }
+    },
+    "modern": {
+      "xray": {
+        "version": "v26.11.9",
+        "assets": {
+          "x64": {
+            "url": "https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-macos-64.zip",
+            "sha256": "488963e676e06f5e48547f9dd38116aaca8de4234959b4272ae8f284e658dfd0"
+          },
+          "arm64": {
+            "url": "https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-macos-arm64-v8a.zip",
+            "sha256": "233f0c66681cd0726f81a6b2b6ed6a5710869e312047b522e46ed53035bebd26"
+          }
+        }
+      },
+      "sing-box": {
+        "version": "v1.14.4",
+        "assets": {
+          "x64": {
+            "url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-darwin-amd64.tar.gz",
+            "sha256": "eae86b9b033bba50b7c44ab719e4bfac0aca05efd28483390ed3aa510f32db25"
+          },
+          "arm64": {
+            "url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-darwin-arm64.tar.gz",
+            "sha256": "0d8c7f5ed5d587b0f1a5e9772a708ec3bfa4ac4c9329604b01d8d9c2ba406838"
+          }
+        }
+      }
+    }
+  }
+}

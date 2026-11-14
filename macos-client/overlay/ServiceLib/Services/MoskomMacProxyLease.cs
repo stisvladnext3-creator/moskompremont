@@ -5,11 +5,12 @@ namespace ServiceLib.Services;
 public sealed class MoskomMacProxyLease : IMoskomProxyLease
 {
     private static string LeasePath=>Path.Combine(Utils.StartupPath(),"mac-proxy-lease.json");
-    private static readonly string Session=Guid.NewGuid().ToString("N");
+    private string Session=Guid.NewGuid().ToString("N");
     private sealed record Lease(int Pid,string Started,string Session);
     public async Task AcquireAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        Session=Guid.NewGuid().ToString("N");
         if(File.Exists(LeasePath))await RecoverAfterCrashAsync();
         if(File.Exists(LeasePath))throw new InvalidOperationException("Сначала разрешите восстановление прежних настроек прокси macOS.");
         Directory.CreateDirectory(Utils.StartupPath());File.SetUnixFileMode(Utils.StartupPath(),UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);
@@ -49,11 +50,11 @@ public sealed class MoskomMacProxyLease : IMoskomProxyLease
         finally{CryptographicOperations.ZeroMemory(credential);}
         var lease=Read();if(lease==null||lease.Session!=session||lease.Pid!=pid)return;
         Console.WriteLine("ready");Console.Out.Flush();var refresh=DateTime.UtcNow;
-        while(File.Exists(LeasePath)&&Alive(lease)) {
+        while(File.Exists(LeasePath)&&Read()?.Session==session&&Alive(lease)) {
             await Task.Delay(1000);
             if(DateTime.UtcNow-refresh>TimeSpan.FromMinutes(1)){_ = MoskomMacNative.mkr_authorize(0);refresh=DateTime.UtcNow;}
         }
-        try{if(File.Exists(LeasePath))MoskomMacNative.Check(MoskomMacNative.mkr_proxy_restore(LeasePath,session));}
+        try{if(File.Exists(LeasePath)&&Read()?.Session==session)MoskomMacNative.Check(MoskomMacNative.mkr_proxy_restore(LeasePath,session));}
         finally{MoskomMacNative.mkr_auth_release();}
     }
 }
