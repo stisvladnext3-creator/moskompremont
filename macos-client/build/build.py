@@ -2,6 +2,8 @@
 from pathlib import Path
 import argparse,hashlib,json,os,plistlib,re,shutil,subprocess,tarfile,urllib.request,zipfile,io,sys
 from macho import audit,images
+import importlib.util
+patch_spec=importlib.util.spec_from_file_location("moskom_singbox_patch",Path(__file__).with_name("patch-singbox.py"));core_patch=importlib.util.module_from_spec(patch_spec);patch_spec.loader.exec_module(core_patch)
 OWN=Path(__file__).resolve().parents[1];REPO=OWN.parent
 p=argparse.ArgumentParser();p.add_argument('--work',type=Path,required=True);p.add_argument('--version',required=True);p.add_argument('--flavor',choices=['legacy','modern'],required=True);p.add_argument('--rid',choices=['osx-x64','osx-arm64'],required=True);a=p.parse_args();work=a.work.resolve();work.mkdir(exist_ok=True,parents=True)
 assert re.fullmatch(r'0\.2\.\d+',a.version);src=json.loads((OWN/'build/sources.json').read_text());arch=a.rid.removeprefix('osx-');minimum='11.0' if a.flavor=='legacy' else '13.0'
@@ -45,6 +47,7 @@ for core,spec in src['cores'][a.flavor].items():
  else:
   tree=work/'sing-box-source';run('git','clone','--quiet','--depth','1','--branch',spec['version'],spec['repository'],tree)
   assert subprocess.check_output(['git','-C',str(tree),'rev-parse','HEAD'],text=True).strip()==spec['commit']
+  core_patch.apply(tree)
   env=os.environ.copy();env.update({'GOTOOLCHAIN':'local','CGO_ENABLED':'0','GOOS':'darwin','GOARCH':'amd64' if arch=='x64' else 'arm64'})
   run('go','build','-trimpath','-tags',spec['tags'],'-ldflags','-s -w -X github.com/sagernet/sing-box/constant.Version='+spec['version'].lstrip('v'),'-o',corePath,'./cmd/sing-box',cwd=tree,env=env)
  corePath.chmod(0o755)
