@@ -248,6 +248,7 @@ class MoskomIntegrationTest {
         runBlocking(Dispatchers.IO) {
             val result=com.v2ray.ang.core.CoreConfigManager.getV2rayConfig(context,MmkvManager.getSelectServer().orEmpty());assertTrue(result.errorMessage,result.status)
             val config=com.google.gson.JsonParser.parseString(result.content).asJsonObject
+            assertTrue(config.getAsJsonArray("inbounds").map{it.asJsonObject}.filter{it.has("sniffing")}.any{it.getAsJsonObject("sniffing").get("routeOnly")?.asBoolean==true})
             val servers=config.getAsJsonObject("dns").getAsJsonArray("servers")
             assertTrue("No catch-all proxy DNS in selected-services mode",servers.none{it.isJsonPrimitive})
             val fallback=servers.map{it.asJsonObject}.filter{it.get("tag")?.asString?.startsWith("moskom-direct-fallback-")==true}
@@ -257,8 +258,14 @@ class MoskomIntegrationTest {
         }
         click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
         for(ip in listOf("91.105.192.8","57.144.0.8")) {
-            val media=device.executeShellCommand("sh -c 'printf \"GET /media HTTP/1.1\\r\\nHost: media.fixture.invalid\\r\\nConnection: close\\r\\n\\r\\n\" | toybox nc -w 10 $ip 18839'")
-            assertTrue("Messenger media failed through native Android VPN: $ip",media.contains("moskom-media-fixture")&&media.length>60_000)
+            val script=File(requireNotNull(context.getExternalFilesDir(null)),"media-probe.sh")
+            runBlocking(Dispatchers.IO){script.writeText("#!/system/bin/sh\nprintf 'GET /media HTTP/1.1\\r\\nHost: media.fixture.invalid\\r\\nConnection: close\\r\\n\\r\\n' | toybox nc -w 5 $ip 18839\n")}
+            var media=""
+            // UiAutomation executes argv directly; a script file preserves the pipe.
+            // Native running IPC can also precede HEV's first packet by a few ticks.
+            repeat(3){if(!media.contains("moskom-media-fixture")){Thread.sleep(500);media=device.executeShellCommand("sh "+script.absolutePath)}}
+            assertTrue("Messenger media failed through native Android VPN: $ip, bytes=${media.length}, response=${media.take(200)}",media.contains("moskom-media-fixture")&&media.length>60_000)
+            script.delete()
         }
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         // Test production bank/transport UID exclusions with installed code-free

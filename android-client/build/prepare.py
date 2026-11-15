@@ -75,6 +75,12 @@ block=block.replace('        apps.forEach {','        var allowed = 0\n        a
 endblock=block.rfind('    }');block=block[:endblock]+'        return com.v2ray.ang.handler.moskom.MoskomSelective.nativeAppPolicyAllowed(selective, bypassApps, allowed)\n'+block[endblock:]
 sp.write_text(code[:first]+block+code[last:])
 
+# In selected-services mode route sniffed names without replacing the actual IP.
+# Messenger media often uses an IP connection with a different HTTP/TLS name.
+edit('V2rayNG/app/src/main/java/com/v2ray/ang/core/CoreConfigManager.kt',
+     '        inbound1.sniffing?.routeOnly =\n            MmkvManager.decodeSettingsBool(AppConfig.PREF_ROUTE_ONLY_ENABLED, false)',
+     '        inbound1.sniffing?.routeOnly =\n            MmkvManager.decodeSettingsString("moskom_route_mode") == "services" ||\n                MmkvManager.decodeSettingsBool(AppConfig.PREF_ROUTE_ONLY_ENABLED, false)')
+
 # Keep subscription deletion in the existing storage owner. Snapshot the records
 # under its cross-process index lock so a failed multi-record write can roll back.
 edit('V2rayNG/app/src/main/java/com/v2ray/ang/handler/MmkvManager.kt','    fun removeSubscription(subid: String) {','''    internal fun removeSubscriptionWithRollback(subid: String) {
