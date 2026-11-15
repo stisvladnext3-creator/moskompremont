@@ -1,0 +1,5 @@
+89ec4fd0382976eb35eea492493b29c1c7f4172d09b4e0aa74c3b14aee44ff0a  MoskomVPN-Android-0.1.29.apk
+5cd101f21319ba16d8357222611f4d82142f0125c3f97eb16cae6b1daf8b6b5c  MoskomVPN-Android-0.1.29-source.zip
+728165f7d559ba3962c8e7c4f99368c0f36de8820c82977b856831a7431db905  moskompremont-app-download-update.zip
+5ce7f539894f6f396162ce929350eb973733d1d40c51b3d52a533b11d32fc098  MoskomVPN-Android-preview.png
+f37a85757c4b53a706576871e470f8cd63c61b23e6aa3d2270dd4ee8bd4b923b  VALIDATION.md
