@@ -166,6 +166,8 @@ internal static class MoskomWebsiteSmoke
                 await Task.Delay(100);
             }
             var refreshConnected = connection.IsConnected && core.Starts == starts && core.Stops == stops;
+            if (Main<TextBlock>("MoskomHint").Text?.Contains("Дождитесь завершения", StringComparison.Ordinal) == true)
+                throw new InvalidOperationException("A finished list refresh left a stale busy message while VPN was connected.");
             starts = core.Starts; stops = core.Stops;
             for (var i = 0; i < 4; i++) await MoskomLauncherRuntime.SyncCabinetAsync(false);
             var backgroundConnected = connection.IsConnected && core.Starts == starts && core.Stops == stops;

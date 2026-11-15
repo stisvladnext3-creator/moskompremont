@@ -90,7 +90,8 @@ public static partial class MoskomLauncherRuntime
     public static async Task SyncCabinetAsync(bool force)
     {
         if (CabinetUser == null) return;
-        if (!await Operations.WaitAsync(0)) { if (force) throw new InvalidOperationException("Дождитесь завершения текущего действия."); return; }
+        if (force) await Operations.WaitAsync(Lifetime.Token);
+        else if (!await Operations.WaitAsync(0)) return;
         try
         {
             // The website validates password reset, account removal and remember-token expiry here.
@@ -207,7 +208,7 @@ public static partial class MoskomLauncherRuntime
     }
     public static async Task<MoskomAvailabilityResult> CheckAvailabilityAsync()
     {
-        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения текущего действия.");
+        await Operations.WaitAsync(Lifetime.Token);
         try
         {
             var selected = await ConfigHandler.GetDefaultServer(AppManager.Instance.Config) ?? throw new InvalidOperationException("Сначала добавьте подписку и выберите сервер.");

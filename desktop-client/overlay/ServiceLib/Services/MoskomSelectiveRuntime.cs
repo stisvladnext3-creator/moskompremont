@@ -27,7 +27,7 @@ public static partial class MoskomLauncherRuntime {
  public static async Task SaveSelectiveAsync(IEnumerable<MoskomAppChoice> apps,IEnumerable<string> services){
   var nextApps=apps.DistinctBy(a=>a.Id).Take(201).ToList();var nextServices=services.Distinct().Take(201).ToList();
   if(nextApps.Count>200||nextServices.Count>200||nextServices.Any(id=>!ServiceCatalog.Services.Any(s=>s.Id==id)))throw new InvalidOperationException("Некорректный выбор маршрутизации.");
-  if(!await Operations.WaitAsync(0))throw new InvalidOperationException("Дождитесь завершения текущего действия.");
+  await Operations.WaitAsync(Lifetime.Token);
   var before=Preferences.Selective;var wasOn=Connection?.IsConnected==true&&SelectiveMode;
   try{
    if(wasOn)await Connection!.DisconnectAsync();
@@ -46,7 +46,8 @@ public static partial class MoskomLauncherRuntime {
    var result=await CoreConfigHandler.GenerateClientConfig(built.Context with{IsTunEnabled=false,RunCoreType=ECoreType.sing_box},source);if(!result.Success)throw new InvalidOperationException("Не удалось подготовить конфигурацию TUN.");
    JsonObject json;try{json=JsonNode.Parse(await File.ReadAllTextAsync(source,ct)) as JsonObject??throw new InvalidDataException("Не прочитана конфигурация.");}finally{File.Delete(source);}
    var port=AppManager.Instance.GetLocalPort(EInboundProtocol.socks);var tun=OperatingSystem.IsMacOS()?"utun"+System.Security.Cryptography.RandomNumberGenerator.GetInt32(100,200):"MoskomVPN";
-   var config=MoskomSelectivePolicy.Configure(json,Preferences.Selective,ServiceCatalog,port,tun,OperatingSystem.IsMacOS());
+   var networkDns=await Task.Run(MoskomNetworkDns.Capture,ct);
+   var config=MoskomSelectivePolicy.Configure(json,Preferences.Selective,ServiceCatalog,port,tun,OperatingSystem.IsMacOS(),networkDns);
    _supervisor=await MoskomTunSupervisor.StartAsync(JsonSerializer.SerializeToUtf8Bytes(config),ct);
    for(var attempt=0;attempt<50;attempt++){ct.ThrowIfCancellationRequested();if(HasExited)throw new InvalidOperationException("Ядро TUN завершилось. Проверьте разрешение администратора и выбранный сервер.");if(await HasSocksAsync(port+3,ct)){
     // sing-box's interface/process cache follows utun/Wintun creation asynchronously.

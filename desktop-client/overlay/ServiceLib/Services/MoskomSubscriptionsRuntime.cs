@@ -16,7 +16,7 @@ public static partial class MoskomLauncherRuntime
 
     public static async Task DeleteManualSubscriptionAsync(string id)
     {
-        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения текущего действия.");
+        await Operations.WaitAsync(Lifetime.Token);
         try
         {
             if (string.IsNullOrEmpty(id)) throw new InvalidOperationException("Выберите добавленную вручную подписку.");
@@ -88,7 +88,7 @@ public static partial class MoskomLauncherRuntime
 
     public static async Task SelectSubscriptionAsync(string id)
     {
-        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения текущего действия.");
+        await Operations.WaitAsync(Lifetime.Token);
         try
         {
             var group = (await SubscriptionGroupsAsync()).FirstOrDefault(g => g.Id == id)

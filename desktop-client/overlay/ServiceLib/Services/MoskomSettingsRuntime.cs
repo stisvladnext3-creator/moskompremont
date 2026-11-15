@@ -80,7 +80,7 @@ public static partial class MoskomLauncherRuntime
     public static async Task SaveDnsAsync(string choice, string? custom)
     {
         _ = MoskomDnsChoices.RemoteAddress(choice, custom);
-        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения текущего действия.");
+        await Operations.WaitAsync(Lifetime.Token);
         var oldChoice = Preferences.Dns; var oldCustom = Preferences.CustomDns; var wasOn = Connection?.IsConnected == true;
         try
         {
@@ -109,7 +109,7 @@ public static partial class MoskomLauncherRuntime
             var manifest = await new MoskomRouteDownloads(new(client)).DownloadAsync(stage, ct, progress, ReadManifest(CachedRulesDirectory ?? BundledRules));
             if (manifest == null) return false;
             ct.ThrowIfCancellationRequested();
-            if (!await Operations.WaitAsync(0, ct)) throw new InvalidOperationException("Дождитесь завершения текущего действия.");
+            await Operations.WaitAsync(ct);
             var wasOn = Connection?.IsConnected == true;
             try
             {

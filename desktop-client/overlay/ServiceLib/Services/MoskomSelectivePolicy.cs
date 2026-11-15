@@ -31,7 +31,7 @@ public static class MoskomSelectivePolicy {
   "apps"=>settings.Apps.Count>0,"services"=>catalog.Services.Any(s=>settings.Services.Contains(s.Id)),_=>true
  };
  private static JsonArray Strings(IEnumerable<string> values)=>new(values.Distinct(StringComparer.Ordinal).Select(v=>(JsonNode?)JsonValue.Create(v)).ToArray());
- public static JsonObject Configure(JsonObject original,MoskomSelectiveSettings settings,MoskomServiceCatalog catalog,int port,string tunName,bool mac) {
+ public static JsonObject Configure(JsonObject original,MoskomSelectiveSettings settings,MoskomServiceCatalog catalog,int port,string tunName,bool mac,IReadOnlyList<string>? networkDns=null) {
   if(!Enabled(settings)||!HasSelection(settings,catalog))throw new InvalidOperationException(settings.Mode=="apps"?"Выберите приложения в меню «Приложения».":"Выберите сервисы в меню «Сервисы».");
   if(port<1024||port>65000||settings.Apps.Count>200||settings.Services.Count>200)throw new InvalidDataException("Некорректные настройки маршрутизации.");
   var config=(JsonObject)original.DeepClone();
@@ -70,7 +70,17 @@ public static class MoskomSelectivePolicy {
   config.Remove("experimental"); // A privileged core must not create root-owned user cache/UI files.
   if(config["dns"] is JsonObject dns){
    dns["reverse_mapping"]=true;
+   dns["strategy"]="prefer_ipv4";
    var servers=dns["servers"] as JsonArray;
+   if(networkDns!=null){
+    var primary=networkDns.FirstOrDefault(address=>IPAddress.TryParse(address,out var ip)&&!ip.Equals(IPAddress.Any)&&!ip.Equals(IPAddress.IPv6Any));
+    if(primary==null)throw new InvalidDataException("Не найден DNS текущего сетевого подключения.");
+    // Ordinary sites must use the working resolver of the actual connection,
+    // rather than a preset's hard-coded public DNS that this ISP may block.
+    // Bootstrap lookups must also stay outside the new tunnel.
+    if(servers!=null)for(var i=0;i<servers.Count;i++)if(servers[i] is JsonObject server&&server["tag"]?.GetValue<string>() is {} tag&&(tag.StartsWith("direct-dns-",StringComparison.Ordinal)||tag=="local-local"))
+     servers[i]=new JsonObject{["type"]="udp",["tag"]=tag,["server"]=primary,["detour"]="direct"};
+   }
    if(servers?.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="direct-dns-1")==true&&servers.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="remote-dns-1")){
     var dnsRules=new JsonArray();
     if(servers.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="hosts-dns"))dnsRules.Add(new JsonObject{["preferred_by"]="hosts-dns",["server"]="hosts-dns"});

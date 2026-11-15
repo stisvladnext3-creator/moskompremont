@@ -125,11 +125,11 @@ public sealed class MoskomLauncherView : UserControl
         MoskomSettingsViews.AttachUpdates(owner);
         _subscriptions.SelectionChanged += async (_, _) =>
         {
-            if (!_refreshing && _subscriptions.SelectedItem is MoskomSubscriptionGroup group)
-                await RunAsync(async () => { await MoskomLauncherRuntime.SelectSubscriptionAsync(group.Id); ResetAvailability(); await RefreshAsync(); _hint.Text = group.Servers.Count > 0 ? "Выберите сервер этой подписки и включите VPN." : "В выбранной подписке пока нет серверов. Нажмите «Обновить серверы»."; });
+            if (!_refreshing && _subscriptions.SelectedItem is MoskomSubscriptionGroup group && group.Id != MoskomLauncherRuntime.Preferences.SelectedSubscriptionId)
+                await RunAsync(async () => { await MoskomLauncherRuntime.SelectSubscriptionAsync(group.Id); ResetAvailability(); await RefreshAsync(); _hint.Text = group.Servers.Count == 0 ? "В выбранной подписке пока нет серверов. Нажмите «Обновить серверы»." : MoskomLauncherRuntime.Connection?.IsConnected == true ? "Подписка выбрана. VPN подключён." : "Выберите сервер этой подписки и включите VPN."; });
         };
-        _servers.SelectionChanged += async (_, _) => { if (!_refreshing && _servers.SelectedItem is ComboItem item) { ResetAvailability(); await RunAsync(() => MoskomLauncherRuntime.SelectServerAsync(item)); } };
-        _routing.SelectionChanged += async (_, _) => { if (!_refreshing && _routing.SelectedItem is RoutingItem item) await RunAsync(() => MoskomLauncherRuntime.SelectRoutingAsync(item)); };
+        _servers.SelectionChanged += async (_, _) => { if (!_refreshing && _servers.SelectedItem is ComboItem item && item.ID != AppManager.Instance.Config.IndexId) { ResetAvailability(); await RunAsync(() => MoskomLauncherRuntime.SelectServerAsync(item)); } };
+        _routing.SelectionChanged += async (_, _) => { if (!_refreshing && _routing.SelectedItem is RoutingItem item && item.Id != (MoskomLauncherRuntime.CustomRoutingId ?? _vm.StatusBarViewModel.RoutingItems.FirstOrDefault(r => r.IsActive)?.Id)) await RunAsync(() => MoskomLauncherRuntime.SelectRoutingAsync(item)); };
         help.Click += async (_, _) => await MoskomHelpView.ShowAsync(owner);
         exit.Click += async (_, _) => await RunAsync(() => AppManager.Instance.AppExitAsync(true));
         if (MoskomLauncherRuntime.Connection is { } connection) connection.Changed += state => Dispatcher.UIThread.Post(() => RenderState(state));

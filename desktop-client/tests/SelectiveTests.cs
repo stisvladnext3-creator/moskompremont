@@ -17,4 +17,13 @@ public sealed class SelectiveTests {
   var apps=MoskomSelectivePolicy.Configure(source,new(){Mode="apps",Apps=[new("a","a","/Applications/A.app/Contents/MacOS/A")]},Catalog,10808,"utun177",true);Assert.Equal("remote-dns-1",apps["dns"]!["final"]!.GetValue<string>());
  }
 
+ [Fact]public void DirectSitesUseNetworkDnsWhileSelectedServicesKeepVpnDns(){
+  var original=Core();original["dns"]=JsonNode.Parse("""{"servers":[{"tag":"direct-dns-1","type":"udp","server":"77.88.8.8"},{"tag":"local-local","type":"udp","server":"77.88.8.8"},{"tag":"remote-dns-1","type":"https","server":"1.1.1.1","detour":"proxy"}]}""");
+  var result=MoskomSelectivePolicy.Configure(original,new(){Mode="services",Services=["youtube"]},Catalog,10808,"MoskomVPN",false,["192.168.88.1"]);
+  var dns=result["dns"]!;var servers=dns["servers"]!.AsArray().OfType<JsonObject>().ToList();
+  foreach(var tag in new[]{"direct-dns-1","local-local"}){var server=servers.Single(s=>s["tag"]!.GetValue<string>()==tag);Assert.Equal("192.168.88.1",server["server"]!.GetValue<string>());Assert.Equal("direct",server["detour"]!.GetValue<string>());}
+  var remote=servers.Single(s=>s["tag"]!.GetValue<string>()=="remote-dns-1");Assert.Equal("1.1.1.1",remote["server"]!.GetValue<string>());Assert.Equal("proxy",remote["detour"]!.GetValue<string>());
+  Assert.Equal("direct-dns-1",dns["final"]!.GetValue<string>());Assert.Contains("youtube.com",dns["rules"]!.ToJsonString());Assert.DoesNotContain("yandex.ru",dns["rules"]!.ToJsonString());
+ }
+
 }

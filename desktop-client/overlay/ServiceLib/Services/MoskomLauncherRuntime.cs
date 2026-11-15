@@ -215,7 +215,7 @@ public static partial class MoskomLauncherRuntime
     {
         if (CabinetUser != null) await SyncCabinetAsync(true);
         var vm = ViewModel ?? throw new InvalidOperationException("Приложение ещё запускается.");
-        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
+        await Operations.WaitAsync(Lifetime.Token);
         try
         {
             var manual = (await AppManager.Instance.SubItems() ?? []).Where(g => !string.IsNullOrEmpty(g.Url) && g.Memo?.StartsWith(CabinetPrefix, StringComparison.Ordinal) != true).ToList();
@@ -231,7 +231,7 @@ public static partial class MoskomLauncherRuntime
     public static async Task SelectServerAsync(ComboItem item)
     {
         if (item.ID.IsNullOrEmpty()) return;
-        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
+        await Operations.WaitAsync(Lifetime.Token);
         try
         {
             var config = AppManager.Instance.Config;
@@ -250,7 +250,7 @@ public static partial class MoskomLauncherRuntime
     }
     public static async Task SelectRoutingAsync(RoutingItem item)
     {
-        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
+        await Operations.WaitAsync(Lifetime.Token);
         try
         {
             var next = item.Id == MoskomSelectivePolicy.AppsId ? "apps" : item.Id == MoskomSelectivePolicy.ServicesId ? "services" : "";
@@ -266,7 +266,7 @@ public static partial class MoskomLauncherRuntime
     }
     public static async Task ToggleConnectionAsync()
     {
-        if (!await Operations.WaitAsync(0)) throw new InvalidOperationException("Дождитесь завершения обновления.");
+        await Operations.WaitAsync(Lifetime.Token);
         try { if (Connection!.IsConnected) await Connection.DisconnectAsync(); else await Connection.ConnectAsync(); }
         finally { Operations.Release(); }
     }
