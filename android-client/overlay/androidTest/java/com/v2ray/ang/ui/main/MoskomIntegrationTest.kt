@@ -137,8 +137,8 @@ class MoskomIntegrationTest {
             meet.assertIsFocused().performKeyInput{pressKey(key)}
             compose.waitForIdle()
         }
-        meet.assertIsOff().performClick();meet.assertIsOn()
-        click("moskom_save_choices");waitReady();screenshot("08-services");closeSheet()
+        meet.assertIsOff().assertIsEnabled().performClick();meet.assertIsOn()
+        waitReady();click("moskom_save_choices");waitReady();screenshot("08-services");closeSheet()
         dispatch(MoskomAction.Mode("services"));assertTrue(model.moskom().state.value.selectionReady)
         assertFalse(MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY))
         assertEquals(setOf("google-meet"),model.moskom().state.value.chosenServices)
@@ -151,7 +151,7 @@ class MoskomIntegrationTest {
         assertTrue(model.moskom().state.value.installedApps.any{it.id=="com.android.settings"})
         val settingsApp=compose.onNodeWithTag("moskom_choice_com.android.settings").performScrollTo()
         settingsApp.assertIsOff().performClick();settingsApp.assertIsOn()
-        click("moskom_save_choices");waitReady();closeSheet()
+        waitReady();click("moskom_save_choices");waitReady();closeSheet()
         assertTrue(model.moskom().state.value.selectionReady)
         assertEquals(setOf("com.android.settings"),MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET))
         assertTrue(MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY))

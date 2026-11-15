@@ -205,7 +205,9 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
         if(!state.choiceLoading&&state.choiceError==0&&rows.isEmpty())Text(stringResource(R.string.moskom_no_choices),color=Muted)
         rows.forEach{(id,name)->key(id){
             val checked=id in selected
-            Row(Modifier.fillMaxWidth().testTag("moskom_choice_$id").toggleable(value=checked,enabled=!busy&&!state.choiceLoading,role=Role.Checkbox,onValueChange={value->action(if(apps)MoskomAction.AppChoice(id,value)else MoskomAction.ServiceChoice(id,value))}).padding(vertical=8.dp,horizontal=6.dp),verticalAlignment=Alignment.CenterVertically) {
+            // These are local drafts. A background sync must not disable or
+            // defocus an active checkbox; only Save needs the routing lock.
+            Row(Modifier.fillMaxWidth().testTag("moskom_choice_$id").toggleable(value=checked,enabled=!state.choiceLoading,role=Role.Checkbox,onValueChange={value->action(if(apps)MoskomAction.AppChoice(id,value)else MoskomAction.ServiceChoice(id,value))}).padding(vertical=8.dp,horizontal=6.dp),verticalAlignment=Alignment.CenterVertically) {
                 Checkbox(checked=checked,onCheckedChange=null)
                 Text(name,Modifier.weight(1f).padding(start=10.dp),fontSize=14.sp)
             }
