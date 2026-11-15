@@ -5,10 +5,14 @@ VpnService UID exclusions are checked with these installed package identities.
 """
 from pathlib import Path
 import os, subprocess, tempfile
-sdk=Path(os.environ['ANDROID_HOME']);tools=sdk/'build-tools/37.0.0';android=sdk/'platforms/android-37.0/android.jar'
-keystore=Path.home()/'.android/debug.keystore';assert keystore.is_file() and android.is_file()
+sdk=Path(os.environ['ANDROID_HOME']);tools=sdk/'build-tools/37.0.0'
+platforms=sorted((sdk/'platforms').glob('android-37*/android.jar'))
+assert platforms, 'Missing installed API 37 android.jar'
+android=platforms[0]
 with tempfile.TemporaryDirectory(prefix='moskom-domestic-fixtures-') as tmp:
  root=Path(tmp)
+ keystore=root/'fixture.p12'
+ subprocess.run(['keytool','-genkeypair','-alias','fixture','-keystore',str(keystore),'--storepass','android','--keypass','android','-storetype','PKCS12','-keyalg','RSA','-keysize','2048','-validity','1','-dname','CN=Routing fixture'],check=True)
  for index,package in enumerate(['com.punicapp.whoosh','ru.yandex.yandexmaps','com.sberbankmobile']):
   manifest=root/f'manifest-{index}.xml';apk=root/f'fixture-{index}.apk'
   manifest.write_text(f'<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{package}" android:versionCode="1" android:versionName="1"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="35"/><application android:hasCode="false" android:label="Routing fixture"/></manifest>')
