@@ -3,7 +3,11 @@
   const repository = 'stisvladnext3-creator/moskompremont';
   const platforms = [
     { key: 'windows', tag: /^moskom-vpn-v(\d+\.\d+\.\d+)$/, filename: version => `MoskomVPN-Setup-${version}.exe` },
-    { key: 'android', tag: /^moskom-android-v(\d+\.\d+\.\d+)$/, filename: version => `MoskomVPN-Android-${version}.apk` }
+    { key: 'android', tag: /^moskom-android-v(\d+\.\d+\.\d+)$/, filename: version => `MoskomVPN-Android-${version}.apk` },
+    ...['legacy', 'modern'].flatMap(flavor => ['osx-x64', 'osx-arm64'].map(rid => ({
+      key: `mac-${flavor}-${rid}`, tag: /^moskom-mac-v(\d+\.\d+\.\d+)$/,
+      filename: version => `MoskomVPN-macOS-${flavor}-${rid}-${version}.dmg`
+    })))
   ];
   const compareParts = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
   // Keep the verified fallback link usable when the version check is unavailable.
