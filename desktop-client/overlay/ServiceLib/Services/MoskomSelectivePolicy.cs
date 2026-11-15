@@ -79,7 +79,7 @@ public static class MoskomSelectivePolicy {
     // rather than a preset's hard-coded public DNS that this ISP may block.
     // Bootstrap lookups must also stay outside the new tunnel.
     if(servers!=null)for(var i=0;i<servers.Count;i++)if(servers[i] is JsonObject server&&server["tag"]?.GetValue<string>() is {} tag&&(tag.StartsWith("direct-dns-",StringComparison.Ordinal)||tag=="local-local"))
-     servers[i]=new JsonObject{["type"]="udp",["tag"]=tag,["server"]=primary,["detour"]="direct"};
+     servers[i]=new JsonObject{["type"]="udp",["tag"]=tag,["server"]=primary};
    }
    if(servers?.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="direct-dns-1")==true&&servers.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="remote-dns-1")){
     var dnsRules=new JsonArray();
