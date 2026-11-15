@@ -1,0 +1,21 @@
+MosKomRemont VPN for macOS is a derivative interface based on v2rayN 7.25.6.
+v2rayN source and GPL-3.0: https://github.com/2dust/v2rayN/tree/7.25.6
+Corresponding modified v2rayN, launcher overlays, sing-box source and build scripts are included in the source ZIP for each flavor/CPU in this release.
+
+The exact versions, commits, source URLs, binary hashes and build tags are recorded in macos-client/build/sources.json. The legacy flavor uses .NET 8 and cores compatible with macOS 11; modern uses .NET 10 and macOS 13-compatible cores. Native deployment metadata is audited, never edited to disguise a higher OS requirement.
+
+Xray-core (MPL-2.0): https://github.com/XTLS/Xray-core
+Official unmodified Xray binaries are pinned in sources.json (legacy v25.8.3, modern v26.11.9); source and license are available under the corresponding tags.
+
+sing-box (GPL-3.0): https://github.com/SagerNet/sing-box
+Legacy v1.13.12 is built with Go 1.24.13; modern v1.14.4 with Go 1.26.9. A small process-lookup fix for newly created TUN interfaces is applied by build/patch-singbox.py. The complete modified sing-box tree, its LICENSE, go.mod/go.sum and reproducible build overlay are included in each corresponding source ZIP.
+
+.NET (MIT): https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
+Avalonia (MIT): https://github.com/AvaloniaUI/Avalonia/blob/master/licence.md
+SkiaSharp/HarfBuzzSharp and their upstream licenses: https://github.com/mono/SkiaSharp
+SQLite 3.53.4 is public domain; the pinned upstream amalgamation is compiled for the advertised deployment target. Source URL, hash and compiler flags are in the build inputs/scripts.
+
+Russia routing/DNS data: https://github.com/runetfreedom/russia-v2ray-custom-routing-list and https://github.com/runetfreedom/russia-v2ray-rules-dat
+Exact revisions and geodata release are pinned in sources.json. Rules and data are bundled during the build.
+
+Branding is the website owner's original logo, recorded in desktop-client/branding/source.json. This is an independent build, not an official 2dust/SagerNet release or endorsement. No customer subscriptions, account credentials or signing secrets are included in the installers or corresponding source.

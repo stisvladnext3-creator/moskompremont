@@ -75,7 +75,7 @@ for size in [16,32,128,256,512]:
 run('iconutil','-c','icns',icons,'-o',resources/'Moskom.icns')
 info={'CFBundleExecutable':'MoskomVPN','CFBundleIdentifier':'ru.moskompremont.vpn'+('.legacy' if a.flavor=='legacy' else ''),'CFBundleName':'МосКомпРемонт VPN','CFBundleDisplayName':'МосКомпРемонт VPN','CFBundleShortVersionString':a.version,'CFBundleVersion':a.version,'CFBundlePackageType':'APPL','CFBundleIconFile':'Moskom.icns','LSMinimumSystemVersion':minimum,'NSHighResolutionCapable':True,'NSLocalNetworkUsageDescription':'Проверка подключения к VPN и локальному прокси МосКомпРемонт.','MoskomBuildFlavor':a.flavor,'MoskomArchitecture':arch}
 with (app/'Contents/Info.plist').open('wb') as f:plistlib.dump(info,f)
-shutil.copyfile(REPO/'desktop-client/LICENSE',resources/'LICENSE-v2rayN-GPL-3.0.txt');shutil.copyfile(REPO/'desktop-client/THIRD-PARTY-NOTICES.txt',resources/'THIRD-PARTY-NOTICES.txt');shutil.copyfile(OWN/'build/sources.json',resources/'sources.json')
+shutil.copyfile(REPO/'desktop-client/LICENSE',resources/'LICENSE-v2rayN-GPL-3.0.txt');shutil.copyfile(OWN/'THIRD-PARTY-NOTICES.txt',resources/'THIRD-PARTY-NOTICES.txt');shutil.copyfile(OWN/'build/sources.json',resources/'sources.json')
 # Do not publish any native library that demands an OS above the advertised target.
 report=audit(app,arch,tuple(map(int,minimum.split('.')))+(0,));(work/'native-audit.json').write_text(json.dumps(report,indent=2))
 for item in report:
