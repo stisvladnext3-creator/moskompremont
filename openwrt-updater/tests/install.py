@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import argparse,json,os,subprocess,time
+import argparse,json,os,subprocess,time,io,tarfile
 from platforms import docker,D,ENV
 
 def install(dist,version):
@@ -26,8 +26,23 @@ def install(dist,version):
   p=docker('exec',name,'ubus','call','mkr-router','status','{}',capture_output=True,text=True)
   status=json.loads(p.stdout);assert status['settings']['has_token'] and 'token' not in status['settings']
   assert status['version']==version
+  # Query the real installed package manager through a name-only fixture. This
+  # catches apk 3's changed info output, instead of mocking the version format.
+  real=docker('exec',name,'sh','-c','command -v '+('opkg' if platform.startswith('24') else 'apk'),capture_output=True,text=True).stdout.strip()
+  if platform.startswith('24'):
+   wrapper='#!/bin/sh\nexec '+real+' status mkr-router-updater\n';manager='opkg'
+  else:
+   wrapper='#!/bin/sh\n'+real+' "$1" "$2" "$3" mkr-router-updater | sed "s/^mkr-router-updater-/podkop-/"\n';manager='apk'
+  payload=io.BytesIO()
+  with tarfile.open(fileobj=payload,mode='w') as archive:
+   info=tarfile.TarInfo('tmp/version-query/'+manager);data=wrapper.encode();info.size=len(data);info.mode=0o755;archive.addfile(info,io.BytesIO(data))
+   if manager=='apk':
+    info=tarfile.TarInfo('tmp/version-query/opkg');data=b'#!/bin/sh\nexit 1\n';info.size=len(data);info.mode=0o755;archive.addfile(info,io.BytesIO(data))
+  subprocess.run(D+['exec','-i',name,'tar','-xf','-','-C','/'],input=payload.getvalue(),env=ENV,check=True,capture_output=True)
+  probe=docker('exec','-e','PATH=/tmp/version-query:/usr/sbin:/usr/bin:/sbin:/bin',name,'/usr/bin/mkr-router','status',capture_output=True,text=True)
+  assert json.loads(probe.stdout)['podkop_version']==version,probe.stdout
   for path in ['/usr/share/luci/menu.d/luci-app-mkr-router.json','/usr/share/rpcd/acl.d/luci-app-mkr-router.json']:
    docker('exec',name,'test','-f',path)
   print('PASS native package installation/repeat installation + real rpcd/ubus:',platform,flush=True)
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--dist',type=Path,required=True);p.add_argument('--version',default='0.1.1');a=p.parse_args();install(a.dist,a.version)
+ p=argparse.ArgumentParser();p.add_argument('--dist',type=Path,required=True);p.add_argument('--version',default='0.1.2');a=p.parse_args();install(a.dist,a.version)

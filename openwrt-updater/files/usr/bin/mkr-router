@@ -1,6 +1,6 @@
 #!/bin/sh
 # Data-only updater: the website supplies a URI, never a shell command or a package.
-MKR_VERSION='0.1.1'
+MKR_VERSION='0.1.2'
 umask 077
 [ "$(id -u)" = 0 ] || { printf '{"error":"root_required"}\n'; exit 1; }
 STATE=/tmp/mkr-router
@@ -28,16 +28,41 @@ state() {
  jq -n --arg state "$1" --arg reason "${2:-}" --argjson checked "$(date +%s)" '{state:$state,reason:$reason,checked_at:$checked}' > "$STATE/state.new"
  mv "$STATE/state.new" "$STATE/state.json"
 }
-podkop_version() {
- if command -v opkg >/dev/null 2>&1; then opkg status podkop 2>/dev/null | sed -n 's/^Version: *//p' | head -n1
- elif command -v apk >/dev/null 2>&1; then apk info -v podkop 2>/dev/null | sed -n 's/^podkop-//p' | head -n1; fi
+version_number() {
+ sed -nE 's/^v?([0-9]+\.[0-9]+\.[0-9]+)([-+~][A-Za-z0-9._+~-]+)?$/\1/p' | head -n1
 }
-version_ok() { case "$(podkop_version)" in 0.3.*|0.4.*|0.5.*|0.6.*) return 0;; *) return 1;; esac; }
+podkop_version() {
+ local found
+ # apk 3 info -v describes the package; -e -v prints its installed version.
+ # Try both managers: some upgraded firmware retains an opkg compatibility shim.
+ if command -v apk >/dev/null 2>&1; then
+  found="$(apk info -e -v podkop 2>/dev/null | sed -n 's/^podkop-//p' | version_number)"
+  if [ -n "$found" ]; then printf '%s\n' "$found"; return; fi
+ fi
+ if command -v opkg >/dev/null 2>&1; then
+  found="$(opkg status podkop 2>/dev/null | sed -n 's/^Version: *//p' | version_number)"
+  if [ -n "$found" ]; then printf '%s\n' "$found"; return; fi
+ fi
+ # Official 0.7 builds embed the version here. Read data, never source shell.
+ if [ -r /usr/lib/podkop/constants.sh ]; then
+  sed -n 's/^[[:space:]]*PODKOP_VERSION[[:space:]]*=[[:space:]]*//p' /usr/lib/podkop/constants.sh | head -n1 | tr -d "\"'[:space:]" | version_number
+ fi
+}
+version_ok() { case "$(podkop_version)" in 0.3.*|0.4.*|0.5.*|0.6.*|0.7.*) return 0;; *) return 1;; esac; }
+proxy_section() {
+ local connection
+ connection="$(uci -q get "podkop.$1.connection_type" 2>/dev/null)"
+ if [ -n "$connection" ]; then
+  [ "$(uci -q get "podkop.$1" 2>/dev/null)" = section ] && [ "$connection" = proxy ]
+ else
+  [ "$(uci -q get "podkop.$1.mode" 2>/dev/null)" = proxy ]
+ fi
+}
 targets() {
  uci -q show podkop 2>/dev/null | sed -n 's/^podkop\.\([A-Za-z0-9_]*\)=[^=]*$/\1/p' | while IFS= read -r section; do
   [ -n "$section" ] || continue
-  mode="$(uci -q get "podkop.$section.mode" 2>/dev/null)"; kind="$(uci -q get "podkop.$section.proxy_config_type" 2>/dev/null)"
-  [ "$mode" = proxy ] || continue
+  kind="$(uci -q get "podkop.$section.proxy_config_type" 2>/dev/null)"
+  proxy_section "$section" || continue
   jq -cn --arg id "$section" --arg kind "$kind" '{id:$id,type:$kind,supported:($kind=="url")}'
  done | jq -s '.'
 }
@@ -49,7 +74,7 @@ target() {
   TARGET="$(jq -r '.[]|select(.supported)|.id' "$WORK/targets.json")"
  fi
  printf '%s' "$TARGET" | grep -Eq '^[A-Za-z0-9_]+$' || return 1
- [ "$(uci -q get "podkop.$TARGET.mode" 2>/dev/null)" = proxy ] && [ "$(uci -q get "podkop.$TARGET.proxy_config_type" 2>/dev/null)" = url ] || return 1
+ proxy_section "$TARGET" && [ "$(uci -q get "podkop.$TARGET.proxy_config_type" 2>/dev/null)" = url ] || return 1
  CURRENT="$(uci -q get "podkop.$TARGET.proxy_string" 2>/dev/null)"
  # Multiline/manual fallback lists belong to the user. Never erase their backup entries.
  [ "$(printf '%s' "$CURRENT" | wc -l)" = 0 ] || return 1
@@ -148,7 +173,9 @@ podkop_state() {
  else printf stopped; fi
 }
 healthy() {
- config_path="$(uci -q get podkop.main.config_path 2>/dev/null)"; [ -n "$config_path" ] || config_path=/etc/sing-box/config.json
+ config_path="$(uci -q get podkop.settings.config_path 2>/dev/null)"
+ [ -n "$config_path" ] || config_path="$(uci -q get podkop.main.config_path 2>/dev/null)"
+ [ -n "$config_path" ] || config_path=/etc/sing-box/config.json
  [ -f "$config_path" ] && sing-box check -c "$config_path" >/dev/null 2>&1 && sing_box_running && routing_present
 }
 rollback() {

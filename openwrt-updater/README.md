@@ -2,17 +2,19 @@
 
 Пакет подключает роутер к **одной** подписке или одному ключу из личного кабинета. Раз в 15 минут он получает актуальное подключение; по умолчанию сам заменяет `proxy_string` выбранной секции Podkop. Пароль клиента на роутере не хранится.
 
-[Скачать пакет 0.1.1](https://github.com/stisvladnext3-creator/moskompremont/releases/tag/moskom-openwrt-v0.1.1) · [Пошаговая установка](INSTALL-OPENWRT.md)
+[Скачать пакет 0.1.2](https://github.com/stisvladnext3-creator/moskompremont/releases/tag/moskom-openwrt-v0.1.2) · [Пошаговая установка](INSTALL-OPENWRT.md)
 
 ## Что входит
 
 - `mkr-router-updater`: служба procd, проверка по HTTPS, отдельный код устройства, автоматическая замена / режим «только уведомлять», резервная копия и журнал отката.
 - `luci-app-mkr-router`: меню **Сервисы → МосКомпРемонт**, настройка режима и секции, проверка сейчас, просмотр/копирование новой ссылки, ручное применение и отключение кода.
-- Обновление PHP-кабинета v21: вкладка OpenWrt для клиента и администратора, создание/отключение кодов, время последнего обращения и результат применения. Уведомления об обновлении и необходимости ручного действия попадают в кабинет; Web Push использует существующую настройку сайта.
+- Совместимость с PHP-кабинетом v21 ([архив для первой установки](https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-openwrt-v0.1.1/moskompremont-cabinet-v21-update.zip)): вкладка OpenWrt для клиента и администратора, создание/отключение кодов, время последнего обращения и результат применения. Уведомления об обновлении и необходимости ручного действия попадают в кабинет; Web Push использует существующую настройку сайта.
 
 ## Совместимость и выбор подключения
 
-Пакеты не содержат машинного кода: IPK `Architecture: all` для opkg (OpenWrt 23.05/24.10), APK v3 `arch: noarch` для apk (OpenWrt 25.12). Поддерживается современный LuCI с JavaScript views. Для автоматической записи распознаются **Podkop 0.3.x, 0.4.x, 0.5.x и 0.6.x**, секции `mode=proxy`, `proxy_config_type=url`. Обычные прямые ключи VLESS / Trojan / Shadowsocks заменяются целиком. Podkop и прошивка роутера не обновляются этим пакетом.
+Пакеты не содержат машинного кода: IPK `Architecture: all` для opkg (OpenWrt 23.05/24.10), APK v3 `arch: noarch` для apk (OpenWrt 25.12). Поддерживается современный LuCI с JavaScript views. Для автоматической записи распознаются **Podkop 0.3.x–0.7.x**, обычные секции `proxy_config_type=url`: `mode=proxy` в 0.3–0.6 и `connection_type=proxy` в секциях нового типа `section` в 0.7. Для 0.7 проверены исходные настройки версии **0.7.22**. Обычные прямые ключи VLESS / Trojan / Shadowsocks заменяются целиком. Podkop и прошивка роутера не обновляются этим пакетом.
+
+Версия определяется через установленный пакет (`apk info -e -v` / opkg), с резервным чтением `PODKOP_VERSION` из официального constants.sh без исполнения кода. Настройки проверки sing-box в 0.7 читаются из `podkop.settings.config_path`.
 
 Если в кабинете выдана HTTPS-подписка со списком URI (текст или base64/base64url), пакет находит в ней **текущее подключение** по протоколу, идентификатору, порту и названию. Домен/IP при сопоставлении может измениться. Список других серверов не подставляется в Podkop. Если совпадений нет, их несколько, сменился идентификатор/название/порт или используется иной формат подписки, новая ссылка и доступные URI показываются для ручной замены. Смена только домена/IP типового VLESS сохраняет автоматическое сопоставление.
 
@@ -38,8 +40,8 @@
 
 ```sh
 python3 openwrt-updater/tests/platforms.py --work /tmp/mkr-build-platforms
-python3 openwrt-updater/build.py --version 0.1.1 --out /tmp/mkr-dist
-python3 openwrt-updater/tests/install.py --dist /tmp/mkr-dist --version 0.1.1
+python3 openwrt-updater/build.py --version 0.1.2 --out /tmp/mkr-dist
+python3 openwrt-updater/tests/install.py --dist /tmp/mkr-dist --version 0.1.2
 python3 openwrt-updater/tests/router.py
 ```
 
@@ -47,4 +49,4 @@ Rootfs OpenWrt и статический `apk mkpkg` закреплены кон
 
 Также есть Makefile-пакеты для OpenWrt SDK в `package/`. Для SDK скопируйте **всю** папку `openwrt-updater` в `package/openwrt-updater`, затем выберите оба пакета через `make menuconfig` и выполните `make package/mkr-router-updater/compile V=s` и `make package/luci-app-mkr-router/compile V=s`.
 
-Исходные схемы Podkop проверены по [v0.3.4](https://github.com/itdoginfo/podkop/tree/v0.3.4), [v0.4.11](https://github.com/itdoginfo/podkop/tree/v0.4.11), [v0.5.8](https://github.com/itdoginfo/podkop/tree/v0.5.8), [v0.6.1](https://github.com/itdoginfo/podkop/tree/v0.6.1). Формат APK: [документация OpenWrt](https://openwrt.org/docs/guide-user/additional-software/apk). Код пакета распространяется под GPL-2.0-or-later; см. LICENSE.
+Исходные схемы Podkop проверены по [v0.3.4](https://github.com/itdoginfo/podkop/tree/v0.3.4), [v0.4.11](https://github.com/itdoginfo/podkop/tree/v0.4.11), [v0.5.8](https://github.com/itdoginfo/podkop/tree/v0.5.8), [v0.6.1](https://github.com/itdoginfo/podkop/tree/v0.6.1), [0.7.22](https://github.com/itdoginfo/podkop/tree/c0a2736bb95884c19fedf638345ed6148c5fd6af). Формат APK: [документация OpenWrt](https://openwrt.org/docs/guide-user/additional-software/apk). Код пакета распространяется под GPL-2.0-or-later; см. LICENSE.

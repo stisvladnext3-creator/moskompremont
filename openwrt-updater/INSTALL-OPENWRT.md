@@ -2,10 +2,14 @@
 
 Сначала обновите сайт, затем установите два пакета на роутер. На каждый роутер создаётся свой код с выбором одной подписки или ключа.
 
+## Обновление пакета с 0.1.1 до 0.1.2
+
+Исправлены Podkop 0.7.22: определение версии в apk 3, поля `connection_type` и настройки в секции `settings`. Для этого исправления достаточно обновить оба пакета на роутере поверх прежних, перезапустить rpcd и заново войти в LuCI. Сохранённые код устройства, адрес API и выбранная секция остаются. Нажмите **Сохранить и проверить**, чтобы повторить проверку. Повторно обновлять сайт или импортировать миграцию для этого исправления не нужно. При первой установке выполните следующие разделы.
+
 ## 1. Обновить сайт
 
 1. Сохраните копию файлов сайта и базы пользователей.
-2. Распакуйте `moskompremont-cabinet-v21-update.zip` в папку сайта с `account.html`, объединяя папки и заменяя одноимённые файлы. Рабочего `private/config.php`, QR банка и клиентских CSV в архиве нет — существующие настройки сохранятся.
+2. Для первой установки поддержки OpenWrt скачайте [архив кабинета v21](https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-openwrt-v0.1.1/moskompremont-cabinet-v21-update.zip) и распакуйте его в папку сайта с `account.html`, объединяя папки и заменяя одноимённые файлы. Рабочего `private/config.php`, QR банка и клиентских CSV в архиве нет — существующие настройки сохранятся.
 3. В панели хостинга откройте **существующую базу кабинета**, вкладку SQL/импорт, выберите `private/migrations/011-router-devices.sql` из архива. Выполните импорт. Повторный импорт безопасен. Если кабинет ещё старее v20, сначала установите предыдущие миграции по порядку; новый сайт устанавливается полным `private/schema.sql`.
 4. Проверьте в `private/config.php` значение `origin`: `https://moskompremont.ru` (без `/account.html`). Если кабинет находится в подпапке, `app_path` должен содержать её имя. PHP-обработчики должны быть доступны по HTTPS с действующим сертификатом.
 5. Обновите страницу кабинета без кеша. У клиента и администратора появится вкладка **OpenWrt**. Учётные записи и старые привязки сохраняются.
@@ -13,7 +17,7 @@
 ## 2. Установить на OpenWrt
 
 1. В **Статус → Обзор** посмотрите версию OpenWrt. Podkop уже должен быть установлен и настроен с работающим подключением.
-2. Распакуйте `moskom-openwrt-0.1.1.zip` на компьютере. Для **23.05/24.10** нужны два файла `.ipk`; для **25.12** — два файла `.apk`. Это разные форматы, переименовывать их нельзя.
+2. Распакуйте `moskom-openwrt-0.1.2.zip` на компьютере. Для **23.05/24.10** нужны два файла `.ipk`; для **25.12** — два файла `.apk`. Это разные форматы, переименовывать их нельзя.
 3. Для **opkg / IPK** в **Система → Программное обеспечение** обновите списки пакетов, затем через **Загрузить пакет** установите сначала `mkr-router-updater`, затем `luci-app-mkr-router`. Для **apk / APK** используйте SSH-команды ниже: штатная загрузка через LuCI не передаёт `--allow-untrusted`, поэтому отклоняет наши неподписанные пакеты с `UNTRUSTED signature`. Зависимости загружаются из репозиториев вашей прошивки; нужен доступ в интернет и свободное место.
 4. Обновите страницу LuCI. Появится **Сервисы → МосКомпРемонт**. Если пункта нет, выйдите и снова войдите в LuCI.
 
@@ -21,16 +25,16 @@
 
 ```sh
 opkg update
-opkg install /tmp/mkr-router-updater_0.1.1-1_all.ipk
-opkg install /tmp/luci-app-mkr-router_0.1.1-1_all.ipk
+opkg install /tmp/mkr-router-updater_0.1.2-1_all.ipk
+opkg install /tmp/luci-app-mkr-router_0.1.2-1_all.ipk
 ```
 
 Для apk:
 
 ```sh
 apk update
-apk add --allow-untrusted /tmp/mkr-router-updater-0.1.1-r1.apk
-apk add --allow-untrusted /tmp/luci-app-mkr-router-0.1.1-r1.apk
+apk add --allow-untrusted /tmp/mkr-router-updater-0.1.2-r1.apk
+apk add --allow-untrusted /tmp/luci-app-mkr-router-0.1.2-r1.apk
 ```
 
 Наши APK не подписаны доверенным ключом прошивки, поэтому для их установки нужен `--allow-untrusted`. Само по себе локальное расположение файла не требует этого флага. Перед установкой сверьте файлы с `SHA256SUMS.txt` из того же релиза. Флаг применяется к указанной команде; глобальную проверку подписей отключать не нужно. Пакет не заменяет Podkop и не требует смены прошивки.
@@ -42,15 +46,15 @@ LuCI выполняет `apk add /tmp/upload.apk` без разрешения н
 ```sh
 (
   set -e
-  release_url='https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-openwrt-v0.1.1'
-  wget -O /tmp/mkr-router-updater-0.1.1-r1.apk "$release_url/mkr-router-updater-0.1.1-r1.apk"
-  wget -O /tmp/luci-app-mkr-router-0.1.1-r1.apk "$release_url/luci-app-mkr-router-0.1.1-r1.apk"
+  release_url='https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-openwrt-v0.1.2'
+  wget -O /tmp/mkr-router-updater-0.1.2-r1.apk "$release_url/mkr-router-updater-0.1.2-r1.apk"
+  wget -O /tmp/luci-app-mkr-router-0.1.2-r1.apk "$release_url/luci-app-mkr-router-0.1.2-r1.apk"
   sha256sum -c - <<'SHA256'
-f977335936c18ec57de3d0193d323acea0eaa55bae059c78b8a0044127f1d541  /tmp/mkr-router-updater-0.1.1-r1.apk
-4bbb96060fb32796101f942888a65ac588ef166ad11e5673cbae1a37dafb4345  /tmp/luci-app-mkr-router-0.1.1-r1.apk
+29413d04446484ce6c688c0375558beeb00b288f2c089b091fdc0329cf0ff7fd  /tmp/mkr-router-updater-0.1.2-r1.apk
+ab7c8c548a2be8675c6a69b1980c644a7f7f02dc5026c6cb1f8a65d951b2b1f8  /tmp/luci-app-mkr-router-0.1.2-r1.apk
 SHA256
   apk update
-  apk add --allow-untrusted /tmp/mkr-router-updater-0.1.1-r1.apk /tmp/luci-app-mkr-router-0.1.1-r1.apk
+  apk add --allow-untrusted /tmp/mkr-router-updater-0.1.2-r1.apk /tmp/luci-app-mkr-router-0.1.2-r1.apk
 )
 ```
 
@@ -61,7 +65,7 @@ SHA256
 Если `wget` пишет `Connecting to …:443` и `Connection timed out`, роутер не может установить соединение с GitHub. Повторная загрузка тем же способом не устраняет причину. Скачайте пакеты на компьютере и перенесите их в роутер по локальной сети:
 
 1. Нажмите **Ctrl+C** в SSH-терминале, чтобы остановить зависшее скачивание или незавершённый ввод блока.
-2. В браузере компьютера скачайте [mkr-router-updater-0.1.1-r1.apk](https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-openwrt-v0.1.1/mkr-router-updater-0.1.1-r1.apk) и [luci-app-mkr-router-0.1.1-r1.apk](https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-openwrt-v0.1.1/luci-app-mkr-router-0.1.1-r1.apk).
+2. В браузере компьютера скачайте [mkr-router-updater-0.1.2-r1.apk](https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-openwrt-v0.1.2/mkr-router-updater-0.1.2-r1.apk) и [luci-app-mkr-router-0.1.2-r1.apk](https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-openwrt-v0.1.2/luci-app-mkr-router-0.1.2-r1.apk).
 3. На Windows откройте WinSCP: протокол **SCP**, адрес роутера тот же, что используется для SSH/LuCI, порт **22**, пользователь **root**, пароль роутера. Выбирайте SCP: SFTP-сервер может отсутствовать в прошивке.
 4. Перенесите оба файла в `/tmp` с исходными именами и заменой ранее скачанных файлов. Неудачный `wget -O` мог оставить пустой или неполный файл.
 5. В SSH-терминале **роутера** выполните блок ниже. Он проверяет контрольные суммы, затем устанавливает локальные пакеты. Скачивать их с GitHub самому роутеру не требуется; зависимости при необходимости загружаются из репозиториев OpenWrt.
@@ -70,10 +74,10 @@ SHA256
 (
   set -e
   sha256sum -c - <<'SHA256'
-f977335936c18ec57de3d0193d323acea0eaa55bae059c78b8a0044127f1d541  /tmp/mkr-router-updater-0.1.1-r1.apk
-4bbb96060fb32796101f942888a65ac588ef166ad11e5673cbae1a37dafb4345  /tmp/luci-app-mkr-router-0.1.1-r1.apk
+29413d04446484ce6c688c0375558beeb00b288f2c089b091fdc0329cf0ff7fd  /tmp/mkr-router-updater-0.1.2-r1.apk
+ab7c8c548a2be8675c6a69b1980c644a7f7f02dc5026c6cb1f8a65d951b2b1f8  /tmp/luci-app-mkr-router-0.1.2-r1.apk
 SHA256
-  apk add --allow-untrusted /tmp/mkr-router-updater-0.1.1-r1.apk /tmp/luci-app-mkr-router-0.1.1-r1.apk
+  apk add --allow-untrusted /tmp/mkr-router-updater-0.1.2-r1.apk /tmp/luci-app-mkr-router-0.1.2-r1.apk
 )
 ```
 

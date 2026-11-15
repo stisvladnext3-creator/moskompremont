@@ -25,9 +25,13 @@ class Router:
  def status(self):return json.loads(self.cli('status').stdout)
  def source(self,value=NEW,typ='router_key',device=7):self.put('/tmp/snapshot.json',json.dumps({'version':1,'device_id':device,'resource':{'id':3,'type':typ,'label':'Router fixture','value':value,'revision':hashlib.sha256(value.encode()).hexdigest()}}))
  def reset(self,version='0.6.1',mode='auto',extra=''):
-  self.sh('rm -rf /tmp/mkr-router /etc/mkr-router /tmp/.uci /tmp/podkop-on /tmp/restarts /tmp/check-fail /tmp/restart-fail /tmp/http-code /tmp/curl-fail /tmp/dns-edit /tmp/sub-auth-leak /tmp/argv-leak /tmp/podkop-starting /tmp/without-routing /tmp/routing-only; mkdir -p /tmp/.uci /etc/sing-box')
+  self.sh('rm -rf /tmp/mkr-router /etc/mkr-router /tmp/.uci /tmp/podkop-on /tmp/restarts /tmp/check-fail /tmp/restart-fail /tmp/http-code /tmp/curl-fail /tmp/dns-edit /tmp/sub-auth-leak /tmp/argv-leak /tmp/podkop-starting /tmp/without-routing /tmp/routing-only /tmp/no-package-version /tmp/last-check-path /usr/lib/podkop/constants.sh; mkdir -p /tmp/.uci /etc/sing-box /usr/lib/podkop')
   self.put('/etc/config/mkr_router',(ROOT/'files/etc/config/mkr_router').read_bytes())
-  self.put('/etc/config/podkop',"config main 'main'\n option mode 'proxy'\n option proxy_config_type 'url'\n option proxy_string '"+OLD+"'\n option dns_server '1.1.1.1'\n"+extra)
+  if version.startswith('0.7.'):
+   config=(ROOT/'tests/fixtures/podkop-0.7.22.conf').read_text()
+   assert config.count("option proxy_string ''")==1
+   self.put('/etc/config/podkop',config.replace("option proxy_string ''","option proxy_string '"+OLD+"'")+"\n"+extra)
+  else:self.put('/etc/config/podkop',"config main 'main'\n option mode 'proxy'\n option proxy_config_type 'url'\n option proxy_string '"+OLD+"'\n option dns_server '1.1.1.1'\n"+extra)
   self.put('/etc/sing-box/config.json','{}');self.put('/tmp/podkop-version',version);self.source()
   self.cli('configure',{'mode':mode,'interval':900,'section':'','endpoint':'https://site.example/api/router-agent.php','token':TOKEN})
  def value(self):return self.sh('uci -q get podkop.main.proxy_string')
@@ -50,7 +54,7 @@ fi
 ''',0o755)
   for command in ['opkg','apk']:
    real=self.sh('command -v '+command,ok=False)
-   if real:self.put('/tmp/mkr-mocks/'+command,'#!/bin/sh\nif [ "$1" = status ] && [ "$2" = podkop ];then printf "Version: ";cat /tmp/podkop-version;elif [ "$1" = info ] && [ "$2" = -v ] && [ "$3" = podkop ];then printf "podkop-";cat /tmp/podkop-version;else exec '+real+' "$@";fi\n',0o755)
+   if real:self.put('/tmp/mkr-mocks/'+command,'#!/bin/sh\nif [ "$1" = status ] && [ "$2" = podkop ];then [ ! -f /tmp/no-package-version ] || exit 1;printf "Version: ";cat /tmp/podkop-version;elif [ "$1" = info ] && [ "$2" = -e ] && [ "$3" = -v ] && [ "$4" = podkop ];then [ ! -f /tmp/no-package-version ] || exit 1;printf "podkop-%s-r1\\n" "$(cat /tmp/podkop-version)";elif [ "$1" = info ] && [ "$2" = -v ] && [ "$3" = podkop ];then printf "podkop: Package description, not a version\\n";else exec '+real+' "$@";fi\n',0o755)
   self.put('/etc/init.d/podkop','''#!/bin/sh
 case "$1" in
  running) [ -f /tmp/podkop-starting ];;
@@ -62,20 +66,37 @@ case "$1" in
   touch /tmp/podkop-on;;
 esac
 ''',0o755)
-  self.put('/tmp/mkr-mocks/sing-box','#!/bin/sh\n[ ! -f /tmp/check-fail ]\n',0o755)
+  self.put('/tmp/mkr-mocks/sing-box','#!/bin/sh\nwhile [ "$#" -gt 0 ];do if [ "$1" = -c ];then printf "%s" "$2" > /tmp/last-check-path;[ -f "$2" ] || exit 1;shift;fi;shift;done\n[ ! -f /tmp/check-fail ]\n',0o755)
   self.put('/etc/init.d/sing-box','#!/bin/sh\n[ "$1" = running ] && [ -f /tmp/podkop-on ]\n',0o755)
   self.put('/tmp/mkr-mocks/nft','#!/bin/sh\n[ ! -f /tmp/without-routing ] && { [ -f /tmp/podkop-on ] || [ -f /tmp/routing-only ]; }\n',0o755)
   self.put('/tmp/mkr-mocks/sleep','#!/bin/sh\n# Simulated retry timer; no production code bypass.\nexit 0\n',0o755)
  def tests(self):
   self.install_fixtures()
-  for version in ['0.3.4','0.4.11','0.5.8','0.6.1']:
+  for version in ['0.3.4','0.4.11','0.5.8','0.6.1','0.7.22']:
    self.reset(version);self.cli('check');assert self.value()==NEW;assert self.status()['state']=='applied';assert self.sh('test ! -f /tmp/restarts && echo yes')=='yes'
-   self.cli('check');assert self.status()['state']=='current';assert TOKEN not in self.cli('status').stdout.decode()
+   self.cli('check');assert self.status()['state']=='current';assert TOKEN not in self.cli('status').stdout.decode();assert self.status()['podkop_version']==version
+  # Real 0.7 schema: separate settings, connection_type, and configurable health-check path.
+  self.reset('0.7.22',mode='notify');before=self.sh('uci export podkop');assert self.sh('uci -q get podkop.main.mode || :')==''
+  self.sh('touch /tmp/podkop-on;uci set podkop.settings.config_path=/etc/sing-box/podkop-custom.json;uci commit podkop');self.put('/etc/sing-box/podkop-custom.json','{}')
+  before=self.sh('uci export podkop');self.cli('check');assert self.value()==OLD and self.status()['state']=='available'
+  self.cli('apply');assert self.value()==NEW and self.status()['state']=='applied'
+  assert self.sh('uci export podkop')==before.replace(OLD,NEW)
+  assert self.sh('cat /tmp/last-check-path')=='/etc/sing-box/podkop-custom.json'
+  self.reset('0.7.22');self.sh('uci set podkop.main.connection_type=vpn;uci set podkop.main.mode=proxy;uci commit podkop');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
+  for kind in ['selector','urltest','outbound']:
+   self.reset('0.7.22');self.sh('uci set podkop.main.proxy_config_type='+kind+';uci commit podkop');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
+  self.reset('0.7.22',extra="config section 'second'\n option connection_type 'proxy'\n option proxy_config_type 'url'\n option proxy_string 'vless://other@other.example:443#Other'\n")
+  self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
+  self.cli('configure',{'mode':'auto','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and 'other.example' in self.sh('uci get podkop.second.proxy_string')
+  # Firmware may have no usable package query. The compiled version is data, not shell.
+  self.reset('0.7.22');self.sh('touch /tmp/no-package-version');self.put('/usr/lib/podkop/constants.sh','PODKOP_VERSION="0.7.22"\n');self.cli('check');assert self.status()['state']=='applied' and self.status()['podkop_version']=='0.7.22'
+  self.reset('0.7.22');self.sh('touch /tmp/no-package-version');self.put('/usr/lib/podkop/constants.sh','PODKOP_VERSION="$(touch /tmp/version-injected)"\n');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual';assert self.sh('test ! -f /tmp/version-injected && echo yes')=='yes'
+  self.reset('0.7.22');self.sh('touch /tmp/podkop-on /tmp/restart-fail');self.cli('check',ok=False);assert self.value()==OLD and self.status()['reason']=='restart_failed'
   self.reset();self.sh('touch /tmp/podkop-on');self.cli('check');assert self.sh('wc -l < /tmp/restarts')=='1';self.cli('check');assert self.sh('wc -l < /tmp/restarts')=='1'
   for marker in ['podkop-starting','without-routing','routing-only']:
    self.reset();self.sh('touch /tmp/podkop-on /tmp/'+marker if marker!='routing-only' else 'touch /tmp/routing-only');self.cli('check');assert self.value()==OLD and self.status()['reason']=='runtime_state'
   self.reset(mode='notify');self.cli('check');assert self.value()==OLD and self.status()['state']=='available';self.cli('apply');assert self.value()==NEW
-  self.reset('0.7.0');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
+  self.reset('0.8.0');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
   self.reset(extra="config extra 'other'\n option mode 'proxy'\n option proxy_config_type 'url'\n option proxy_string 'vless://other@other.example:443#Other'\n");self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
   # Explicit section works without touching another section.
   self.cli('configure',{'mode':'auto','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and 'other.example' in self.sh('uci -q get podkop.other.proxy_string')
@@ -99,7 +120,7 @@ esac
   self.reset();self.cli('configure',{'mode':'auto','interval':900,'section':'','endpoint':'https://site.example/api/router-agent.php','token':'','injected.option':'bad'});assert 'injected' not in self.sh('uci show mkr_router')
   self.cli('disable');assert self.sh('uci -q get mkr_router.main.token || :')=='' and self.status()['state']=='unconfigured';assert self.value()==OLD
   assert self.sh('ls -l /etc/config/mkr_router | cut -c1-10')=='-rw-------'
-  print('PASS',self.version,': real UCI, Podkop 0.3–0.6 fixtures, auto/notify, unknown/complex fallback, subscription selection, token isolation, rollback/recovery, conflicts, auth/network failures, injection and permissions.',flush=True)
+  print('PASS',self.version,': real UCI, Podkop 0.3–0.7 fixtures including upstream 0.7.22, version detection/fallback, settings and connection_type, auto/notify, unknown/complex fallback, subscription selection, token isolation, rollback/recovery, conflicts, auth/network failures, injection and permissions.',flush=True)
 if __name__=='__main__':
  import sys
  for v in (sys.argv[1:] or ['24.10.4','25.12.5']):Router(v).tests()
