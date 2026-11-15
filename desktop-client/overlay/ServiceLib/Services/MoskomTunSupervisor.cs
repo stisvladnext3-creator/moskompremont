@@ -46,7 +46,7 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
    }
    var launch=Task.Run(()=>Process.Start(start));var deadline=DateTime.UtcNow.AddMinutes(2);
    while(!accept.IsCompleted){ct.ThrowIfCancellationRequested();if(launch.IsCompleted){owner._launcher=await launch;if(owner._launcher?.HasExited==true)throw new InvalidOperationException("Изменение маршрутизации не разрешено.");}if(DateTime.UtcNow>deadline)throw new TimeoutException("Не получено разрешение TUN.");await Task.Delay(100,ct);}
-   owner._stream=await accept;using var startTimeout=CancellationTokenSource.CreateLinkedTokenSource(ct);startTimeout.CancelAfter(TimeSpan.FromSeconds(20));await Write(owner._stream,config,startTimeout.Token);
+   owner._stream=await accept;owner._launcher??=await launch;using var startTimeout=CancellationTokenSource.CreateLinkedTokenSource(ct);startTimeout.CancelAfter(TimeSpan.FromSeconds(20));await Write(owner._stream,config,startTimeout.Token);
    var reply=Encoding.UTF8.GetString(await Read(owner._stream,startTimeout.Token));if(reply!="started:"+nonce)throw new InvalidOperationException("Не удалось запустить ядро TUN.");
    _=owner.ObserveAsync();return owner;
   }catch{await owner.DisposeAsync();throw;}
@@ -68,20 +68,27 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
    if(json?["inbounds"] is not JsonArray inbounds||!inbounds.OfType<JsonObject>().Any(i=>i["type"]?.GetValue<string>()=="tun")||inbounds.OfType<JsonObject>().Where(i=>i["type"]?.GetValue<string>()!="tun").Any(i=>i["listen"]?.GetValue<string>()!="127.0.0.1"))return 2;
    var core=Utils.GetBinPath(OperatingSystem.IsWindows()?"sing-box.exe":"sing-box","sing_box");if(!File.Exists(core))return 2;
    var directory=Directory.CreateTempSubdirectory("moskom-tun-").FullName;Process? process=null;WindowsJobService? job=null;
+#if MOSKOM_TUN_TEST
+   Task<string>? diagnosticOut=null,diagnosticError=null;
+#endif
    try{
     if(!OperatingSystem.IsWindows())File.SetUnixFileMode(directory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);
     var file=Path.Combine(directory,"config.json");var options=new FileStreamOptions{Mode=FileMode.CreateNew,Access=FileAccess.Write,Share=FileShare.None};if(!OperatingSystem.IsWindows())options.UnixCreateMode=UnixFileMode.UserRead|UnixFileMode.UserWrite;await using(var output=new FileStream(file,options)){await output.WriteAsync(bytes,setup.Token);}
     var start=new ProcessStartInfo(core){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=directory,RedirectStandardOutput=true,RedirectStandardError=true};foreach(var arg in new[]{"run","-c",file,"--disable-color"})start.ArgumentList.Add(arg);
     process=Process.Start(start)??throw new IOException("Не запущено ядро.");if(OperatingSystem.IsWindows()){job=new();if(!job.AddProcess(process.Id))throw new IOException("Не подготовлено завершение ядра.");}
 #if MOSKOM_TUN_TEST
-    _=process.StandardOutput.ReadToEndAsync().ContinueWith(t=>Console.Error.WriteLine(t.Result));_=process.StandardError.ReadToEndAsync().ContinueWith(t=>Console.Error.WriteLine(t.Result));
+    diagnosticOut=process.StandardOutput.ReadToEndAsync();diagnosticError=process.StandardError.ReadToEndAsync();
 #else
     _=process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);_=process.StandardError.BaseStream.CopyToAsync(Stream.Null);
 #endif
     await Write(channel,Encoding.UTF8.GetBytes("started:"+args[4]),setup.Token);var buffer=new byte[1];var eof=channel.ReadAsync(buffer).AsTask();
     await Task.WhenAny(eof,process.WaitForExitAsync(),parent.WaitForExitAsync());
    }finally{
-    if(process!=null){try{if(!process.HasExited){if(OperatingSystem.IsMacOS())kill(process.Id,15);else process.Kill(true);try{await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));}catch{if(!process.HasExited)process.Kill(true);}}}finally{process.Dispose();}}
+    if(process!=null){try{if(!process.HasExited){if(OperatingSystem.IsMacOS())kill(process.Id,15);else process.Kill(true);try{await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));}catch{if(!process.HasExited)process.Kill(true);}}}finally{
+#if MOSKOM_TUN_TEST
+     if(diagnosticOut!=null&&diagnosticError!=null){try{var logs=await Task.WhenAll(diagnosticOut,diagnosticError).WaitAsync(TimeSpan.FromSeconds(3));var file=Environment.GetEnvironmentVariable("MOSKOM_TUN_TEST_LOG");if(!string.IsNullOrEmpty(file))await File.AppendAllTextAsync(file,string.Join("\n",logs));}catch{}}
+#endif
+     process.Dispose();}}
     job?.Dispose();try{Directory.Delete(directory,true);}catch{}
    }
   }

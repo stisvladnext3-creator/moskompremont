@@ -148,9 +148,24 @@ class MoskomIntegrationTest {
             assertFalse(model.uiState.value.isRunning)
         }
         runBlocking(Dispatchers.IO){MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET,mutableSetOf("com.android.settings"))}
+        dispatch(MoskomAction.Mode("apps"))
+        val systemIntent=Intent(android.net.VpnService.SERVICE_INTERFACE).setClassName(context,"com.v2ray.ang.service.CoreVpnService")
+        val readyFile=File(context.filesDir,"moskom-vpn-preflight-ready");readyFile.delete()
+        androidx.core.content.ContextCompat.startForegroundService(context,Intent(systemIntent).putExtra("moskom_fixture_setup_delay",2000L))
+        compose.waitUntil(15_000){readyFile.exists()}
+        context.stopService(systemIntent)
+        compose.waitUntil(30_000){!device.executeShellCommand("dumpsys activity services ru.moskompremont.vpn").contains("com.v2ray.ang.service.CoreVpnService")}
+        Thread.sleep(2200);assertFalse(model.uiState.value.isRunning)
+        androidx.core.content.ContextCompat.startForegroundService(context,Intent(systemIntent).putExtra("moskom_fixture_fail_after_tun",true))
+        Thread.sleep(1000)
+        compose.waitUntil(30_000){!device.executeShellCommand("dumpsys activity services ru.moskompremont.vpn").contains("com.v2ray.ang.service.CoreVpnService")}
+        assertFalse(model.uiState.value.isRunning)
         dispatch(MoskomAction.Mode("except_ru"))
         // Both new policies must also start and tear down the real Android VPN daemon.
         dispatch(MoskomAction.Mode("apps"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        repeat(2){androidx.core.content.ContextCompat.startForegroundService(context,systemIntent)}
+        Thread.sleep(500);assertTrue(model.uiState.value.isRunning)
+        assertEquals(1,device.executeShellCommand("ip -o link show").lineSequence().count{it.contains(": tun")})
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         dispatch(MoskomAction.Mode("services"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
