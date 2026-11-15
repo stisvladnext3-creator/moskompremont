@@ -26,7 +26,17 @@
     if (!response.ok) { if (response.status === 401 && user) signedOut(); const e = Error(result.error || 'Ошибка запроса'); e.status = response.status; throw e; }
     if (result.csrf) csrf = result.csrf; return result;
   }
-  function authTab(register) { $('login-form').hidden = register; $('register-form').hidden = !register; $('login-tab').setAttribute('aria-pressed', String(!register)); $('register-tab').setAttribute('aria-pressed', String(register)); message(''); }
+  const passwordToggles = [];
+  function maskPasswords() { for (const { input, toggle } of passwordToggles) { input.type = 'password'; toggle.textContent = 'Показать'; toggle.setAttribute('aria-label', 'Показать пароль'); toggle.setAttribute('aria-pressed', 'false'); } }
+  for (const action of ['login', 'register']) {
+    const form = $(action + '-form'), input = form.elements.password;
+    input.id = action + '-password';
+    const row = el('div', null, 'account-password-row'), toggle = el('button', 'Показать', 'account-secondary account-password-toggle');
+    input.before(row); row.append(input, toggle); toggle.type = 'button'; toggle.setAttribute('aria-controls', input.id); toggle.setAttribute('aria-label', 'Показать пароль'); toggle.setAttribute('aria-pressed', 'false');
+    toggle.addEventListener('click', event => { event.preventDefault(); const visible = input.type === 'password'; input.type = visible ? 'text' : 'password'; toggle.textContent = visible ? 'Скрыть' : 'Показать'; toggle.setAttribute('aria-label', visible ? 'Скрыть пароль' : 'Показать пароль'); toggle.setAttribute('aria-pressed', String(visible)); });
+    passwordToggles.push({ input, toggle }); form.addEventListener('reset', maskPasswords);
+  }
+  function authTab(register) { maskPasswords(); $('login-form').hidden = register; $('register-form').hidden = !register; $('login-tab').setAttribute('aria-pressed', String(!register)); $('register-tab').setAttribute('aria-pressed', String(register)); message(''); }
   $('login-tab').onclick = () => authTab(false); $('register-tab').onclick = () => authTab(true);
   $('has-subscriptions').onchange = e => { $('registration-subscriptions').hidden = !e.target.checked; $('existing-subscriptions').disabled = !e.target.checked; $('existing-subscriptions').required = e.target.checked; };
   for (const action of ['login', 'register']) $(action + '-form').onsubmit = event => {
