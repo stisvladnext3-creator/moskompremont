@@ -13,7 +13,7 @@ public static class MoskomWebsiteViews
     private static Window Window(string title, double height)
     {
         var window = new Window { Title = title, Icon = MoskomBrand.Icon(), Width = 470, Height = height, MinWidth = 400, MinHeight = 350, Background = MoskomBrand.Background, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        MoskomBrand.Style(window.Styles); return window;
+        MoskomBrand.StyleWindow(window); return window;
     }
     private static void OpenCabinet() => Process.Start(new ProcessStartInfo(new Uri(MoskomWebsiteClient.Site, "account.html").AbsoluteUri) { UseShellExecute = true });
 

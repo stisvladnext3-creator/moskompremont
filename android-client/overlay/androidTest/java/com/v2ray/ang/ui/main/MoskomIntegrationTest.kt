@@ -231,7 +231,18 @@ class MoskomIntegrationTest {
         val tunnels=Regex("InterfaceName:\\s*(tun[0-9]+)").findAll(currentNetworks).map{it.groupValues[1]}.toSet()
         assertEquals(currentNetworks,1,tunnels.size)
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
-        dispatch(MoskomAction.Mode("services"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        dispatch(MoskomAction.Mode("services"))
+        runBlocking(Dispatchers.IO) {
+            val result=com.v2ray.ang.core.CoreConfigManager.getV2rayConfig(context,MmkvManager.getSelectServer().orEmpty());assertTrue(result.errorMessage,result.status)
+            val config=com.google.gson.JsonParser.parseString(result.content).asJsonObject
+            val servers=config.getAsJsonObject("dns").getAsJsonArray("servers")
+            assertTrue("No catch-all proxy DNS in selected-services mode",servers.none{it.isJsonPrimitive})
+            val fallback=servers.map{it.asJsonObject}.filter{it.get("tag")?.asString?.startsWith("moskom-direct-fallback-")==true}
+            assertTrue("Expected direct DNS fallback for ordinary sites",fallback.isNotEmpty())
+            val tags=fallback.map{it.get("tag").asString}.toSet()
+            assertTrue(config.getAsJsonObject("routing").getAsJsonArray("rules").map{it.asJsonObject}.any{rule->rule.get("outboundTag")?.asString=="direct"&&rule.getAsJsonArray("inboundTag")?.any{it.asString in tags}==true})
+        }
+        click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         // Test production bank/transport UID exclusions with installed code-free
         // package fixtures; no real bank app, account or third-party APK is used.

@@ -10,7 +10,7 @@ public static class MoskomSettingsViews
     private static Window Dialog(Window owner, string title, StackPanel panel, double height = 510)
     {
         var window = new Window { Title = title + " · МосКомпРемонт", Icon = MoskomBrand.Icon(), Width = 490, Height = height, MinWidth = 400, MinHeight = 350, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = MoskomBrand.Background };
-        MoskomBrand.Style(window.Styles); panel.Margin = new(24); panel.Spacing = 14; window.Content = new ScrollViewer { Content = panel }; return window;
+        MoskomBrand.StyleWindow(window); panel.Margin = new(24); panel.Spacing = 14; window.Content = new ScrollViewer { Content = panel }; return window;
     }
     private static string Message(Exception error) => error is InvalidOperationException or IOException ? error.Message : "Не удалось выполнить обновление. Проверьте интернет и повторите попытку.";
     private static IProgress<MoskomTransferProgress> Progress(TextBlock label)

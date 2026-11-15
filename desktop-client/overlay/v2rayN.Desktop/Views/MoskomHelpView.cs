@@ -13,7 +13,7 @@ public static class MoskomHelpView
             Width = 600, Height = 730, MinWidth = 380, MinHeight = 420,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = MoskomBrand.Background
         };
-        MoskomBrand.Style(window.Styles);
+        MoskomBrand.StyleWindow(window);
         var root = new Grid { RowDefinitions = new("Auto,*,Auto"), Margin = new(24), RowSpacing = 18 };
         var heading = new StackPanel { Spacing = 8 };
         heading.Children.Add(MoskomBrand.Heading("Справка"));

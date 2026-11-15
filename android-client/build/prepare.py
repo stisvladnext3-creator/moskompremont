@@ -38,6 +38,21 @@ edit(manifest,'android:allowBackup="true"','android:allowBackup="false"')
 for p in res.glob('values*/strings.xml'):
  s=p.read_text();s=re.sub(r'(<string name="app_name"[^>]*>).*?(</string>)',r'\1МосКомпРемонт VPN\2',s);p.write_text(s)
 write_resources(root,own)
+edit('V2rayNG/app/src/main/java/com/v2ray/ang/core/CoreConfigManager.kt',
+'''        remoteDns.forEach { servers.add(it) }
+
+        v2rayConfig.dns = V2rayConfig.DnsBean(''',
+'''        val fallback = com.v2ray.ang.handler.moskom.MoskomSelective.dnsFallback(
+            MmkvManager.decodeSettingsString("moskom_route_mode").orEmpty(), remoteDns, domesticDns)
+        fallback.servers.forEachIndexed { index, address ->
+            if (fallback.direct) {
+                val tag = "moskom-direct-fallback-$index"
+                servers.add(V2rayConfig.DnsBean.ServersBean(address = address, tag = tag))
+                domesticDnsTags.add(tag)
+            } else servers.add(address)
+        }
+
+        v2rayConfig.dns = V2rayConfig.DnsBean(''')
 for folder in ['main/assets/moskom','test/resources']:
  target=root/'V2rayNG/app/src'/folder/'service-catalog.json';target.parent.mkdir(parents=True,exist_ok=True)
  shutil.copyfile(own.parent/'shared/service-catalog.json',target)

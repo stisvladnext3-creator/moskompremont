@@ -8,7 +8,13 @@ data class MoskomInstalledApp(val id:String,val name:String)
 data class MoskomServiceChoice(val id:String="",val name:String="",val domains:List<String> = emptyList(),val ips:List<String> = emptyList(),val mediaIps:List<String> = emptyList(),val mediaPorts:List<String> = emptyList())
 data class MoskomServiceCatalog(val version:Int=0,val services:List<MoskomServiceChoice> = emptyList())
 data class MoskomChoiceFilter(val query:String="",val apps:List<MoskomInstalledApp> = emptyList(),val services:List<MoskomServiceChoice> = emptyList())
+data class MoskomDnsFallback(val servers:List<String>,val direct:Boolean)
 object MoskomSelective {
+    fun dnsFallback(mode:String,remote:List<String>,domestic:List<String>):MoskomDnsFallback {
+        val direct=mode=="services";val servers=if(direct)domestic else remote
+        require(servers.isNotEmpty())
+        return MoskomDnsFallback(servers,direct)
+    }
     fun searchQuery(value:String):String = value.take(200)
     fun filterChoices(query:String,apps:List<MoskomInstalledApp>,services:List<MoskomServiceChoice>):MoskomChoiceFilter {
         val bounded=searchQuery(query);val needle=bounded.trim()

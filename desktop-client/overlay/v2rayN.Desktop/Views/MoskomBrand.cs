@@ -15,6 +15,7 @@ public static class MoskomBrand
     };
     public static Bitmap Logo() => new(Avalonia.Platform.AssetLoader.Open(new Uri("avares://v2rayN/Assets/moskom-logo.png")));
     public static WindowIcon Icon() => new(Avalonia.Platform.AssetLoader.Open(new Uri("avares://v2rayN/Assets/moskom-vpn.ico")));
+    public static void StyleWindow(Window window) { Style(window.Styles); MoskomWindowSizing.Attach(window); }
     public static void Style(Styles styles)
     {
         var button = new Avalonia.Styling.Style(s => s.OfType<Button>());

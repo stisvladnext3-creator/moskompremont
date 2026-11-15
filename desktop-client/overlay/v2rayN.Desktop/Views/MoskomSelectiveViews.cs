@@ -6,7 +6,7 @@ public static class MoskomSelectiveViews {
  public static Task ServicesAsync(Window owner)=>ShowAsync(owner,false);
  private static async Task ShowAsync(Window owner,bool applications){
   var window=new Window{Title=applications?"Приложения · МосКомпРемонт":"Сервисы · МосКомпРемонт",Width=530,Height=650,MinWidth=400,MinHeight=400,WindowStartupLocation=WindowStartupLocation.CenterOwner,Background=MoskomBrand.Background,Icon=MoskomBrand.Icon()};
-  MoskomBrand.Style(window.Styles);var root=new Grid{Margin=new(22),RowDefinitions=new("Auto,Auto,Auto,*,Auto"),RowSpacing=12};
+  MoskomBrand.StyleWindow(window);var root=new Grid{Margin=new(22),RowDefinitions=new("Auto,Auto,Auto,*,Auto"),RowSpacing=12};
   var heading=MoskomBrand.Heading(applications?"Приложения":"Сервисы");root.Children.Add(heading);
   var hint=new TextBlock{Text=applications?"Выберите запущенные приложения. Список и выбор хранятся только на этом устройстве. Для браузера могут понадобиться его сетевые помощники.":"Выберите сервисы для режима «Выбранные сервисы». Списки используют домены и адреса; общие серверы могут совпадать. Для полного охвата звонкового приложения выберите его в «Приложениях».",TextWrapping=TextWrapping.Wrap,Foreground=Brush.Parse("#A7B7D0"),FontSize=12};Grid.SetRow(hint,1);root.Children.Add(hint);
   var tools=new Grid{ColumnDefinitions=new("*,Auto"),ColumnSpacing=8};var search=new TextBox{Name=applications?"MoskomAppsSearch":"MoskomServicesSearch",Watermark=applications?"Поиск приложений…":"Поиск сервисов…"};var refresh=new Button{Content="Обновить",IsVisible=applications};tools.Children.Add(search);Grid.SetColumn(refresh,1);tools.Children.Add(refresh);Grid.SetRow(tools,2);root.Children.Add(tools);

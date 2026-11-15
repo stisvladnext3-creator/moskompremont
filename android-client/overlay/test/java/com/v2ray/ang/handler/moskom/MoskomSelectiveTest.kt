@@ -3,6 +3,12 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class MoskomSelectiveTest {
+    @Test fun `unselected service DNS uses direct fallback and app VPN DNS stays remote`() {
+        val remote=listOf("https://1.1.1.1/dns-query");val direct=listOf("77.88.8.8")
+        assertEquals(MoskomDnsFallback(direct,true),MoskomSelective.dnsFallback("services",remote,direct))
+        for(mode in listOf("apps","all","except_ru","blocked"))assertEquals(MoskomDnsFallback(remote,false),MoskomSelective.dnsFallback(mode,remote,direct))
+        assertThrows(IllegalArgumentException::class.java){MoskomSelective.dnsFallback("services",remote,emptyList())}
+    }
     private fun catalog()=javaClass.getResourceAsStream("/service-catalog.json")!!.bufferedReader().use{MoskomSelective.catalog(it.readText())}
     @Test fun `choice search handles names packages domains case whitespace and empty results`() {
         val apps=listOf(MoskomInstalledApp("com.example.calc","Калькулятор"),MoskomInstalledApp("com.example.browser","Browser"))

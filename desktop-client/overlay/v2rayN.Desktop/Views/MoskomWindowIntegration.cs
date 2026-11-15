@@ -13,13 +13,18 @@ public partial class MainWindow
         if (advanced is Control control) root.Children.Add(new ContentControl { Content = control, IsVisible = false, IsEnabled = false });
         root.Children.Add(new MoskomLauncherView(this, vm)); Content = root;
         Title = MoskomLauncherRuntime.DisplayName;
-        Icon = MoskomBrand.Icon(); Background = MoskomBrand.Background; Width = 520; Height = 900; MinWidth = 460; MinHeight = 720;
+        Icon = MoskomBrand.Icon(); Background = MoskomBrand.Background; Width = 520; Height = 900; MinWidth = 460; MinHeight = 400;
+        MoskomWindowSizing.Attach(this);
         if (MoskomLauncherRuntime.SmokeTest)
         {
             Opened += (_, _) => DispatcherTimer.RunOnce(async () =>
             {
                 try
                 {
+                    // Exercise a real compact desktop window, including native
+                    // title-bar geometry; controls remain in the scrollable body.
+                    Height=Math.Min(Height,480);MoskomWindowSizing.Fit(this);await Task.Delay(150);
+                    if(!MoskomWindowSizing.IsOnScreen(this))throw new InvalidOperationException("Window frame escaped the working area on a compact display.");
                     // Exercise a real subscription import against loopback only. No live keys/network.
                     var uris = string.Join("\n", Enumerable.Range(1, 30).Select(i => $"vless://11111111-1111-4111-8111-111111111111@127.0.0.1:{4400 + i}?encryption=none&security=none&type=tcp#TestServer-{i}"));
                     var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0); listener.Start();
@@ -53,6 +58,7 @@ public partial class MainWindow
                     var report = new
                     {
                         title = Title,
+                        windowFitsWorkingArea = MoskomWindowSizing.IsOnScreen(this),
                         controls = this.GetVisualDescendants().OfType<Control>().Select(c => c.Name).Where(n => n != null && n.StartsWith("Moskom")).Distinct().ToArray(),
                         routing = vm.StatusBarViewModel.RoutingItems.Select(r => r.Remarks).ToArray(),
                         profiles = vm.StatusBarViewModel.Servers.Count,

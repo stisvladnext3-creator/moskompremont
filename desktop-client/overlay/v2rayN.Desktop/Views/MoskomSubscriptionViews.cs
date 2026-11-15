@@ -17,7 +17,7 @@ public static class MoskomSubscriptionViews
         var close = new Button { Name = "MoskomSubscriptionsClose", Content = "Закрыть", MinHeight = 42, HorizontalAlignment = HorizontalAlignment.Stretch };
         panel.Children.Add(list); panel.Children.Add(status); panel.Children.Add(close);
         var window = new Window { Title = "Управление подписками · МосКомпРемонт", Icon = MoskomBrand.Icon(), Width = 510, Height = 580, MinWidth = 400, MinHeight = 350, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = MoskomBrand.Background, Content = new ScrollViewer { Content = panel } };
-        MoskomBrand.Style(window.Styles); close.Click += (_, _) => window.Close();
+        MoskomBrand.StyleWindow(window); close.Click += (_, _) => window.Close();
         async Task Refresh()
         {
             list.Children.Clear();
@@ -63,7 +63,7 @@ public static class MoskomSubscriptionViews
         var cancel = new Button { Name = "MoskomCancelSubscriptionDelete", Content = "Отмена", MinHeight = 42, HorizontalAlignment = HorizontalAlignment.Stretch };
         panel.Children.Add(remove); panel.Children.Add(cancel);
         var window = new Window { Title = "Удалить подписку? · МосКомпРемонт", Icon = MoskomBrand.Icon(), Width = 460, Height = 360, MinWidth = 380, MinHeight = 300, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = MoskomBrand.Background, Content = new ScrollViewer { Content = panel } };
-        MoskomBrand.Style(window.Styles); remove.Click += (_, _) => window.Close(true); cancel.Click += (_, _) => window.Close(false);
+        MoskomBrand.StyleWindow(window); remove.Click += (_, _) => window.Close(true); cancel.Click += (_, _) => window.Close(false);
         return await window.ShowDialog<bool>(owner);
     }
 }
