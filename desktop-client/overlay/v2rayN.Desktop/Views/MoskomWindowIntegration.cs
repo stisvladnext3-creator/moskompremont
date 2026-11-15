@@ -38,6 +38,8 @@ public partial class MainWindow
                     var imported = vm.StatusBarViewModel.Servers.Count == 30;
                     await MoskomLauncherRuntime.ImportAsync("vless://22222222-2222-4222-8222-222222222222@127.0.0.1:5443?encryption=none&security=none&type=tcp#Standalone-Test");
                     var allServersVisible = vm.StatusBarViewModel.Servers.Count == 31;
+                    if (!allServersVisible || !(await MoskomLauncherRuntime.SubscriptionGroupsAsync()).Any(g => g.Id == "" && g.Servers.Count == 1))
+                        throw new InvalidOperationException("A manual key import was lost while subscription selection was refreshing.");
                     if (allServersVisible) { await MoskomLauncherRuntime.SelectServerAsync(vm.StatusBarViewModel.Servers.Last()); await MoskomLauncherRuntime.SelectServerAsync(vm.StatusBarViewModel.Servers.First()); }
                     var routes = await AppManager.Instance.RoutingItems();
                     if (routes.Count >= 2) { await MoskomLauncherRuntime.SelectRoutingAsync(routes[1]); await MoskomLauncherRuntime.SelectRoutingAsync(routes[0]); }

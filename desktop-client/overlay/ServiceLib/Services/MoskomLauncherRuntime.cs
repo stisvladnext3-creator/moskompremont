@@ -174,7 +174,9 @@ public static partial class MoskomLauncherRuntime
     }
     public static async Task ImportAsync(string text)
     {
-        if (!await Operations.WaitAsync(0)) return;
+        // A list refresh can still own the gate after the preceding action has
+        // rendered. A requested import must wait rather than silently disappear.
+        await Operations.WaitAsync(Lifetime.Token);
         try
         {
             if (text.IsNullOrEmpty() || text.Length > 1024 * 1024) throw new InvalidOperationException("Скопируйте ссылку-подписку или ключ подключения.");
