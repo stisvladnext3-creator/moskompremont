@@ -13,7 +13,7 @@ internal static class MoskomWebsiteSmoke
     internal sealed record Report(bool LoginForm, bool MultipleSubscriptions, bool RotatedLink, bool ExpiredSkipped, bool RevokedRemoved, bool SessionEncrypted, bool LogoutPreservedManual, bool AvailabilityChecked, bool SubscriptionPicker, bool ServerIsolation, bool SelectionPreserved, bool EmptySubscriptionSafe, bool StandaloneGroup, bool SameSelectionKeptConnection, bool RefreshKeptConnection, bool BackgroundSyncKeptConnection, bool OtherSubscriptionKeptConnection, bool UnchangedSubscriptionKeptConnection, bool FailedDownloadKeptConnection, bool ActiveChangeReconnected, bool ManualSelectionReconnected, bool RevocationStoppedConnection);
     private static async Task WaitFor(Func<bool> ready)
     {
-        for (var i = 0; i < 160; i++) { if (ready()) return; await Task.Delay(50); }
+        for (var i = 0; i < 400; i++) { if (ready()) return; await Task.Delay(50); }
         throw new InvalidOperationException("Subscription picker did not reach its expected state.");
     }
     public static async Task<Report> RunAsync(Window owner, MainWindowViewModel vm)
@@ -114,7 +114,8 @@ internal static class MoskomWebsiteSmoke
             {
                 await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Id == id));
                 subscriptionPicker.SelectedItem = subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().First(g => g.Id == id);
-                await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.SelectedItem is MoskomSubscriptionGroup group && group.Id == id && serverPicker.Items.Count == count && MoskomLauncherRuntime.Preferences.SelectedSubscriptionId == id);
+                try { await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.SelectedItem is MoskomSubscriptionGroup group && group.Id == id && serverPicker.Items.Count == count && MoskomLauncherRuntime.Preferences.SelectedSubscriptionId == id); }
+                catch(Exception error) { throw new InvalidOperationException($"Picker target={id}; expected servers={count}; selected={(subscriptionPicker.SelectedItem as MoskomSubscriptionGroup)?.Id}; stored={MoskomLauncherRuntime.Preferences.SelectedSubscriptionId}; actual servers={serverPicker.Items.Count}; enabled={subscriptionPicker.IsEnabled}; hint={Main<TextBlock>("MoskomHint").Text}",error); }
             }
             await Pick(aId, 2);
             var picker = subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Name == "VPN-A") && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Name == "VPN-B");

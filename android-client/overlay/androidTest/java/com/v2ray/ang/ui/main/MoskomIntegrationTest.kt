@@ -165,7 +165,11 @@ class MoskomIntegrationTest {
         dispatch(MoskomAction.Mode("apps"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
         repeat(2){androidx.core.content.ContextCompat.startForegroundService(context,systemIntent)}
         Thread.sleep(500);assertTrue(model.uiState.value.isRunning)
-        assertEquals(1,device.executeShellCommand("ip -o link show").lineSequence().count{it.contains(": tun")})
+        val connectivity=device.executeShellCommand("dumpsys connectivity")
+        assertTrue(connectivity,connectivity.contains("Current Networks:"))
+        val currentNetworks=connectivity.substringAfter("Current Networks:").substringBefore("Network Requests:")
+        val tunnels=Regex("InterfaceName:\\s*(tun[0-9]+)").findAll(currentNetworks).map{it.groupValues[1]}.toSet()
+        assertEquals(currentNetworks,1,tunnels.size)
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         dispatch(MoskomAction.Mode("services"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
