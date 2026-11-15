@@ -9,6 +9,7 @@ trap collect_review EXIT
 # Android 15 Google APIs' Pixel Launcher can ANR during headless boot and cover the VPN consent.
 # Only the CI launcher is disabled. Remove after an emulator image passes cold boot without this ANR.
 adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher || true
+python "$GITHUB_WORKSPACE/android-client/build/install-domestic-fixtures.py"
 cd "$RUNNER_TEMP/moskom-android/V2rayNG"
 if ! ./gradlew :app:connectedFdroidDebugAndroidTest --stacktrace; then
   python - <<'PY'

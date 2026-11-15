@@ -35,4 +35,30 @@ class MoskomSelectiveTest {
         assertTrue(MoskomSelective.nativeAppPolicyAllowed(false,true,0))
     }
 
+    @Test fun `domestic apps bypass only direct modes and preserve explicit app selection`() {
+        val installed=setOf("com.punicapp.whoosh","ru.yandex.yandexmaps","ru.yandex.searchplugin","com.sberbankmobile","com.idamob.tinkoff.android","foreign.app")
+        for(mode in listOf("blocked","except_ru","services"))assertEquals(installed-"foreign.app",MoskomSelective.domesticBypass(mode,installed))
+        for(mode in listOf("all","apps","invalid"))assertTrue(MoskomSelective.domesticBypass(mode,installed).isEmpty())
+        assertTrue(MoskomSelective.domesticBypass("blocked",emptySet()).isEmpty())
+        assertFalse(MoskomSelective.domesticPackages.contains("com.yandex.browser"))
+    }
+
+    @Test fun `domestic route and DNS domain priority precedes preset ads and proxy rules`() {
+        val old=MoskomSelective.services(setOf("youtube"),catalog())
+        val bundle="moskom-bundle-11111111-1111-4111-8111-111111111111"
+        for(mode in listOf("blocked","except_ru","services")) {
+            val rules=MoskomSelective.domesticPriority(mode,bundle,old)
+            assertEquals("direct",rules.first().outboundTag)
+            for(tag in listOf("category-bank-ru","yandex","whoosh"))assertTrue(rules.first().domain!!.contains("ext:$bundle/geosite.dat:$tag"))
+            assertTrue(rules.first().domain!!.contains("domain:ya.ru"));assertEquals(old,rules.drop(1))
+            assertEquals("direct",rules.last().outboundTag)
+        }
+        assertEquals(old,MoskomSelective.domesticPriority("all",bundle,old))
+        val ads=com.v2ray.ang.dto.entities.RulesetItem(id="ads",domain=listOf("ext:$bundle/geosite.dat:category-ads-all"),outboundTag="block")
+        val custom=com.v2ray.ang.dto.entities.RulesetItem(id="custom",domain=listOf("domain:personal.example"),outboundTag="block")
+        val filtered=MoskomSelective.domesticPriority("blocked",bundle,mutableListOf(ads,custom))
+        assertFalse(filtered.any{it.id=="ads"});assertTrue(filtered.any{it.id=="custom"})
+        assertThrows(IllegalArgumentException::class.java){MoskomSelective.domesticPriority("blocked","../foreign",old)}
+    }
+
 }

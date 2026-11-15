@@ -7,6 +7,7 @@ import android.os.Build
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.moskom.MoskomSelective
 import com.v2ray.ang.util.LogUtil
 import java.io.File
 import kotlinx.coroutines.*
@@ -22,21 +23,27 @@ class MoskomVpnPreflight(context:Context) {
     private val scope=CoroutineScope(owner+Dispatchers.Main.immediate)
     private var work:Job?=null
     @Volatile private var closed=false
-    fun begin(intent:Intent?,start:()->Unit,reject:()->Unit) {
+    fun begin(intent:Intent?,start:(Set<String>)->Unit,reject:()->Unit) {
         if(closed||work?.isActive==true)return
         work=scope.launch {
             try {
-                val ready=withContext(Dispatchers.IO) {
+                val policy=withContext(Dispatchers.IO) {
                     // Test the Android-owned stop-during-setup path without delaying release builds.
                     val pause=if(BuildConfig.DEBUG)intent?.getLongExtra("moskom_fixture_setup_delay",0)?.coerceIn(0,2000)?:0 else 0
                     if(pause>0){val marker=File(app.filesDir,"moskom-vpn-preflight-ready");marker.writeText("ready");try{delay(pause)}finally{marker.delete()}}
-                    val packages=MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty().filter{it!=BuildConfig.APPLICATION_ID}
-                    MmkvManager.decodeSettingsString("moskom_route_mode")=="apps"&&MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY)&&!MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS)&&packages.any(::installed)
+                    val mode=MmkvManager.decodeSettingsString("moskom_route_mode").orEmpty()
+                    if(MoskomSelective.directDomestic(mode)) {
+                        val bypass=MoskomSelective.domesticBypass(mode,MoskomSelective.domesticPackages.filter(::installed).toSet())
+                        true to bypass
+                    } else {
+                        val packages=MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty().filter{it!=BuildConfig.APPLICATION_ID}
+                        (mode=="apps"&&MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY)&&!MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS)&&packages.any(::installed)) to emptySet()
+                    }
                 }
                 ensureActive()
-                if(!closed){if(ready)start()else reject()}
+                if(!closed){if(policy.first)start(policy.second)else reject()}
             }catch(cancelled:CancellationException){throw cancelled}
-            catch(error:Exception){LogUtil.e(AppConfig.TAG,"VPN selective-app package preflight failed",IllegalStateException(error.javaClass.simpleName));if(!closed)reject()}
+            catch(error:Exception){LogUtil.e(AppConfig.TAG,"VPN app-policy package preflight failed",IllegalStateException(error.javaClass.simpleName));if(!closed)reject()}
         }
     }
     // Android 15 Builder.verifyApp ignores a null IPackageManager application result.

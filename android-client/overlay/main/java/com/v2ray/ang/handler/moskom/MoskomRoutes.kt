@@ -64,11 +64,11 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
         apply(mode(),dns(),customDns())
     }
     private fun rules(bundle: File,mode: String): MutableList<RulesetItem> {
-        if(mode=="services")return MoskomSelective.services(selectedServices(),services())
+        if(mode=="services")return MoskomSelective.domesticPriority(mode,bundle.name,MoskomSelective.services(selectedServices(),services()))
         val index=when(mode){"apps","all"->0;"except_ru"->1;"blocked"->2;else->error("Unknown routing mode")}
         val source=JsonParser.parseString(File(bundle,"route-$index.json").readText()).asJsonArray
         require(source.size()>0)
-        return source.map { element ->
+        val rules=source.map { element ->
             val item=gson.fromJson(element,RulesetItem::class.java)
             fun geo(value:String)=when {
                 value.startsWith("geosite:")->"ext:${bundle.name}/geosite.dat:${value.removePrefix("geosite:")}"
@@ -77,6 +77,7 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
             }
             item.id=UUID.randomUUID().toString();item.domain=item.domain?.map(::geo);item.ip=item.ip?.map(::geo);item
         }.toMutableList()
+        return MoskomSelective.domesticPriority(mode,bundle.name,rules)
     }
     fun apply(mode: String, dns: String, custom: String="") {
         val next=rules(active,mode);val simple=read(File(active,"simple_dns.json"))

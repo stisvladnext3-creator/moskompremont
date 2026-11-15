@@ -51,6 +51,39 @@ class MoskomIntegrationTest {
         allow!!.click()
         assertTrue("Android VPN consent must close after approval",device.wait(Until.gone(By.pkg("com.android.vpndialogs")),15_000))
     }
+    private fun assertVpnUid(packageName:String,included:Boolean) {
+        val listing=device.executeShellCommand("cmd package list packages -U $packageName")
+        val uid=Regex("package:"+Regex.escape(packageName)+"\\s+uid:(\\d+)").find(listing)?.groupValues?.get(1)?.toInt()
+        assertNotNull("Missing installed fixture UID: $listing",uid)
+        val networks=device.executeShellCommand("dumpsys connectivity").substringAfter("Current Networks:").substringBefore("Network Requests:")
+        val vpn=networks.lineSequence().firstOrNull{Regex("InterfaceName:\\s*tun[0-9]+").containsMatchIn(it)}
+        assertNotNull("Missing actual VPN network: $networks",vpn)
+        val field=Regex("\\bUids:\\s*<([^>]+)>").find(vpn!!)?.groupValues?.get(1)
+        assertNotNull("VPN must publish its real UID ranges: $vpn",field)
+        val ranges=Regex("(\\d+)(?:-(\\d+))?").findAll(field!!).map{match->
+            val first=match.groupValues[1].toInt();first..(match.groupValues[2].toIntOrNull()?:first)
+        }.toList()
+        assertEquals("VPN UID policy for $packageName ($uid): $vpn",included,ranges.any{uid!! in it})
+    }
+
+    private fun assertDomesticDnsAndRoutes() {
+        runBlocking(Dispatchers.IO) {
+            val result=com.v2ray.ang.core.CoreConfigManager.getV2rayConfig(context,MmkvManager.getSelectServer().orEmpty())
+            assertTrue(result.errorMessage,result.status)
+            val json=com.google.gson.JsonParser.parseString(result.content).asJsonObject
+            val rules=json.getAsJsonObject("routing").getAsJsonArray("rules").map{it.asJsonObject}
+            fun hasDomain(rule:com.google.gson.JsonObject,suffix:String)=rule.getAsJsonArray("domain")?.any{it.asString.endsWith(suffix)}==true
+            val direct=rules.indexOfFirst{it.get("outboundTag")?.asString=="direct"&&hasDomain(it,"whoosh.bike")}
+            val proxy=rules.indexOfFirst{it.get("outboundTag")?.asString=="proxy"&&hasDomain(it,":ru-blocked")}
+            assertTrue("Domestic rule must precede blocked geosites",direct>=0&&proxy>direct)
+            assertTrue(rules.none{it.get("outboundTag")?.asString=="block"&&hasDomain(it,":category-ads-all")})
+            val servers=json.getAsJsonObject("dns").getAsJsonArray("servers").filter{it.isJsonObject}.map{it.asJsonObject}
+            val domestic=servers.firstOrNull{server->server.getAsJsonArray("domains")?.any{it.asString.endsWith("whoosh.bike")}==true}
+            assertNotNull("Domestic apps need their direct DNS domain policy",domestic)
+            val tag=domestic!!.get("tag").asString
+            assertTrue("Domestic DNS must leave through the direct outbound",rules.any{it.get("outboundTag")?.asString=="direct"&&it.getAsJsonArray("inboundTag")?.any{entry->entry.asString==tag}==true})
+        }
+    }
     @Test fun accountGroupsRoutingDnsNativeLifecycleAndRevocation() {
         phase(0)
         device.executeShellCommand("pm grant ru.moskompremont.vpn android.permission.POST_NOTIFICATIONS")
@@ -172,6 +205,27 @@ class MoskomIntegrationTest {
         assertEquals(currentNetworks,1,tunnels.size)
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         dispatch(MoskomAction.Mode("services"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
+        // Test production bank/transport UID exclusions with installed code-free
+        // package fixtures; no real bank app, account or third-party APK is used.
+        dispatch(MoskomAction.Mode("blocked"));assertDomesticDnsAndRoutes()
+        readyFile.delete()
+        androidx.core.content.ContextCompat.startForegroundService(context,Intent(systemIntent).putExtra("moskom_fixture_setup_delay",2000L))
+        compose.waitUntil(15_000){readyFile.exists()};context.stopService(systemIntent)
+        compose.waitUntil(30_000){!device.executeShellCommand("dumpsys activity services ru.moskompremont.vpn").contains("com.v2ray.ang.service.CoreVpnService")}
+        Thread.sleep(2200);assertFalse(model.uiState.value.isRunning)
+        androidx.core.content.ContextCompat.startForegroundService(context,Intent(systemIntent).putExtra("moskom_fixture_fail_after_tun",true))
+        Thread.sleep(1000)
+        compose.waitUntil(30_000){!device.executeShellCommand("dumpsys activity services ru.moskompremont.vpn").contains("com.v2ray.ang.service.CoreVpnService")}
+        assertFalse(model.uiState.value.isRunning)
+        click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        for(id in listOf("com.punicapp.whoosh","ru.yandex.yandexmaps","com.sberbankmobile"))assertVpnUid(id,false)
+        assertVpnUid("com.android.settings",true)
+        repeat(2){androidx.core.content.ContextCompat.startForegroundService(context,systemIntent)}
+        Thread.sleep(500);assertTrue(model.uiState.value.isRunning);assertVpnUid("com.punicapp.whoosh",false)
+        click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning};context.stopService(systemIntent)
+        dispatch(MoskomAction.Mode("all"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        assertVpnUid("com.punicapp.whoosh",true)
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         dispatch(MoskomAction.Mode("except_ru"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
         // The deletion handler rejects account subscriptions before stopping VPN.
