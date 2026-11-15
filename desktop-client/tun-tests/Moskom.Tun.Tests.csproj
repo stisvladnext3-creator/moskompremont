@@ -6,5 +6,6 @@
 <Compile Include="../overlay/ServiceLib/Services/MoskomNetworkDns.cs" Link="NetworkDns.cs"/>
 <Compile Include="../../macos-client/overlay/ServiceLib/Services/MoskomMacNative.cs" Link="MacNative.cs"/>
 <Compile Include="$(UpstreamSource)/v2rayN/ServiceLib/Services/WindowsJobService.cs" Link="WindowsJob.cs"/>
+<None Include="../../shared/service-catalog.json" Link="service-catalog.json" CopyToOutputDirectory="PreserveNewest"/>
 </ItemGroup>
 </Project>

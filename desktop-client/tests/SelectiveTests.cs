@@ -24,6 +24,7 @@ public sealed class SelectiveTests {
   foreach(var tag in new[]{"direct-dns-1","local-local"}){var server=servers.Single(s=>s["tag"]!.GetValue<string>()==tag);Assert.Equal("192.168.88.1",server["server"]!.GetValue<string>());Assert.Null(server["detour"]);}
   var remote=servers.Single(s=>s["tag"]!.GetValue<string>()=="remote-dns-1");Assert.Equal("1.1.1.1",remote["server"]!.GetValue<string>());Assert.Equal("proxy",remote["detour"]!.GetValue<string>());
   Assert.Equal("direct-dns-1",dns["final"]!.GetValue<string>());Assert.Contains("youtube.com",dns["rules"]!.ToJsonString());Assert.DoesNotContain("yandex.ru",dns["rules"]!.ToJsonString());
+  Assert.False(result["inbounds"]!.AsArray().OfType<JsonObject>().Single(n=>n["type"]!.GetValue<string>()=="tun")["strict_route"]!.GetValue<bool>());
  }
 
 }

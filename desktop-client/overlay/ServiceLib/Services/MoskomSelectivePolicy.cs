@@ -39,7 +39,10 @@ public static class MoskomSelectivePolicy {
   config["inbounds"]=new JsonArray(
    new JsonObject{["type"]="mixed",["tag"]="moskom-local",["listen"]="127.0.0.1",["listen_port"]=port},
    new JsonObject{["type"]="socks",["tag"]="moskom-probe",["listen"]="127.0.0.1",["listen_port"]=port+3},
-   new JsonObject{["type"]="tun",["tag"]="moskom-tun",["interface_name"]=tunName,["address"]=Strings(["172.19.0.1/30","fdfe:dcba:9876::1/126"]),["mtu"]=1500,["auto_route"]=true,["strict_route"]=true,["stack"]="system"});
+   new JsonObject{["type"]="tun",["tag"]="moskom-tun",["interface_name"]=tunName,["address"]=Strings(["172.19.0.1/30","fdfe:dcba:9876::1/126"]),["mtu"]=1500,["auto_route"]=true,["strict_route"]=false,["stack"]="system"});
+  // Split routing must not install a device-wide DNS firewall. On Windows,
+  // strict_route blocks other interfaces' port 53, including local DNS filters
+  // and the ordinary resolver used by apps that should stay outside the VPN.
   var rules=new JsonArray(new JsonObject{["action"]="sniff"},new JsonObject{["protocol"]="dns",["action"]="hijack-dns"},new JsonObject{["inbound"]=Strings(["moskom-probe"]),["outbound"]="proxy"});
   if(settings.Mode=="apps") {
    var paths=new List<string>();var regex=new List<string>();

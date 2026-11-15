@@ -7,6 +7,8 @@ using ServiceLib.Services;
 
 internal static partial class Program
 {
+    [System.Runtime.InteropServices.DllImport("dnsapi.dll", EntryPoint="DnsFlushResolverCache")]
+    private static extern bool FlushWindowsDnsCache();
     private const string PublicHost = "raw.githubusercontent.com";
     private static IReadOnlyList<string> _networkDns = [];
     private static IPAddress _directAddress = IPAddress.None;
@@ -29,7 +31,11 @@ internal static partial class Program
         // Schannel's external CRL lookups are outside this DNS fixture. Keep CA
         // and hostname verification enabled; omit only online CRL retrieval here.
         if (!Mac) start.ArgumentList.Add("--ssl-no-revoke");
-        foreach (var arg in new[] { "--silent", "--show-error", "--fail", "--noproxy", "*", "--proxy", "", "--connect-timeout", "8", "--max-time", "25", "--resolve", PublicHost + ":443:" + address,
+        // Exercise the real OS resolver. An explicit --resolve previously hid
+        // failures between Windows/macOS DNS and the configured TUN DNS server.
+        if(!Mac) Check(FlushWindowsDnsCache(),"Could not clear the OS DNS cache for the routing regression");
+        else { using var flush=Process.Start(new ProcessStartInfo("/usr/bin/dscacheutil","-flushcache"){UseShellExecute=false})!;await flush.WaitForExitAsync();Check(flush.ExitCode==0,"Could not flush Mac DNS cache"); }
+        foreach (var arg in new[] { "--ipv4", "--silent", "--show-error", "--fail", "--noproxy", "*", "--proxy", "", "--connect-timeout", "8", "--max-time", "25",
             "https://" + PublicHost + "/stisvladnext3-creator/moskompremont/main/shared/service-catalog.json" }) start.ArgumentList.Add(arg);
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEndAsync(); var errors = process.StandardError.ReadToEndAsync();

@@ -26,8 +26,8 @@ internal static partial class Program {
  static byte[] Config(int socks,int port,string selected,bool service){
   var core=new JsonObject{["outbounds"]=new JsonArray(new JsonObject{["type"]="socks",["tag"]="proxy",["server"]="127.0.0.1",["server_port"]=socks,["version"]="5"},new JsonObject{["type"]="direct",["tag"]="direct"})};
   core["dns"]=JsonNode.Parse("""{"servers":[{"tag":"direct-dns-1","type":"udp","server":"77.88.8.8"},{"tag":"local-local","type":"udp","server":"77.88.8.8"},{"tag":"remote-dns-1","type":"tcp","server":"192.0.2.53","server_port":53,"detour":"proxy"}]}""");
-  var prefs=new MoskomSelectiveSettings{Mode=service?"services":"apps",Apps=[new(selected,"Selected curl",selected)],Services=["youtube"]};
-  var catalog=new MoskomServiceCatalog{Version=1,Services=[new(){Id="youtube",Name="YouTube",Domains=["domain:youtube.com"]}]};
+  var prefs=new MoskomSelectiveSettings{Mode=service?"services":"apps",Apps=[new(selected,"Selected curl",selected)],Services=["telegram","whatsapp","chatgpt","youtube","speedtest"]};
+  var catalog=MoskomServiceCatalog.Read(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"service-catalog.json")));
   var config=MoskomSelectivePolicy.Configure(core,prefs,catalog,port,Mac?"utun177":"MoskomVPN-test",Mac,_networkDns);config["log"]!["level"]="debug";return JsonSerializer.SerializeToUtf8Bytes(config);
  }
  static async Task Run(string output){
