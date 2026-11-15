@@ -2,6 +2,9 @@ package com.v2ray.ang.handler.moskom
 
 import com.google.gson.Gson
 import com.v2ray.ang.dto.entities.RulesetItem
+import java.net.IDN
+import java.net.URI
+import java.util.Locale
 
 /** Deterministic catalog/routing decisions; Android package visibility stays in MoskomRoutes. */
 data class MoskomInstalledApp(val id:String,val name:String)
@@ -10,6 +13,31 @@ data class MoskomServiceCatalog(val version:Int=0,val services:List<MoskomServic
 data class MoskomChoiceFilter(val query:String="",val apps:List<MoskomInstalledApp> = emptyList(),val services:List<MoskomServiceChoice> = emptyList())
 data class MoskomDnsFallback(val servers:List<String>,val direct:Boolean)
 object MoskomSelective {
+    fun domainInput(value:String):String = value.take(16385)
+    fun customDomains(text:String):List<String> {
+        require(text.length<=16384)
+        val result=linkedSetOf<String>()
+        for(token in text.split(Regex("[\\s,;]+")).filter{it.isNotEmpty()}) {
+            var value=token
+            val exact=value.startsWith("full:",ignoreCase=true)
+            if(exact)value=value.substring(5) else if(value.startsWith("domain:",ignoreCase=true))value=value.substring(7)
+            if(value.startsWith("http://",ignoreCase=true)||value.startsWith("https://",ignoreCase=true)) {
+                val uri=try{URI(value)}catch(_:java.net.URISyntaxException){throw IllegalArgumentException()};val authority=uri.rawAuthority ?: throw IllegalArgumentException()
+                require(uri.rawUserInfo==null&&!authority.contains('@'))
+                if(uri.host!=null)value=uri.host else {
+                    require(Regex("[^:]+(?::[0-9]{1,5})?").matches(authority))
+                    if(authority.contains(':'))require(authority.substringAfter(':').toInt() in 1..65535)
+                    value=authority.substringBefore(':')
+                }
+            }
+            value=value.removePrefix("*.").removePrefix(".").trimEnd('.')
+            value=IDN.toASCII(value,IDN.USE_STD3_ASCII_RULES).lowercase(Locale.ROOT)
+            require(value.length in 1..253&&!Regex("[0-9.]+").matches(value)&&Regex("[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*").matches(value))
+            result.add((if(exact)"full:" else "domain:")+value)
+            require(result.size<=200)
+        }
+        return result.toList()
+    }
     fun dnsFallback(mode:String,remote:List<String>,domestic:List<String>):MoskomDnsFallback {
         val direct=mode=="services";val servers=if(direct)domestic else remote
         require(servers.isNotEmpty())
@@ -45,7 +73,8 @@ object MoskomSelective {
         // Preset ad blocking also becomes DNS hosts=loopback in Xray, which
         // outranks route exceptions and can break bank/transport SDK requests.
         val normal=rules.filterNot{rule->rule.outboundTag=="block"&&rule.domain.orEmpty().any{it.endsWith(":category-ads-all")}}
-        return (listOf(RulesetItem(id="moskom-domestic-direct",domain=domains,outboundTag="direct"))+normal).toMutableList()
+        val personal=normal.filter{it.id=="moskom-custom-domains"}
+        return (personal+listOf(RulesetItem(id="moskom-domestic-direct",domain=domains,outboundTag="direct"))+normal.filterNot{it.id=="moskom-custom-domains"}).toMutableList()
     }
     fun catalog(json:String):List<MoskomServiceChoice> {
         val catalog=Gson().fromJson(json,MoskomServiceCatalog::class.java)
@@ -53,12 +82,14 @@ object MoskomSelective {
         return catalog.services
     }
     fun nativeAppPolicyAllowed(selective:Boolean,bypass:Boolean,allowed:Int):Boolean = !selective||(!bypass&&allowed>0)
-    fun ready(mode:String,apps:Set<String>,services:Set<String>,installed:Set<String>,catalog:Set<String>):Boolean = when(mode) {
-        "apps"->apps.any{it in installed};"services"->services.any{it in catalog};else->true
+    fun ready(mode:String,apps:Set<String>,services:Set<String>,installed:Set<String>,catalog:Set<String>,custom:List<String> = emptyList()):Boolean = when(mode) {
+        "apps"->apps.any{it in installed};"services"->services.any{it in catalog}||custom.isNotEmpty();else->true
     }
-    fun services(ids:Set<String>,catalog:List<MoskomServiceChoice>):MutableList<RulesetItem> {
+    fun services(ids:Set<String>,catalog:List<MoskomServiceChoice>,custom:List<String> = emptyList()):MutableList<RulesetItem> {
         require(ids.size<=200&&ids.all{id->catalog.any{it.id==id}})
         val selected=catalog.filter{it.id in ids};val rules=mutableListOf<RulesetItem>()
+        val personal=customDomains(custom.joinToString("\n"))
+        if(personal.isNotEmpty())rules.add(RulesetItem(id="moskom-custom-domains",domain=personal,outboundTag="proxy"))
         val domains=selected.flatMap{it.domains}.distinct();val ips=selected.flatMap{it.ips}.distinct()
         if(domains.isNotEmpty())rules.add(RulesetItem(id="moskom-service-domains",domain=domains,outboundTag="proxy"))
         if(ips.isNotEmpty())rules.add(RulesetItem(id="moskom-service-ips",ip=ips,outboundTag="proxy"))

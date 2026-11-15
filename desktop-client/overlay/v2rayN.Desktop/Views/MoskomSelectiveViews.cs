@@ -14,15 +14,20 @@ public static class MoskomSelectiveViews {
   var bottom=new Grid{ColumnDefinitions=new("*,Auto"),ColumnSpacing=8};var message=new TextBlock{Foreground=Brush.Parse("#A7B7D0"),TextWrapping=TextWrapping.Wrap,FontSize=12};var save=new Button{Name=applications?"MoskomSaveApps":"MoskomSaveServices",Content="Сохранить выбор",Background=MoskomBrand.Primary,Foreground=Brush.Parse("#070B15"),MinHeight=44};bottom.Children.Add(message);Grid.SetColumn(save,1);bottom.Children.Add(save);Grid.SetRow(bottom,4);root.Children.Add(bottom);window.Content=root;
   AutomationProperties.SetName(search,applications?"Поиск приложений":"Поиск сервисов");
   var selectedApps=MoskomLauncherRuntime.Preferences.Selective.Apps.ToDictionary(a=>a.Id,StringComparer.Ordinal);var selectedServices=MoskomLauncherRuntime.Preferences.Selective.Services.ToHashSet(StringComparer.Ordinal);
+  var domains=new TextBox{Name="MoskomCustomDomains",Text=string.Join("\n",MoskomLauncherRuntime.Preferences.Selective.CustomDomains),Watermark="example.com, *.example.org\nfull:only.example.com",AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,MinHeight=78,MaxHeight=120};
+  AutomationProperties.SetName(domains,"Свои домены для VPN");
+  var custom=new StackPanel{Spacing=6,Margin=new(0,0,0,12)};
+  custom.Children.Add(new TextBlock{Text="Свои домены для VPN",FontWeight=FontWeight.SemiBold});custom.Children.Add(domains);
+  custom.Children.Add(new TextBlock{Text="До 200 доменов через пробел, запятую или с новой строки. Домен включает поддомены; full: — только точный адрес. WhatsApp также использует общие медиасети Meta.",TextWrapping=TextWrapping.Wrap,FontSize=12,Foreground=Brush.Parse("#A7B7D0")});
   List<MoskomAppChoice> choices=[];var closed=false;window.Closed+=(_,_)=>closed=true;
-  void Draw(){list.Children.Clear();var filter=search.Text?.Trim()??"";
+  void Draw(){list.Children.Clear();if(!applications)list.Children.Add(custom);var filter=search.Text?.Trim()??"";
    var rows=applications?choices.Select(a=>(a.Id,a.Name,a.Path)):MoskomLauncherRuntime.ServiceCatalog.Services.Select(s=>(s.Id,s.Name,string.Join(", ",s.Domains.Select(d=>d[(d.IndexOf(':')+1)..]))));
    var visible=rows.Where(r=>r.Name.Contains(filter,StringComparison.CurrentCultureIgnoreCase)||r.Id.Contains(filter,StringComparison.OrdinalIgnoreCase)||r.Item3.Contains(filter,StringComparison.CurrentCultureIgnoreCase)).ToList();
    foreach(var row in visible){var check=new CheckBox{Name="MoskomChoice",Content=row.Name,IsChecked=applications?selectedApps.ContainsKey(row.Id):selectedServices.Contains(row.Id),Foreground=Brush.Parse("#E7EFFF"),MinHeight=40};AutomationProperties.SetName(check,row.Name);if(applications)ToolTip.SetTip(check,row.Item3);check.IsCheckedChanged+=(_,_)=>{if(applications){var app=choices.First(a=>a.Id==row.Id);if(check.IsChecked==true)selectedApps[row.Id]=app;else selectedApps.Remove(row.Id);}else{if(check.IsChecked==true)selectedServices.Add(row.Id);else selectedServices.Remove(row.Id);}message.Text="Выбрано: "+(applications?selectedApps.Count:selectedServices.Count);};list.Children.Add(check);}
    if(visible.Count==0)list.Children.Add(new TextBlock{Text="Ничего не найдено.",Foreground=Brush.Parse("#A7B7D0")});message.Text="Выбрано: "+(applications?selectedApps.Count:selectedServices.Count);
   }
   async Task Load(){refresh.IsEnabled=false;save.IsEnabled=false;message.Text="Загрузка списка…";try{var running=await MoskomLauncherRuntime.RunningApplicationsAsync();if(closed)return;choices=running.Concat(selectedApps.Values).DistinctBy(a=>a.Id).OrderBy(a=>a.Name,StringComparer.CurrentCultureIgnoreCase).ToList();Draw();}catch{message.Text="Не удалось получить список. Повторите обновление.";}finally{refresh.IsEnabled=save.IsEnabled=true;}}
-  search.TextChanged+=(_,_)=>Draw();refresh.Click+=async(_,_)=>await Load();save.Click+=async(_,_)=>{save.IsEnabled=false;try{await MoskomLauncherRuntime.SaveSelectiveAsync(selectedApps.Values,selectedServices);window.Close();}catch(Exception e){message.Text=e.Message;}finally{save.IsEnabled=true;}};
+  search.TextChanged+=(_,_)=>Draw();refresh.Click+=async(_,_)=>await Load();save.Click+=async(_,_)=>{save.IsEnabled=false;try{var next=applications?null:MoskomSelectivePolicy.ParseCustomDomains(domains.Text??"");await MoskomLauncherRuntime.SaveSelectiveAsync(selectedApps.Values,selectedServices,next);window.Close();}catch(Exception e){message.Text=e.Message;}finally{save.IsEnabled=true;}};
   window.Opened+=async(_,_)=>{if(applications)await Load();else Draw();};await window.ShowDialog(owner);
  }
 }

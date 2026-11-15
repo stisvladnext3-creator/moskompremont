@@ -27,6 +27,7 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
     fun stamp()=MmkvManager.decodeSettingsString("moskom_rules_stamp").orEmpty()
     fun selectedApps():Set<String> = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty().toSet()
     fun selectedServices():Set<String> = MmkvManager.decodeSettingsStringSet("moskom_selected_services").orEmpty().toSet()
+    fun customDomains():List<String> = MoskomSelective.customDomains(MmkvManager.decodeSettingsStringSet("moskom_custom_domains").orEmpty().sorted().joinToString("\n"))
     fun services():List<MoskomServiceChoice> = context.assets.open("moskom/service-catalog.json").bufferedReader().use{MoskomSelective.catalog(it.readText())}
     // API 33 added typed package flags; remove the legacy adapter when minSdk reaches 33.
     @Suppress("DEPRECATION")
@@ -36,17 +37,20 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
     fun installedApps():List<MoskomInstalledApp> = installedPackages().filter{it.packageName!=BuildConfig.APPLICATION_ID}.map {
         MoskomInstalledApp(it.packageName,context.packageManager.getApplicationLabel(it).toString())
     }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER){it.name})
-    fun ready():Boolean = MoskomSelective.ready(mode(),selectedApps(),selectedServices(),installedPackages().filter{it.packageName!=BuildConfig.APPLICATION_ID}.map{it.packageName}.toSet(),services().map{it.id}.toSet())
-    fun saveChoices(apps:Set<String>,services:Set<String>) {
+    fun ready():Boolean = MoskomSelective.ready(mode(),selectedApps(),selectedServices(),installedPackages().filter{it.packageName!=BuildConfig.APPLICATION_ID}.map{it.packageName}.toSet(),services().map{it.id}.toSet(),customDomains())
+    fun saveChoices(apps:Set<String>,services:Set<String>,domains:List<String> = customDomains()) {
         require(apps.size<=1000&&services.size<=200&&services.all{id->this.services().any{it.id==id}})
-        val beforeApps=selectedApps();val beforeServices=selectedServices()
+        val nextDomains=MoskomSelective.customDomains(domains.joinToString("\n"))
+        val beforeApps=selectedApps();val beforeServices=selectedServices();val beforeDomains=customDomains()
         try {
             require(MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET,apps.toMutableSet()))
             require(MmkvManager.encodeSettings("moskom_selected_services",services.toMutableSet()))
+            require(MmkvManager.encodeSettings("moskom_custom_domains",nextDomains.toMutableSet()))
             apply(mode(),dns(),customDns())
         }catch(error:Exception) {
             MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET,beforeApps.toMutableSet())
-            MmkvManager.encodeSettings("moskom_selected_services",beforeServices.toMutableSet());throw error
+            MmkvManager.encodeSettings("moskom_selected_services",beforeServices.toMutableSet())
+            MmkvManager.encodeSettings("moskom_custom_domains",beforeDomains.toMutableSet());throw error
         }
     }
     private fun read(file: File)=JsonParser.parseString(file.readText()).asJsonObject
@@ -64,7 +68,7 @@ class MoskomRoutes(private val context: Context,private val http: MoskomHttp) {
         apply(mode(),dns(),customDns())
     }
     private fun rules(bundle: File,mode: String): MutableList<RulesetItem> {
-        if(mode=="services")return MoskomSelective.domesticPriority(mode,bundle.name,MoskomSelective.services(selectedServices(),services()))
+        if(mode=="services")return MoskomSelective.domesticPriority(mode,bundle.name,MoskomSelective.services(selectedServices(),services(),customDomains()))
         val index=when(mode){"apps","all"->0;"except_ru"->1;"blocked"->2;else->error("Unknown routing mode")}
         val source=JsonParser.parseString(File(bundle,"route-$index.json").readText()).asJsonArray
         require(source.size()>0)

@@ -22,6 +22,7 @@ data class MoskomState(
     val chosenApps:Set<String> = emptySet(),val chosenServices:Set<String> = emptySet(),val selectionReady:Boolean=true,
     val choiceLoading:Boolean=false,val choiceError:Int=0,val choicesOpen:Boolean=false,
     val choiceQuery:String="",val choiceFilter:MoskomChoiceFilter=MoskomChoiceFilter(),
+    val customDomainsText:String="",val customDomainsError:Int=0,
     val message:Int=0,val error:Int=0,val progress:Int?=null,val release:MoskomRelease?=null,val updateFile:String?=null,
 )
 sealed interface MoskomAction {
@@ -35,6 +36,7 @@ sealed interface MoskomAction {
     data class AppChoice(val id:String,val checked:Boolean):MoskomAction
     data class ServiceChoice(val id:String,val checked:Boolean):MoskomAction
     data class SearchChoices(val query:String):MoskomAction
+    data class CustomDomains(val text:String):MoskomAction
     data object LoadChoices:MoskomAction
     data object SaveChoices:MoskomAction
     data object CloseChoices:MoskomAction
@@ -96,9 +98,9 @@ class MoskomMainController(
     }
     private fun repo()=repository?:error("Repository not initialized")
     private suspend fun catalog() {
-        val data=withContext(Dispatchers.IO){val r=repo();r.ensureSelection();MoskomState(groups=r.groups(),group=r.selectedGroup(),server=r.selectedServer(),user=r.user,mode=r.routes.mode(),dns=r.routes.dns(),customDns=r.routes.customDns(),rulesStamp=r.routes.stamp(),services=r.routes.services(),chosenApps=r.routes.selectedApps(),chosenServices=r.routes.selectedServices(),selectionReady=r.routes.ready())}
+        val data=withContext(Dispatchers.IO){val r=repo();r.ensureSelection();MoskomState(groups=r.groups(),group=r.selectedGroup(),server=r.selectedServer(),user=r.user,mode=r.routes.mode(),dns=r.routes.dns(),customDns=r.routes.customDns(),rulesStamp=r.routes.stamp(),services=r.routes.services(),chosenApps=r.routes.selectedApps(),chosenServices=r.routes.selectedServices(),customDomainsText=r.routes.customDomains().joinToString("\n"),selectionReady=r.routes.ready())}
         val manual=withContext(Dispatchers.Default){data.groups.filter{MoskomPolicy.removableSubscription(it.id,AppConfig.DEFAULT_SUBSCRIPTION_ID)}}
-        _state.update {it.copy(groups=data.groups,manualSubscriptions=manual,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp,services=data.services,chosenApps=if(it.choicesOpen)it.chosenApps else data.chosenApps,chosenServices=if(it.choicesOpen)it.chosenServices else data.chosenServices,selectionReady=data.selectionReady)}
+        _state.update {it.copy(groups=data.groups,manualSubscriptions=manual,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp,services=data.services,chosenApps=if(it.choicesOpen)it.chosenApps else data.chosenApps,chosenServices=if(it.choicesOpen)it.chosenServices else data.chosenServices,customDomainsText=if(it.choicesOpen)it.customDomainsText else data.customDomainsText,selectionReady=data.selectionReady)}
         refresh(data.group)
         if(_state.value.choicesOpen)filterChoices()
     }
@@ -129,8 +131,8 @@ class MoskomMainController(
                 _state.update{it.copy(choiceLoading=true,choiceError=0,choiceQuery=if(it.choicesOpen)it.choiceQuery else "",choicesOpen=true)}
                 choicesJob=scope.launch {
                     try {
-                        val data=withContext(Dispatchers.IO){val routes=repo().routes;Triple(routes.installedApps(),routes.selectedApps(),routes.selectedServices())}
-                        _state.update{it.copy(installedApps=data.first,chosenApps=if(keepDraft)it.chosenApps else data.second,chosenServices=if(keepDraft)it.chosenServices else data.third)}
+                        val data=withContext(Dispatchers.IO){val routes=repo().routes;MoskomState(installedApps=routes.installedApps(),chosenApps=routes.selectedApps(),chosenServices=routes.selectedServices(),customDomainsText=routes.customDomains().joinToString("\n"))}
+                        _state.update{it.copy(installedApps=data.installedApps,chosenApps=if(keepDraft)it.chosenApps else data.chosenApps,chosenServices=if(keepDraft)it.chosenServices else data.chosenServices,customDomainsText=if(keepDraft)it.customDomainsText else data.customDomainsText,customDomainsError=0)}
                         filterChoices()
                     }catch(cancelled:CancellationException){throw cancelled}
                     catch(error:Exception){LogUtil.e(AppConfig.TAG,"VPN application list load failed",IllegalStateException(error.javaClass.simpleName));_state.update{it.copy(choiceError=R.string.moskom_selection_error)}}
@@ -139,11 +141,13 @@ class MoskomMainController(
             }
             MoskomAction.CloseChoices->{choicesJob?.cancel();choiceFilterJob?.cancel();_state.update{it.copy(choicesOpen=false,choiceLoading=false,choiceQuery="",choiceFilter=MoskomChoiceFilter())}}
             is MoskomAction.SearchChoices->{_state.update{it.copy(choiceQuery=MoskomSelective.searchQuery(action.query))};filterChoices()}
+            is MoskomAction.CustomDomains->_state.update{it.copy(customDomainsText=MoskomSelective.domainInput(action.text),customDomainsError=0)}
             is MoskomAction.AppChoice->{if(_state.value.installedApps.any{it.id==action.id})_state.update{it.copy(chosenApps=if(action.checked)it.chosenApps+action.id else it.chosenApps-action.id)}}
             is MoskomAction.ServiceChoice->{if(_state.value.services.any{it.id==action.id})_state.update{it.copy(chosenServices=if(action.checked)it.chosenServices+action.id else it.chosenServices-action.id)}}
             MoskomAction.SaveChoices->execute {
-                val apps=_state.value.chosenApps;val services=_state.value.chosenServices
-                reconfigure{repo().routes.saveChoices(apps,services)};_state.update{it.copy(message=R.string.moskom_selection_saved)}
+                val apps=_state.value.chosenApps;val services=_state.value.chosenServices;val domainsText=_state.value.customDomainsText
+                val domains=try{withContext(Dispatchers.Default){MoskomSelective.customDomains(domainsText)}}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){_state.update{it.copy(customDomainsError=R.string.moskom_custom_domains_invalid)};return@execute}
+                reconfigure{repo().routes.saveChoices(apps,services,domains)};_state.update{it.copy(message=R.string.moskom_selection_saved,customDomainsError=0)}
             }
             MoskomAction.CheckUpdate->execute {checkUpdate(true)}
             MoskomAction.DownloadUpdate->execute {

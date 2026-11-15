@@ -14,6 +14,7 @@ internal static class MoskomSelectiveSmoke {
    var modal=MoskomSelectiveViews.ServicesAsync(owner);await Task.Delay(150);var dialog=Dialog(owner,"Сервисы");
    good&=dialog.GetVisualDescendants().OfType<CheckBox>().Count(c=>c.Name=="MoskomChoice")==27;
    var serviceSearch=Find<TextBox>(dialog,"MoskomServicesSearch");
+   Find<TextBox>(dialog,"MoskomCustomDomains").Text="custom.fixture, full:only.fixture";
    foreach(var label in new[]{"YouTube","FaceTime","Google Meet"}){
     serviceSearch.Text="  "+label.ToUpperInvariant()+"  ";await Task.Delay(70);
     var visible=dialog.GetVisualDescendants().OfType<CheckBox>().Where(c=>c.Name=="MoskomChoice").ToList();
@@ -27,7 +28,7 @@ internal static class MoskomSelectiveSmoke {
    serviceSearch.Text="meet";await Task.Delay(70);saveServices.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await modal;
    good&=MoskomLauncherRuntime.Preferences.Selective.Services.Order().SequenceEqual(new[]{"facetime","google-meet","youtube"});
    var stored=JsonSerializer.Deserialize<MoskomPreferences>(await File.ReadAllTextAsync(Path.Combine(Utils.StartupPath(),"launcher-settings.json")))!;
-   good&=stored.Selective.Services.Count==3;
+   good&=stored.Selective.Services.Count==3&&stored.Selective.CustomDomains.SequenceEqual(new[]{"domain:custom.fixture","full:only.fixture"});
    var service= new RoutingItem{Id=MoskomSelectivePolicy.ServicesId};await MoskomLauncherRuntime.SelectRoutingAsync(service);
    good&=MoskomLauncherRuntime.SelectiveMode&&MoskomLauncherRuntime.SelectionReady;
    var path=Environment.ProcessPath!;var app=new MoskomAppChoice(path,"МосКомпРемонт · проверка",path);
@@ -39,14 +40,14 @@ internal static class MoskomSelectiveSmoke {
    appsSearch.Text="nothing-matches-fixture";await Task.Delay(70);
    var saveApps=Find<Button>(dialog,"MoskomSaveApps");var appPosition=saveApps.TranslatePoint(new Point(0,0),dialog);good&=saveApps.IsEnabled&&appPosition!=null&&appPosition.Value.Y+saveApps.Bounds.Height<=dialog.Bounds.Height;
    saveApps.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await modal;
-   good&=MoskomLauncherRuntime.Preferences.Selective.Apps.Any(a=>a.Id==app.Id);
+   good&=MoskomLauncherRuntime.Preferences.Selective.Apps.Any(a=>a.Id==app.Id)&&MoskomLauncherRuntime.Preferences.Selective.CustomDomains.Count==2;
    var config=AppManager.Instance.Config;var profile=await ConfigHandler.GetDefaultServer(config);profile.CoreType=ECoreType.sing_box;
    var built=await ServiceLib.Handler.Builder.CoreConfigContextBuilder.Build(config,profile);
    var file=Path.Combine(output,"selective-source.json");var generated=await CoreConfigHandler.GenerateClientConfig(built.Context with{IsTunEnabled=false,RunCoreType=ECoreType.sing_box},file);
    good&=built.Success&&generated.Success;
    var json=JsonNode.Parse(await File.ReadAllTextAsync(file))!.AsObject();
    foreach(var mode in new[]{"apps","services"}){
-    var settings=new MoskomSelectiveSettings{Mode=mode,Apps=[app],Services=MoskomLauncherRuntime.ServiceCatalog.Services.Select(s=>s.Id).ToList()};
+    var settings=new MoskomSelectiveSettings{Mode=mode,Apps=[app],Services=MoskomLauncherRuntime.ServiceCatalog.Services.Select(s=>s.Id).ToList(),CustomDomains=["domain:custom.fixture"]};
     var next=MoskomSelectivePolicy.Configure(json,settings,MoskomLauncherRuntime.ServiceCatalog,AppManager.Instance.GetLocalPort(EInboundProtocol.socks),OperatingSystem.IsMacOS()?"utun179":"MoskomVPN",OperatingSystem.IsMacOS());
     await File.WriteAllTextAsync(Path.Combine(output,"selective-"+mode+".json"),next.ToJsonString());
    }
@@ -54,7 +55,7 @@ internal static class MoskomSelectiveSmoke {
    good&=MoskomLauncherRuntime.SelectiveMode&&!MoskomLauncherRuntime.SelectionReady;
    await Task.Delay(150);good&=!Find<Button>(owner,"MoskomPower").IsEnabled;
   } finally {
-   await MoskomLauncherRuntime.SelectRoutingAsync(routing);await MoskomLauncherRuntime.SaveSelectiveAsync(original.Apps,original.Services);
+   await MoskomLauncherRuntime.SelectRoutingAsync(routing);await MoskomLauncherRuntime.SaveSelectiveAsync(original.Apps,original.Services,original.CustomDomains);
   }
   return good;
  }

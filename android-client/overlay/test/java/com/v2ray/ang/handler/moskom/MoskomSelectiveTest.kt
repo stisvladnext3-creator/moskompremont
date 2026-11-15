@@ -3,6 +3,32 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class MoskomSelectiveTest {
+    @Test fun `personal domains normalize validate and enable a domain-only policy`() {
+        val normalized=MoskomSelective.customDomains(" Example.COM, *.example.com; full:ONLY.example.net\nhttps://пример.рф/path?q=ignored .ru")
+        assertEquals(listOf("domain:example.com","full:only.example.net","domain:xn--e1afmkfd.xn--p1ai","domain:ru"),normalized)
+        assertEquals(emptyList<String>(),MoskomSelective.customDomains(" ,;\n"))
+        assertTrue(MoskomSelective.ready("services",emptySet(),emptySet(),emptySet(),emptySet(),normalized))
+        val rules=MoskomSelective.services(emptySet(),catalog(),normalized)
+        assertEquals(normalized,rules.first().domain);assertEquals("direct",rules.last().outboundTag)
+        val prioritized=MoskomSelective.domesticPriority("services","bundle",rules)
+        assertEquals("moskom-custom-domains",prioritized.first().id)
+        assertEquals("moskom-domestic-direct",prioritized[1].id)
+        for(invalid in listOf("https://user:secret@example.com","127.0.0.1","example.com/path","regexp:.*","bad*.example","-bad.example","https://%","a".repeat(16385),(0..200).joinToString(" "){"d$it.example"}))
+            assertThrows(IllegalArgumentException::class.java){MoskomSelective.customDomains(invalid)}
+        assertEquals(16385,MoskomSelective.domainInput("a".repeat(20000)).length)
+    }
+    @Test fun `messenger media networks and CDN domains are scoped to selected messenger`() {
+        val telegram=MoskomSelective.services(setOf("telegram"),catalog())
+        assertTrue(telegram.flatMap{it.ip.orEmpty()}.contains("91.105.192.0/23"))
+        assertTrue(telegram.flatMap{it.ip.orEmpty()}.contains("2001:b28:f23c::/48"))
+        assertTrue(telegram.flatMap{it.domain.orEmpty()}.contains("domain:cdn-telegram.org"))
+        assertFalse(telegram.flatMap{it.ip.orEmpty()}.contains("57.144.0.0/14"))
+        val whatsapp=MoskomSelective.services(setOf("whatsapp"),catalog())
+        assertTrue(whatsapp.flatMap{it.ip.orEmpty()}.contains("57.144.0.0/14"))
+        assertTrue(whatsapp.flatMap{it.ip.orEmpty()}.contains("2a03:2880::/32"))
+        assertTrue(whatsapp.flatMap{it.domain.orEmpty()}.contains("domain:fbcdn.net"))
+        assertFalse(whatsapp.flatMap{it.domain.orEmpty()}.contains("domain:youtube.com"))
+    }
     @Test fun `unselected service DNS uses direct fallback and app VPN DNS stays remote`() {
         val remote=listOf("https://1.1.1.1/dns-query");val direct=listOf("77.88.8.8")
         assertEquals(MoskomDnsFallback(direct,true),MoskomSelective.dnsFallback("services",remote,direct))

@@ -79,7 +79,16 @@ class VlessFixture(socketserver.BaseRequestHandler):
    version=read(1);identity=read(16);read(read(1)[0]);command=read(1)
    port=int.from_bytes(read(2),'big');kind=read(1)[0]
    address=socket.inet_ntop(socket.AF_INET,read(4)) if kind==1 else read(read(1)[0]).decode() if kind==2 else socket.inet_ntop(socket.AF_INET6,read(16))
-   if identity.hex()!=UUID.replace('-','') or command!=b'\x01' or address not in ('127.0.0.1','localhost') or port!=18080:return
+   if identity.hex()!=UUID.replace('-','') or command!=b'\x01':return
+   # Controlled media addresses terminate here, never on a real messenger server.
+   if address in ('91.105.192.8','57.144.0.8') and port==18839:
+    self.request.sendall(version+b'\x00')
+    header=b''
+    while b'\r\n\r\n' not in header and len(header)<8192:header+=read(1)
+    body=b'moskom-media-fixture'+b'x'*65536
+    self.request.sendall(b'HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: '+str(len(body)).encode()+b'\r\n\r\n'+body)
+    return
+   if address not in ('127.0.0.1','localhost') or port!=18080:return
    with socket.create_connection(('127.0.0.1',18080),timeout=20) as remote:
     self.request.sendall(version+b'\x00')
     while True:

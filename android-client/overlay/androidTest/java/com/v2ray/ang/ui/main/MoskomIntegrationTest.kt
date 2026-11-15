@@ -140,6 +140,15 @@ class MoskomIntegrationTest {
         click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_services)).performClick()
         compose.waitUntil(30_000){!model.moskom().state.value.choiceLoading}
         assertEquals(27,model.moskom().state.value.services.size)
+        compose.onNodeWithTag("moskom_choices_list").performScrollToNode(hasTestTag("moskom_custom_domains"))
+        compose.onNodeWithTag("moskom_custom_domains").performTextInput("bad*.example")
+        waitReady();click("moskom_save_choices");waitReady()
+        assertEquals(R.string.moskom_custom_domains_invalid,model.moskom().state.value.customDomainsError)
+        assertTrue(MmkvManager.decodeSettingsStringSet("moskom_custom_domains").orEmpty().isEmpty())
+        compose.onNodeWithTag("moskom_custom_domains").performTextClearance()
+        compose.onNodeWithTag("moskom_custom_domains").performTextInput("custom.fixture, full:only.fixture")
+        compose.onNodeWithTag("moskom_save_choices").assertIsDisplayed()
+
         searchChoices("YOUTUBE");choice("youtube").performClick().assertIsOn()
         searchChoices("  mEEt  ");val meet=choice("google-meet")
         meet.assertIsOff().performClick();meet.assertIsOn()
@@ -169,6 +178,9 @@ class MoskomIntegrationTest {
         assertEquals(setOf("youtube","google-meet"),model.moskom().state.value.chosenServices)
         scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
         assertEquals("services",model.moskom().state.value.mode);assertEquals(setOf("youtube","google-meet"),model.moskom().state.value.chosenServices)
+        assertEquals(setOf("domain:custom.fixture","full:only.fixture"),MmkvManager.decodeSettingsStringSet("moskom_custom_domains"))
+        assertTrue(model.moskom().state.value.customDomainsText.contains("custom.fixture"))
+
         dispatch(MoskomAction.Mode("apps"));assertFalse(model.moskom().state.value.selectionReady)
         compose.onNodeWithTag("moskom_power").assertIsNotEnabled()
         click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_apps)).performClick()
@@ -232,6 +244,7 @@ class MoskomIntegrationTest {
         assertEquals(currentNetworks,1,tunnels.size)
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         dispatch(MoskomAction.Mode("services"))
+        dispatch(MoskomAction.ServiceChoice("telegram",true));dispatch(MoskomAction.ServiceChoice("whatsapp",true));dispatch(MoskomAction.SaveChoices)
         runBlocking(Dispatchers.IO) {
             val result=com.v2ray.ang.core.CoreConfigManager.getV2rayConfig(context,MmkvManager.getSelectServer().orEmpty());assertTrue(result.errorMessage,result.status)
             val config=com.google.gson.JsonParser.parseString(result.content).asJsonObject
@@ -243,6 +256,10 @@ class MoskomIntegrationTest {
             assertTrue(config.getAsJsonObject("routing").getAsJsonArray("rules").map{it.asJsonObject}.any{rule->rule.get("outboundTag")?.asString=="direct"&&rule.getAsJsonArray("inboundTag")?.any{it.asString in tags}==true})
         }
         click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
+        for(ip in listOf("91.105.192.8","57.144.0.8")) {
+            val media=device.executeShellCommand("sh -c 'printf \"GET /media HTTP/1.1\\r\\nHost: media.fixture.invalid\\r\\nConnection: close\\r\\n\\r\\n\" | toybox nc -w 10 $ip 18839'")
+            assertTrue("Messenger media failed through native Android VPN: $ip",media.contains("moskom-media-fixture")&&media.length>60_000)
+        }
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
         // Test production bank/transport UID exclusions with installed code-free
         // package fixtures; no real bank app, account or third-party APK is used.

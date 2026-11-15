@@ -2,6 +2,23 @@ using System.Text.Json.Nodes;
 using ServiceLib.Services;
 using Xunit;
 public sealed class SelectiveTests {
+ [Fact]public void CustomDomainsNormalizeAndCanBeTheOnlyServiceSelection(){
+  var normalized=MoskomSelectivePolicy.ParseCustomDomains(" Example.COM, *.example.com; full:ONLY.example.net\nhttps://пример.рф/path?q=ignored .ru");
+  Assert.Equal(new[]{"domain:example.com","full:only.example.net","domain:xn--e1afmkfd.xn--p1ai","domain:ru"},normalized);
+  var settings=new MoskomSelectiveSettings{Mode="services",CustomDomains=normalized};Assert.True(MoskomSelectivePolicy.HasSelection(settings,Catalog));
+  var config=MoskomSelectivePolicy.Configure(Core(),settings,Catalog,10808,"MoskomVPN",false);
+  Assert.Contains("only.example.net",config["route"]!["rules"]!.ToJsonString());Assert.Equal("direct",config["route"]!["final"]!.GetValue<string>());
+  var old=System.Text.Json.JsonSerializer.Deserialize<MoskomSelectiveSettings>("{\"Mode\":\"services\",\"Services\":[\"telegram\"]}")!;Assert.Empty(old.CustomDomains);
+ }
+ [Theory][InlineData("https://user:secret@example.com")][InlineData("127.0.0.1")][InlineData("example.com/path")][InlineData("regexp:.*")][InlineData("bad*.example")][InlineData("-bad.example")]
+ public void CustomDomainsRejectNonDomainRules(string input){Assert.Throws<InvalidDataException>(()=>MoskomSelectivePolicy.ParseCustomDomains(input));}
+ [Fact]public void CustomDomainsAreBoundedAndEmptyCanClearSelection(){Assert.Empty(MoskomSelectivePolicy.ParseCustomDomains(" ,;\n"));Assert.Throws<InvalidDataException>(()=>MoskomSelectivePolicy.ParseCustomDomains(new string('a',16385)));Assert.Throws<InvalidDataException>(()=>MoskomSelectivePolicy.ParseCustomDomains(string.Join(" ",Enumerable.Range(0,201).Select(i=>$"d{i}.example"))));}
+ [Fact]public void MessengerMediaIncludesCurrentNetworksAndDedicatedProcesses(){
+  var tg=MoskomSelectivePolicy.Configure(Core(),new(){Mode="services",Services=["telegram"]},Catalog,10808,"MoskomVPN",false)["route"]!["rules"]!.ToJsonString();
+  Assert.Contains("91.105.192.0/23",tg);Assert.Contains("2001:b28:f23c::/48",tg);Assert.Contains("cdn-telegram.org",tg);Assert.Contains("Telegram.exe",tg);Assert.DoesNotContain("57.144.0.0/14",tg);
+  var wa=MoskomSelectivePolicy.Configure(Core(),new(){Mode="services",Services=["whatsapp"]},Catalog,10808,"utun177",true)["route"]!["rules"]!.ToJsonString();
+  Assert.Contains("57.144.0.0/14",wa);Assert.Contains("2a03:2880::/32",wa);Assert.Contains("fbcdn.net",wa);Assert.Contains("WhatsApp",wa);Assert.DoesNotContain("youtube.com",wa);
+ }
  private static MoskomServiceCatalog Catalog=>MoskomServiceCatalog.Read(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"service-catalog.json")));
  private static JsonObject Core()=>JsonNode.Parse("""{"outbounds":[{"type":"socks","tag":"proxy","server":"127.0.0.1","server_port":23456},{"type":"direct","tag":"direct"}],"route":{"final":"proxy","rule_set":[{"tag":"fixture","type":"inline","rules":[{"domain_suffix":["example.test"]}]}]},"dns":{"servers":[]}}""")!.AsObject();
  [Fact]public void CatalogContainsExactlyRequested27IncludingCalls(){var c=Catalog;Assert.Equal(27,c.Services.Count);foreach(var id in new[]{"youtube","chatgpt","telegram","whatsapp","flibusta","gemini","kimi","deepseek","perplexity","claude","cursor","instagram","speedtest","discord","viber","snapchat","netflix","spotify","x","facebook","tiktok","playstation","signal","notion","miro","facetime","google-meet"})Assert.Contains(c.Services,s=>s.Id==id);}

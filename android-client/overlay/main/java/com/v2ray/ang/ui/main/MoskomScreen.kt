@@ -226,6 +226,15 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                         SmallButton(R.string.moskom_refresh,!state.choiceLoading&&!busy,{action(MoskomAction.LoadChoices)})
                     }
                     LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("moskom_choices_list"),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                        if(!apps)item(key="custom-domains") {
+                            Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                                OutlinedTextField(value=state.customDomainsText,onValueChange={action(MoskomAction.CustomDomains(it))},
+                                    label={Text(stringResource(R.string.moskom_custom_domains))},minLines=3,maxLines=4,
+                                    isError=state.customDomainsError!=0,enabled=!busy&&!state.choiceLoading,keyboardOptions=KeyboardOptions(imeAction=ImeAction.Default),
+                                    modifier=Modifier.fillMaxWidth().testTag("moskom_custom_domains"))
+                                Text(stringResource(if(state.customDomainsError!=0)state.customDomainsError else R.string.moskom_custom_domains_description),color=if(state.customDomainsError!=0)Color(0xFFFFB0BB)else Muted,fontSize=12.sp)
+                            }
+                        }
                         if(state.choiceQuery.isBlank())item(key="description") {Text(stringResource(if(apps)R.string.moskom_apps_description else R.string.moskom_services_description),color=Muted,fontSize=12.sp)}
                         if(state.choiceLoading||pending)item(key="loading"){Text(stringResource(R.string.moskom_selection_loading),color=Muted)}
                         if(state.choiceError!=0)item(key="error"){Text(stringResource(state.choiceError),color=Color(0xFFFFB0BB))}

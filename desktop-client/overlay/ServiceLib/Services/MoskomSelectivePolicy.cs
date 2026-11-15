@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Net;
+using System.Globalization;
 namespace ServiceLib.Services;
 
 public sealed record MoskomAppChoice(string Id,string Name,string Path,string? Bundle = null);
@@ -9,12 +10,13 @@ public sealed class MoskomSelectiveSettings {
  public string Mode { get; set; } = "";
  public List<MoskomAppChoice> Apps { get; set; } = [];
  public List<string> Services { get; set; } = [];
+ public List<string> CustomDomains { get; set; } = [];
 }
 public sealed class MoskomServiceChoice {
  public string Id {get;set;}="";public string Name{get;set;}="";
  public string[] Domains{get;set;}=[];public string[] Ips{get;set;}=[];
  public string[] MediaPorts{get;set;}=[];public string[] MediaIps{get;set;}=[];
- public string[] MacProcessNames{get;set;}=[];public bool Calls{get;set;}
+ public string[] MacProcessNames{get;set;}=[];public string[] WinProcessNames{get;set;}=[];public bool Calls{get;set;}
 }
 public sealed class MoskomServiceCatalog {
  public int Version{get;set;}public List<MoskomServiceChoice> Services{get;set;}=[];
@@ -26,9 +28,28 @@ public sealed class MoskomServiceCatalog {
 }
 public static class MoskomSelectivePolicy {
  public const string AppsId="moskom-selected-apps",ServicesId="moskom-selected-services";
+ public static List<string> ParseCustomDomains(string text) {
+  const string error="Укажите до 200 доменов через пробел, запятую или с новой строки: example.com, *.example.org, full:only.example.com.";
+  if(text.Length>16384)throw new InvalidDataException(error);
+  var result=new List<string>();var idn=new IdnMapping{UseStd3AsciiRules=true};
+  foreach(var token in Regex.Split(text,@"[\s,;]+").Where(t=>t.Length>0)){
+   var value=token;var exact=value.StartsWith("full:",StringComparison.OrdinalIgnoreCase);
+   if(exact)value=value[5..];else if(value.StartsWith("domain:",StringComparison.OrdinalIgnoreCase))value=value[7..];
+   if(value.StartsWith("http://",StringComparison.OrdinalIgnoreCase)||value.StartsWith("https://",StringComparison.OrdinalIgnoreCase)){
+    if(!Uri.TryCreate(value,UriKind.Absolute,out var url)||url.UserInfo.Length>0)throw new InvalidDataException(error);value=url.Host;
+   }
+   if(value.StartsWith("*.",StringComparison.Ordinal))value=value[2..];else if(value.StartsWith('.'))value=value[1..];
+   value=value.TrimEnd('.');
+   try{value=idn.GetAscii(value).ToLowerInvariant();}catch(ArgumentException){throw new InvalidDataException(error);}
+   if(value.Length is <1 or >253||IPAddress.TryParse(value,out _)||!Regex.IsMatch(value,@"\A[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\z"))throw new InvalidDataException(error);
+   var normalized=(exact?"full:":"domain:")+value;if(!result.Contains(normalized,StringComparer.Ordinal))result.Add(normalized);
+   if(result.Count>200)throw new InvalidDataException(error);
+  }
+  return result;
+ }
  public static bool Enabled(MoskomSelectiveSettings settings)=>settings.Mode is "apps" or "services";
  public static bool HasSelection(MoskomSelectiveSettings settings,MoskomServiceCatalog catalog)=>settings.Mode switch {
-  "apps"=>settings.Apps.Count>0,"services"=>catalog.Services.Any(s=>settings.Services.Contains(s.Id)),_=>true
+  "apps"=>settings.Apps.Count>0,"services"=>catalog.Services.Any(s=>settings.Services.Contains(s.Id))||settings.CustomDomains.Count>0,_=>true
  };
  private static JsonArray Strings(IEnumerable<string> values)=>new(values.Distinct(StringComparer.Ordinal).Select(v=>(JsonNode?)JsonValue.Create(v)).ToArray());
  public static JsonObject Configure(JsonObject original,MoskomSelectiveSettings settings,MoskomServiceCatalog catalog,int port,string tunName,bool mac,IReadOnlyList<string>? networkDns=null) {
@@ -55,7 +76,7 @@ public static class MoskomSelectivePolicy {
    if(regex.Count>0)rules.Add(new JsonObject{["process_path_regex"]=Strings(regex),["outbound"]="proxy"});
   } else {
    var selected=catalog.Services.Where(s=>settings.Services.Contains(s.Id)).ToList();
-   var domains=selected.SelectMany(s=>s.Domains).ToList();
+   var domains=selected.SelectMany(s=>s.Domains).Concat(ParseCustomDomains(string.Join("\n",settings.CustomDomains))).ToList();
    var exact=domains.Where(d=>d.StartsWith("full:",StringComparison.Ordinal)).Select(d=>d[5..]).ToList();
    var suffix=domains.Where(d=>d.StartsWith("domain:",StringComparison.Ordinal)).Select(d=>d[7..]).ToList();
    if(exact.Count>0)rules.Add(new JsonObject{["domain"]=Strings(exact),["outbound"]="proxy"});
@@ -66,7 +87,8 @@ public static class MoskomSelectivePolicy {
     if(range.Length>0)rules.Add(new JsonObject{["ip_cidr"]=Strings(service.MediaIps),["network"]="udp",["port_range"]=Strings(range),["outbound"]="proxy"});
     if(ports.Length>0)rules.Add(new JsonObject{["ip_cidr"]=Strings(service.MediaIps),["network"]="udp",["port"]=new JsonArray(ports.Select(p=>(JsonNode?)JsonValue.Create(p)).ToArray()),["outbound"]="proxy"});
    }
-   if(mac){var processes=selected.SelectMany(s=>s.MacProcessNames).ToArray();if(processes.Length>0)rules.Add(new JsonObject{["process_name"]=Strings(processes),["outbound"]="proxy"});}
+   var processes=selected.SelectMany(s=>mac?s.MacProcessNames:s.WinProcessNames).ToArray();
+   if(processes.Length>0)rules.Add(new JsonObject{["process_name"]=Strings(processes),["outbound"]="proxy"});
   }
   var route=config["route"] as JsonObject;if(route==null){route=new();config["route"]=route;}route["rules"]=rules;route["final"]="direct";route["auto_detect_interface"]=true;
   route.Remove("rule_set"); // This policy does not use Russia rule sets or their format/version.

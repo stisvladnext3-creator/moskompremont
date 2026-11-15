@@ -24,14 +24,15 @@ public static partial class MoskomLauncherRuntime {
  }
  public static List<RoutingItem> RoutingChoices(IEnumerable<RoutingItem> original)=>[..original,new RoutingItem{Id=MoskomSelectivePolicy.AppsId,Remarks="Выбранные приложения"},new RoutingItem{Id=MoskomSelectivePolicy.ServicesId,Remarks="Выбранные сервисы"}];
  public static string? CustomRoutingId=>Preferences.Selective.Mode switch{"apps"=>MoskomSelectivePolicy.AppsId,"services"=>MoskomSelectivePolicy.ServicesId,_=>null};
- public static async Task SaveSelectiveAsync(IEnumerable<MoskomAppChoice> apps,IEnumerable<string> services){
+ public static async Task SaveSelectiveAsync(IEnumerable<MoskomAppChoice> apps,IEnumerable<string> services,IEnumerable<string>? customDomains=null){
   var nextApps=apps.DistinctBy(a=>a.Id).Take(201).ToList();var nextServices=services.Distinct().Take(201).ToList();
   if(nextApps.Count>200||nextServices.Count>200||nextServices.Any(id=>!ServiceCatalog.Services.Any(s=>s.Id==id)))throw new InvalidOperationException("Некорректный выбор маршрутизации.");
+  var nextCustom=customDomains==null?null:MoskomSelectivePolicy.ParseCustomDomains(string.Join("\n",customDomains));
   await Operations.WaitAsync(Lifetime.Token);
   var before=Preferences.Selective;var wasOn=Connection?.IsConnected==true&&SelectiveMode;
   try{
    if(wasOn)await Connection!.DisconnectAsync();
-   Preferences.Selective=new(){Mode=before.Mode,Apps=nextApps,Services=nextServices};
+   Preferences.Selective=new(){Mode=before.Mode,Apps=nextApps,Services=nextServices,CustomDomains=nextCustom??before.CustomDomains.ToList()};
    try{SavePreferences();}catch{Preferences.Selective=before;throw;}
    SettingsChanged?.Invoke();ListsChanged?.Invoke();if(wasOn&&SelectionReady)await Connection!.ConnectAsync();
   }finally{Operations.Release();}
