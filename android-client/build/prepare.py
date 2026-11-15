@@ -42,7 +42,18 @@ for folder in ['main/assets/moskom','test/resources']:
  target=root/'V2rayNG/app/src'/folder/'service-catalog.json';target.parent.mkdir(parents=True,exist_ok=True)
  shutil.copyfile(own.parent/'shared/service-catalog.json',target)
 # An empty or uninstalled allow-list must never fall back to routing all apps.
-edit('V2rayNG/app/src/main/java/com/v2ray/ang/service/CoreVpnService.kt','        val selfPackageName = BuildConfig.APPLICATION_ID\n\n        // If per-app proxy','        val selfPackageName = BuildConfig.APPLICATION_ID\n        if (MmkvManager.decodeSettingsString("moskom_route_mode") == "apps") {\n            val selected = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty().filter { it != selfPackageName }\n            var allowed = 0\n            selected.forEach { packageId ->\n                try { builder.addAllowedApplication(packageId); allowed++ }\n                catch (error: PackageManager.NameNotFoundException) {\n                    LogUtil.e(AppConfig.TAG, "VPN selective-app configuration: package unavailable", error)\n                }\n            }\n            check(allowed > 0) { getString(com.v2ray.ang.R.string.moskom_select_apps_first) }\n            return\n        }\n\n        // If per-app proxy')
+# Reuse the existing VpnService builder/allow-list. A failed allow-list returns
+# before establish(), so the normal setup-failure path removes the foreground service.
+service='V2rayNG/app/src/main/java/com/v2ray/ang/service/CoreVpnService.kt'
+edit(service,'        configurePerAppProxy(builder)','        if (!configurePerAppProxy(builder)) {\n            LogUtil.e(AppConfig.TAG, "VPN selective-app setup failed: no installed permitted packages", IllegalStateException("Empty VPN allow-list"))\n            return false\n        }')
+edit(service,'    private fun configurePerAppProxy(builder: Builder) {','    private fun configurePerAppProxy(builder: Builder): Boolean {')
+sp=root/service;code=sp.read_text();first=code.index('    private fun configurePerAppProxy(');last=code.index('    /**',first);block=code[first:last]
+block=block.replace('        val selfPackageName = BuildConfig.APPLICATION_ID','        val selfPackageName = BuildConfig.APPLICATION_ID\n        val selective = MmkvManager.decodeSettingsString("moskom_route_mode") == "apps"')
+block=block.replace('            builder.addDisallowedApplication(selfPackageName)\n            return','            if (selective) return false\n            builder.addDisallowedApplication(selfPackageName)\n            return true')
+block=block.replace('        apps.forEach {','        var allowed = 0\n        apps.forEach {').replace('                    builder.addAllowedApplication(it)','                    builder.addAllowedApplication(it)\n                    allowed++')
+endblock=block.rfind('    }');block=block[:endblock]+'        return com.v2ray.ang.handler.moskom.MoskomSelective.nativeAppPolicyAllowed(selective, bypassApps, allowed)\n'+block[endblock:]
+sp.write_text(code[:first]+block+code[last:])
+
 # Keep subscription deletion in the existing storage owner. Snapshot the records
 # under its cross-process index lock so a failed multi-record write can roll back.
 edit('V2rayNG/app/src/main/java/com/v2ray/ang/handler/MmkvManager.kt','    fun removeSubscription(subid: String) {','''    internal fun removeSubscriptionWithRollback(subid: String) {

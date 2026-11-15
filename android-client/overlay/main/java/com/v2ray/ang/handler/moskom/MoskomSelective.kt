@@ -13,6 +13,7 @@ object MoskomSelective {
         require(catalog.version==1&&catalog.services.size in 1..200&&catalog.services.distinctBy{it.id}.size==catalog.services.size)
         return catalog.services
     }
+    fun nativeAppPolicyAllowed(selective:Boolean,bypass:Boolean,allowed:Int):Boolean = !selective||(!bypass&&allowed>0)
     fun ready(mode:String,apps:Set<String>,services:Set<String>,installed:Set<String>,catalog:Set<String>):Boolean = when(mode) {
         "apps"->apps.any{it in installed};"services"->services.any{it in catalog};else->true
     }

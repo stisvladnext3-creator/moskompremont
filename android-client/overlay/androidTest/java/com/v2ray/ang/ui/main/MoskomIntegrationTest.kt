@@ -137,6 +137,18 @@ class MoskomIntegrationTest {
         click("moskom_power");approveSystemDialog()
         compose.waitUntil(60_000){model.uiState.value.isRunning};screenshot("04-connected")
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}
+        // Android-owned restart must fail cleanly for empty/uninstalled app selections.
+        for(packages in listOf(emptySet<String>(),setOf("ru.moskompremont.fixture.removed"))) {
+            runBlocking(Dispatchers.IO){MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET,packages.toMutableSet())}
+            dispatch(MoskomAction.Mode("apps"));assertFalse(model.moskom().state.value.selectionReady)
+            val intent=Intent(android.net.VpnService.SERVICE_INTERFACE).setClassName(context,"com.v2ray.ang.service.CoreVpnService")
+            androidx.core.content.ContextCompat.startForegroundService(context,intent)
+            Thread.sleep(1000)
+            compose.waitUntil(30_000){!device.executeShellCommand("dumpsys activity services ru.moskompremont.vpn").contains("com.v2ray.ang.service.CoreVpnService")}
+            assertFalse(model.uiState.value.isRunning)
+        }
+        runBlocking(Dispatchers.IO){MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET,mutableSetOf("com.android.settings"))}
+        dispatch(MoskomAction.Mode("except_ru"))
         // Both new policies must also start and tear down the real Android VPN daemon.
         dispatch(MoskomAction.Mode("apps"));click("moskom_power");compose.waitUntil(60_000){model.uiState.value.isRunning}
         click("moskom_power");compose.waitUntil(30_000){!model.uiState.value.isRunning}

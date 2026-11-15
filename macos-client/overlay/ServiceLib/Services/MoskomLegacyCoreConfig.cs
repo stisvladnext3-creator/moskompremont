@@ -23,7 +23,13 @@ public static class MoskomLegacyCoreConfig {
   var config=JsonNode.Parse(text)!.AsObject();
   if(config["dns"] is JsonObject dns){
    dns.Remove("optimistic"); // DNS serve-stale/evaluate/respond belong to the newer engine.
-   if(dns["rules"] is JsonArray rules){var compatible=new JsonArray();foreach(var node in rules){if(node is not JsonObject rule)continue;var action=rule["action"]?.GetValue<string>();if(action=="respond"||rule.ContainsKey("match_response"))continue;var copy=(JsonObject)rule.DeepClone();if(action=="evaluate"){copy.Remove("action");copy.Remove("tag");copy.Remove("speculative");}compatible.Add(copy);}dns["rules"]=compatible;}
+   if(dns["rules"] is JsonArray rules){var compatible=new JsonArray();foreach(var node in rules){if(node is not JsonObject rule)continue;var action=rule["action"]?.GetValue<string>();if(action=="respond"||rule.ContainsKey("match_response"))continue;var copy=(JsonObject)rule.DeepClone();
+    if(copy["preferred_by"] is JsonValue preferred){
+     var hostServer=(dns["servers"] as JsonArray)?.OfType<JsonObject>().FirstOrDefault(server=>server["tag"]?.GetValue<string>()==preferred.GetValue<string>());
+     var hosts=(hostServer?["predefined"] as JsonObject)?.Select(pair=>pair.Key).ToArray()??[];
+     if(hosts.Length==0)continue;copy.Remove("preferred_by");copy["domain"]=new JsonArray(hosts.Select(host=>(JsonNode?)JsonValue.Create(host)).ToArray());
+    }
+    if(action=="evaluate"){copy.Remove("action");copy.Remove("tag");copy.Remove("speculative");}compatible.Add(copy);}dns["rules"]=compatible;}
   }
   return config.ToJsonString();
  }

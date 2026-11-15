@@ -59,6 +59,8 @@ if not a.probe:
    path='ServiceLib/Services/CoreConfig/'+core+'/CoreConfig'+core+'Service.cs'
    edit(path,'ret.Data = ApplyFinalConfigModifiers();','ret.Data = ServiceLib.Services.MoskomLegacyCoreConfig.'+method+'(ApplyFinalConfigModifiers());')
    edit(path,'ret.Data = ApplyCustomOutboundReplace();','ret.Data = ServiceLib.Services.MoskomLegacyCoreConfig.'+method+'(ApplyCustomOutboundReplace());',2)
+  edit('ServiceLib/Services/MoskomSelectiveRuntime.cs','_supervisor=await MoskomTunSupervisor.StartAsync(JsonSerializer.SerializeToUtf8Bytes(config),ct);','config=JsonNode.Parse(MoskomLegacyCoreConfig.Singbox(config.ToJsonString()))!.AsObject();\n   _supervisor=await MoskomTunSupervisor.StartAsync(JsonSerializer.SerializeToUtf8Bytes(config),ct);')
+  edit('v2rayN.Desktop/Views/MoskomSelectiveSmoke.cs','next.ToJsonString());','MoskomLegacyCoreConfig.Singbox(next.ToJsonString()));')
  # Platform build metadata is also used to select the correct update channel/CPU.
  (root/'v2rayN/ServiceLib/Services/MoskomMacBuildInfo.cs').write_text('namespace ServiceLib.Services;\npublic static class MoskomMacBuildInfo { public const string Flavor="'+a.flavor+'"; public const string Rid="'+a.rid+'"; public const string MinimumOS="'+('11.0' if a.flavor=='legacy' else '13.0')+'"; }\n')
 print('Prepared macOS',a.flavor,a.rid,a.version)

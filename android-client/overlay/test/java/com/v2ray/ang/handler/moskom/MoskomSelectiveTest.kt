@@ -27,4 +27,12 @@ class MoskomSelectiveTest {
         assertTrue(MoskomSelective.ready("services",emptySet(),valid,installed,valid))
         assertThrows(IllegalArgumentException::class.java){MoskomSelective.catalog("{\"version\":2,\"services\":[]}")}
     }
+    @Test fun `native empty or invalid package list never captures every app`() {
+        assertFalse(MoskomSelective.nativeAppPolicyAllowed(true,false,0))
+        assertFalse(MoskomSelective.nativeAppPolicyAllowed(true,true,1))
+        assertTrue(MoskomSelective.nativeAppPolicyAllowed(true,false,1))
+        assertTrue(MoskomSelective.nativeAppPolicyAllowed(false,false,0))
+        assertTrue(MoskomSelective.nativeAppPolicyAllowed(false,true,0))
+    }
+
 }
