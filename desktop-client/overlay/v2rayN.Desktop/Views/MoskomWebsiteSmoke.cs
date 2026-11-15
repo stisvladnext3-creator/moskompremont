@@ -110,12 +110,21 @@ internal static class MoskomWebsiteSmoke
             var emptyId = groups.First(g => g.Memo!.EndsWith(":804", StringComparison.Ordinal)).Id;
             T Main<T>(string name) where T : Control => owner.GetVisualDescendants().OfType<T>().First(c => c.Name == name);
             var subscriptionPicker = Main<ComboBox>("MoskomSubscriptions"); var serverPicker = Main<ComboBox>("MoskomServers");
+            string PickerState(string id, int count)
+            {
+                var view = owner.GetVisualDescendants().OfType<MoskomLauncherView>().First();
+                object? Field(string name) => typeof(MoskomLauncherView).GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(view);
+                return $"target={id}; expected servers={count}; selected={(subscriptionPicker.SelectedItem as MoskomSubscriptionGroup)?.Id}; stored={MoskomLauncherRuntime.Preferences.SelectedSubscriptionId}; actual servers={serverPicker.Items.Count}; enabled={subscriptionPicker.IsEnabled}; state={MoskomLauncherRuntime.Connection?.State}; refreshing={Field("_refreshing")}; queued={Field("_refreshQueued")}; operation={Field("_operation")}; groups={string.Join(",", subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Select(g => g.Name+":"+g.Id))}; hint={Main<TextBlock>("MoskomHint").Text}";
+            }
             async Task Pick(string id, int count)
             {
-                await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Id == id));
+                File.AppendAllText(Path.Combine(folder, "picker-trace.txt"), DateTimeOffset.UtcNow.ToString("O")+" before "+PickerState(id,count)+Environment.NewLine);
+                try { await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Id == id)); }
+                catch(Exception error) { throw new InvalidOperationException("Picker before selection: "+PickerState(id,count),error); }
                 subscriptionPicker.SelectedItem = subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().First(g => g.Id == id);
                 try { await WaitFor(() => subscriptionPicker.IsEnabled && subscriptionPicker.SelectedItem is MoskomSubscriptionGroup group && group.Id == id && serverPicker.Items.Count == count && MoskomLauncherRuntime.Preferences.SelectedSubscriptionId == id); }
-                catch(Exception error) { throw new InvalidOperationException($"Picker target={id}; expected servers={count}; selected={(subscriptionPicker.SelectedItem as MoskomSubscriptionGroup)?.Id}; stored={MoskomLauncherRuntime.Preferences.SelectedSubscriptionId}; actual servers={serverPicker.Items.Count}; enabled={subscriptionPicker.IsEnabled}; hint={Main<TextBlock>("MoskomHint").Text}",error); }
+                catch(Exception error) { throw new InvalidOperationException("Picker after selection: "+PickerState(id,count),error); }
+                File.AppendAllText(Path.Combine(folder, "picker-trace.txt"), DateTimeOffset.UtcNow.ToString("O")+" after "+PickerState(id,count)+Environment.NewLine);
             }
             await Pick(aId, 2);
             var picker = subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Name == "VPN-A") && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Name == "VPN-B");
