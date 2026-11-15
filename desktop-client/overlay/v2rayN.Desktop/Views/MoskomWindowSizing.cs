@@ -25,8 +25,11 @@ internal static class MoskomWindowSizing
         if (screen == null) return;
         var work = screen.WorkingArea; var scale = screen.Scaling;
         if (scale <= 0 || work.Width <= 0 || work.Height <= 0) return;
-        var chromeWidth = Math.Max(16, (window.FrameSize?.Width ?? window.Bounds.Width) - window.Bounds.Width);
-        var chromeHeight = Math.Max(48, (window.FrameSize?.Height ?? window.Bounds.Height) - window.Bounds.Height);
+        // Before the first layout Bounds can be zero while the native frame
+        // already has its requested size. That entire size is not decoration.
+        var client=window.ClientSize;
+        var chromeWidth = client.Width>0 ? Math.Max(16, (window.FrameSize?.Width ?? client.Width) - client.Width) : 16;
+        var chromeHeight = client.Height>0 ? Math.Max(48, (window.FrameSize?.Height ?? client.Height) - client.Height) : 48;
         var maxWidth = Math.Max(1, work.Width / scale - chromeWidth - 4);
         var maxHeight = Math.Max(1, work.Height / scale - chromeHeight - 4);
         window.MinWidth = Math.Min(window.MinWidth, maxWidth); window.MinHeight = Math.Min(window.MinHeight, maxHeight);
