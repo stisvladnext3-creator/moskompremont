@@ -21,6 +21,7 @@ data class MoskomState(
     val installedApps:List<MoskomInstalledApp> = emptyList(),val services:List<MoskomServiceChoice> = emptyList(),
     val chosenApps:Set<String> = emptySet(),val chosenServices:Set<String> = emptySet(),val selectionReady:Boolean=true,
     val choiceLoading:Boolean=false,val choiceError:Int=0,val choicesOpen:Boolean=false,
+    val choiceQuery:String="",val choiceFilter:MoskomChoiceFilter=MoskomChoiceFilter(),
     val message:Int=0,val error:Int=0,val progress:Int?=null,val release:MoskomRelease?=null,val updateFile:String?=null,
 )
 sealed interface MoskomAction {
@@ -33,6 +34,7 @@ sealed interface MoskomAction {
     data class Dns(val id:String,val custom:String):MoskomAction
     data class AppChoice(val id:String,val checked:Boolean):MoskomAction
     data class ServiceChoice(val id:String,val checked:Boolean):MoskomAction
+    data class SearchChoices(val query:String):MoskomAction
     data object LoadChoices:MoskomAction
     data object SaveChoices:MoskomAction
     data object CloseChoices:MoskomAction
@@ -71,6 +73,7 @@ class MoskomMainController(
     private var operation:Job?=null
     private var connectionTimeout:Job?=null
     private var choicesJob:Job?=null
+    private var choiceFilterJob:Job?=null
     private val daemon=MutableStateFlow(0L to false)
 
     init {
@@ -97,6 +100,15 @@ class MoskomMainController(
         val manual=withContext(Dispatchers.Default){data.groups.filter{MoskomPolicy.removableSubscription(it.id,AppConfig.DEFAULT_SUBSCRIPTION_ID)}}
         _state.update {it.copy(groups=data.groups,manualSubscriptions=manual,group=data.group,server=data.server,user=data.user,mode=data.mode,dns=data.dns,customDns=data.customDns,rulesStamp=data.rulesStamp,services=data.services,chosenApps=if(it.choicesOpen)it.chosenApps else data.chosenApps,chosenServices=if(it.choicesOpen)it.chosenServices else data.chosenServices,selectionReady=data.selectionReady)}
         refresh(data.group)
+        if(_state.value.choicesOpen)filterChoices()
+    }
+    private fun filterChoices() {
+        choiceFilterJob?.cancel()
+        val snapshot=_state.value
+        choiceFilterJob=scope.launch {
+            val filtered=withContext(Dispatchers.Default){MoskomSelective.filterChoices(snapshot.choiceQuery,snapshot.installedApps,snapshot.services)}
+            _state.update{if(it.choicesOpen&&it.choiceQuery==filtered.query)it.copy(choiceFilter=filtered)else it}
+        }
     }
     fun onNativeState(running:Boolean) {
         daemon.update { (it.first+1) to running };connectionTimeout?.cancel();_state.update {it.copy(connecting=false)}
@@ -113,17 +125,20 @@ class MoskomMainController(
             MoskomAction.Service->scope.launch {service()}
             MoskomAction.LoadChoices->{
                 choicesJob?.cancel()
+                val keepDraft=_state.value.choicesOpen
+                _state.update{it.copy(choiceLoading=true,choiceError=0,choiceQuery=if(it.choicesOpen)it.choiceQuery else "",choicesOpen=true)}
                 choicesJob=scope.launch {
-                    _state.update{it.copy(choiceLoading=true,choiceError=0,choicesOpen=true)}
                     try {
                         val data=withContext(Dispatchers.IO){val routes=repo().routes;Triple(routes.installedApps(),routes.selectedApps(),routes.selectedServices())}
-                        _state.update{it.copy(installedApps=data.first,chosenApps=data.second,chosenServices=data.third)}
+                        _state.update{it.copy(installedApps=data.first,chosenApps=if(keepDraft)it.chosenApps else data.second,chosenServices=if(keepDraft)it.chosenServices else data.third)}
+                        filterChoices()
                     }catch(cancelled:CancellationException){throw cancelled}
                     catch(error:Exception){LogUtil.e(AppConfig.TAG,"VPN application list load failed",IllegalStateException(error.javaClass.simpleName));_state.update{it.copy(choiceError=R.string.moskom_selection_error)}}
                     finally{if(isActive)_state.update{it.copy(choiceLoading=false)}}
                 }
             }
-            MoskomAction.CloseChoices->{choicesJob?.cancel();_state.update{it.copy(choicesOpen=false,choiceLoading=false)}}
+            MoskomAction.CloseChoices->{choicesJob?.cancel();choiceFilterJob?.cancel();_state.update{it.copy(choicesOpen=false,choiceLoading=false,choiceQuery="",choiceFilter=MoskomChoiceFilter())}}
+            is MoskomAction.SearchChoices->{_state.update{it.copy(choiceQuery=MoskomSelective.searchQuery(action.query))};filterChoices()}
             is MoskomAction.AppChoice->{if(_state.value.installedApps.any{it.id==action.id})_state.update{it.copy(chosenApps=if(action.checked)it.chosenApps+action.id else it.chosenApps-action.id)}}
             is MoskomAction.ServiceChoice->{if(_state.value.services.any{it.id==action.id})_state.update{it.copy(chosenServices=if(action.checked)it.chosenServices+action.id else it.chosenServices-action.id)}}
             MoskomAction.SaveChoices->execute {

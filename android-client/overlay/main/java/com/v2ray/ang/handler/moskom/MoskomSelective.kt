@@ -7,7 +7,16 @@ import com.v2ray.ang.dto.entities.RulesetItem
 data class MoskomInstalledApp(val id:String,val name:String)
 data class MoskomServiceChoice(val id:String="",val name:String="",val domains:List<String> = emptyList(),val ips:List<String> = emptyList(),val mediaIps:List<String> = emptyList(),val mediaPorts:List<String> = emptyList())
 data class MoskomServiceCatalog(val version:Int=0,val services:List<MoskomServiceChoice> = emptyList())
+data class MoskomChoiceFilter(val query:String="",val apps:List<MoskomInstalledApp> = emptyList(),val services:List<MoskomServiceChoice> = emptyList())
 object MoskomSelective {
+    fun searchQuery(value:String):String = value.take(200)
+    fun filterChoices(query:String,apps:List<MoskomInstalledApp>,services:List<MoskomServiceChoice>):MoskomChoiceFilter {
+        val bounded=searchQuery(query);val needle=bounded.trim()
+        fun matches(vararg values:String)=values.any{it.contains(needle,ignoreCase=true)}
+        return MoskomChoiceFilter(bounded,
+            apps.filter{matches(it.name,it.id)},
+            services.filter{matches(it.name,it.id,*it.domains.toTypedArray())})
+    }
     // These modes promise ordinary domestic connectivity. Native package bypass
     // also avoids bank/transport apps treating a routed-direct VPN as a VPN path.
     fun directDomestic(mode:String):Boolean = mode in setOf("blocked","except_ru","services")

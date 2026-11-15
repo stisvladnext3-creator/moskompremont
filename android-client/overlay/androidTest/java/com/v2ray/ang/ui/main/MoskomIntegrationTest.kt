@@ -34,9 +34,20 @@ class MoskomIntegrationTest {
     private fun waitReady(){compose.waitForIdle();compose.waitUntil(120_000){model.moskom().state.value.let{it.loaded&&!it.busy&&!it.connecting}};compose.waitForIdle()}
     private fun dispatch(action:MoskomAction){waitReady();compose.runOnIdle{model.onAction(MainAction.Moskom(action))};waitReady()}
     private fun phase(value:Int){URL("http://10.0.2.2:18080/fixture/phase?value=$value").openStream().close()}
-    private fun click(tag:String){compose.onNodeWithTag(tag).performScrollTo().performClick()}
+    private fun click(tag:String){val node=compose.onNodeWithTag(tag);if(tag=="moskom_save_choices"||tag=="moskom_choices_close")node.performClick()else node.performScrollTo().performClick()}
     private fun text(id:Int)=context.getString(id)
-    private fun closeSheet(){compose.onNodeWithText(text(R.string.moskom_close)).performScrollTo().performClick()}
+    private fun closeSheet(){
+        if(compose.onAllNodesWithTag("moskom_choices_close").fetchSemanticsNodes(atLeastOneRootRequired=false).isNotEmpty())click("moskom_choices_close")
+        else compose.onNodeWithText(text(R.string.moskom_close)).performScrollTo().performClick()
+    }
+    private fun searchChoices(value:String){
+        compose.onNodeWithTag("moskom_choice_search").performClick().performTextReplacement(value)
+        compose.waitUntil(30_000){model.moskom().state.value.choiceFilter.query==value};compose.waitForIdle()
+    }
+    private fun choice(id:String):SemanticsNodeInteraction {
+        compose.onNodeWithTag("moskom_choices_list").performScrollToNode(hasTestTag("moskom_choice_$id"))
+        return compose.onNodeWithTag("moskom_choice_$id")
+    }
     private fun screenshot(name:String){
         compose.waitForIdle()
         val file=File(context.cacheDir,"$name.png");device.takeScreenshot(file)
@@ -129,7 +140,8 @@ class MoskomIntegrationTest {
         click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_services)).performClick()
         compose.waitUntil(30_000){!model.moskom().state.value.choiceLoading}
         assertEquals(27,model.moskom().state.value.services.size)
-        val meet=compose.onNodeWithTag("moskom_choice_google-meet").performScrollTo()
+        searchChoices("YOUTUBE");choice("youtube").performClick().assertIsOn()
+        searchChoices("  mEEt  ");val meet=choice("google-meet")
         meet.assertIsOff().performClick();meet.assertIsOn()
         device.pressDPadDown();compose.waitForIdle() // Enter hardware-keyboard input mode before requesting checkbox focus.
         for(key in listOf(Key.Enter,Key.Spacebar,Key.DirectionCenter)) {
@@ -138,19 +150,34 @@ class MoskomIntegrationTest {
             compose.waitForIdle()
         }
         meet.assertIsOff().assertIsEnabled().performClick();meet.assertIsOn()
+        searchChoices("")
+        compose.onNodeWithTag("moskom_save_choices").assertIsDisplayed()
+        compose.onNodeWithTag("moskom_choices_list").performScrollToIndex(27)
+        compose.onNodeWithTag("moskom_save_choices").assertIsDisplayed()
+        searchChoices("missing-search-fixture")
+        compose.onNodeWithText(text(R.string.moskom_search_empty)).assertExists()
+        assertEquals(setOf("youtube","google-meet"),model.moskom().state.value.chosenServices)
+        scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
+        compose.onNodeWithTag("moskom_choice_search").assertTextContains("missing-search-fixture")
+        searchChoices("meet");choice("google-meet").assertIsOn()
+        compose.onNodeWithTag("moskom_choice_search").performClick();compose.waitForIdle()
+        compose.waitUntil(15_000){device.executeShellCommand("dumpsys input_method").contains("mInputShown=true")}
+        compose.onNodeWithTag("moskom_save_choices").assertIsDisplayed();screenshot("09-search-pinned")
         waitReady();click("moskom_save_choices");waitReady();screenshot("08-services");closeSheet()
         dispatch(MoskomAction.Mode("services"));assertTrue(model.moskom().state.value.selectionReady)
         assertFalse(MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY))
-        assertEquals(setOf("google-meet"),model.moskom().state.value.chosenServices)
+        assertEquals(setOf("youtube","google-meet"),model.moskom().state.value.chosenServices)
         scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
-        assertEquals("services",model.moskom().state.value.mode);assertEquals(setOf("google-meet"),model.moskom().state.value.chosenServices)
+        assertEquals("services",model.moskom().state.value.mode);assertEquals(setOf("youtube","google-meet"),model.moskom().state.value.chosenServices)
         dispatch(MoskomAction.Mode("apps"));assertFalse(model.moskom().state.value.selectionReady)
         compose.onNodeWithTag("moskom_power").assertIsNotEnabled()
         click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_apps)).performClick()
         compose.waitUntil(30_000){!model.moskom().state.value.choiceLoading}
         assertTrue(model.moskom().state.value.installedApps.any{it.id=="com.android.settings"})
-        val settingsApp=compose.onNodeWithTag("moskom_choice_com.android.settings").performScrollTo()
+        searchChoices("COM.ANDROID.SETTINGS");val settingsApp=choice("com.android.settings")
         settingsApp.assertIsOff().performClick();settingsApp.assertIsOn()
+        searchChoices("no-such-installed-app");compose.onNodeWithText(text(R.string.moskom_search_empty)).assertExists()
+        compose.onNodeWithTag("moskom_save_choices").assertIsDisplayed()
         waitReady();click("moskom_save_choices");waitReady();closeSheet()
         assertTrue(model.moskom().state.value.selectionReady)
         assertEquals(setOf("com.android.settings"),MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET))

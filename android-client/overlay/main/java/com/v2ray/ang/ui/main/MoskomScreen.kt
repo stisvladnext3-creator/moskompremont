@@ -5,6 +5,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -196,26 +198,61 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
 }
 
 @Composable private fun ChoiceSheet(state:MoskomState,apps:Boolean,busy:Boolean,action:(MoskomAction)->Unit,close:()->Unit) {
-    Sheet(stringResource(if(apps)R.string.moskom_apps else R.string.moskom_services),close) {
-        Text(stringResource(if(apps)R.string.moskom_apps_description else R.string.moskom_services_description),color=Muted,fontSize=13.sp)
-        if(state.choiceLoading)Text(stringResource(R.string.moskom_selection_loading),color=Muted)
-        if(state.choiceError!=0)Text(stringResource(state.choiceError),color=Color(0xFFFFB0BB))
-        val rows=if(apps)state.installedApps.map{it.id to it.name}else state.services.mapNotNull { service->moskomServiceLabel(service.id)?.let{service.id to stringResource(it)} }
-        val selected=if(apps)state.chosenApps else state.chosenServices
-        if(!state.choiceLoading&&state.choiceError==0&&rows.isEmpty())Text(stringResource(R.string.moskom_no_choices),color=Muted)
-        rows.forEach{(id,name)->key(id){
-            val checked=id in selected
-            // These are local drafts. A background sync must not disable or
-            // defocus an active checkbox; only Save needs the routing lock.
-            Row(Modifier.fillMaxWidth().testTag("moskom_choice_$id").toggleable(value=checked,enabled=!state.choiceLoading,role=Role.Checkbox,onValueChange={value->action(if(apps)MoskomAction.AppChoice(id,value)else MoskomAction.ServiceChoice(id,value))}).padding(vertical=8.dp,horizontal=6.dp),verticalAlignment=Alignment.CenterVertically) {
-                Checkbox(checked=checked,onCheckedChange=null)
-                Text(name,Modifier.weight(1f).padding(start=10.dp),fontSize=14.sp)
+    Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
+        Surface(modifier=Modifier.fillMaxWidth(.94f).fillMaxHeight(.94f).imePadding().navigationBarsPadding().statusBarsPadding(),shape=RoundedCornerShape(20.dp),color=Ink) {
+            BoxWithConstraints(Modifier.padding(14.dp)) {
+                val compact=maxHeight<360.dp
+                val selected=if(apps)state.chosenApps else state.chosenServices
+                val filtered=state.choiceFilter
+                val pending=filtered.query!=state.choiceQuery
+                val appRows=if(state.choiceQuery.isBlank())state.installedApps else filtered.apps
+                val serviceRows=if(state.choiceQuery.isBlank())state.services else filtered.services
+                val empty=if(apps)appRows.isEmpty()else serviceRows.isEmpty()
+                Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    if(!compact)Row(verticalAlignment=Alignment.CenterVertically) {
+                        Text(stringResource(if(apps)R.string.moskom_apps else R.string.moskom_services),fontSize=20.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
+                        SmallButton(R.string.moskom_close,true,close,Modifier.testTag("moskom_choices_close"))
+                    }
+                    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value=state.choiceQuery,onValueChange={action(MoskomAction.SearchChoices(it))},singleLine=true,
+                            label={Text(stringResource(if(apps)R.string.moskom_search_apps else R.string.moskom_search_services))},
+                            keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),
+                            trailingIcon={if(state.choiceQuery.isNotEmpty()) {
+                                val clearName=stringResource(R.string.moskom_clear_search)
+                                IconButton(onClick={action(MoskomAction.SearchChoices(""))},modifier=Modifier.semantics{contentDescription=clearName}.testTag("moskom_clear_search")) {
+                                    Canvas(Modifier.size(16.dp)){drawLine(Cyan,Offset.Zero,Offset(size.width,size.height),2.dp.toPx());drawLine(Cyan,Offset(size.width,0f),Offset(0f,size.height),2.dp.toPx())}
+                                }
+                            }},modifier=Modifier.weight(1f).testTag("moskom_choice_search"))
+                        SmallButton(R.string.moskom_refresh,!state.choiceLoading&&!busy,{action(MoskomAction.LoadChoices)})
+                    }
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("moskom_choices_list"),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                        if(state.choiceQuery.isBlank())item(key="description") {Text(stringResource(if(apps)R.string.moskom_apps_description else R.string.moskom_services_description),color=Muted,fontSize=12.sp)}
+                        if(state.choiceLoading||pending)item(key="loading"){Text(stringResource(R.string.moskom_selection_loading),color=Muted)}
+                        if(state.choiceError!=0)item(key="error"){Text(stringResource(state.choiceError),color=Color(0xFFFFB0BB))}
+                        if(state.error!=0)item(key="operation-error"){Text(stringResource(state.error),color=Color(0xFFFFB0BB),fontSize=12.sp)}
+                        if(!state.choiceLoading&&!pending&&state.choiceError==0&&empty)item(key="empty"){Text(stringResource(if(state.choiceQuery.isBlank())R.string.moskom_no_choices else R.string.moskom_search_empty),color=Muted)}
+                        if(apps)items(appRows,key={it.id}) {app->ChoiceRow(app.id,app.name,app.id in selected,!state.choiceLoading){action(MoskomAction.AppChoice(app.id,it))}}
+                        else items(serviceRows,key={it.id}) {service->
+                            val name=moskomServiceLabel(service.id)?.let{stringResource(it)}?:service.name
+                            ChoiceRow(service.id,name,service.id in selected,!state.choiceLoading){action(MoskomAction.ServiceChoice(service.id,it))}
+                        }
+                    }
+                    Text(stringResource(R.string.moskom_selection_count,selected.size),color=Cyan,fontSize=13.sp,modifier=Modifier.testTag("moskom_choice_count"))
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                        PrimaryButton(R.string.moskom_save_selection,!busy&&!state.choiceLoading&&state.choiceError==0,{action(MoskomAction.SaveChoices)},Modifier.weight(1f).testTag("moskom_save_choices"))
+                        if(compact)SmallButton(R.string.moskom_close,true,close,Modifier.testTag("moskom_choices_close"))
+                    }
+                    if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
             }
-        }}
-        Text(stringResource(R.string.moskom_selection_count,selected.size),color=Cyan)
-        SmallButton(R.string.moskom_refresh,!state.choiceLoading&&!busy,{action(MoskomAction.LoadChoices)},Modifier.fillMaxWidth())
-        PrimaryButton(R.string.moskom_save_selection,!busy&&!state.choiceLoading&&state.choiceError==0,{action(MoskomAction.SaveChoices)},Modifier.testTag("moskom_save_choices"))
-        OperationStatus(state)
+        }
+    }
+}
+
+@Composable private fun ChoiceRow(id:String,name:String,checked:Boolean,enabled:Boolean,change:(Boolean)->Unit) {
+    Row(Modifier.fillMaxWidth().testTag("moskom_choice_$id").toggleable(value=checked,enabled=enabled,role=Role.Checkbox,onValueChange=change).padding(vertical=8.dp,horizontal=6.dp),verticalAlignment=Alignment.CenterVertically) {
+        Checkbox(checked=checked,onCheckedChange=null)
+        Text(name,Modifier.weight(1f).padding(start=10.dp),fontSize=14.sp)
     }
 }
 

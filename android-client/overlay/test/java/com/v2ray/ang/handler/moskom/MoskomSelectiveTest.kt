@@ -4,6 +4,19 @@ import org.junit.jupiter.api.Test
 
 class MoskomSelectiveTest {
     private fun catalog()=javaClass.getResourceAsStream("/service-catalog.json")!!.bufferedReader().use{MoskomSelective.catalog(it.readText())}
+    @Test fun `choice search handles names packages domains case whitespace and empty results`() {
+        val apps=listOf(MoskomInstalledApp("com.example.calc","Калькулятор"),MoskomInstalledApp("com.example.browser","Browser"))
+        val all=MoskomSelective.filterChoices("",apps,catalog())
+        assertEquals(apps.map{it.id}.toSet(),all.apps.map{it.id}.toSet());assertEquals(27,all.services.size)
+        assertEquals(setOf("com.example.calc"),MoskomSelective.filterChoices(" КАЛЬК ",apps,catalog()).apps.map{it.id}.toSet())
+        assertEquals(setOf("com.example.browser"),MoskomSelective.filterChoices("EXAMPLE.BROW",apps,catalog()).apps.map{it.id}.toSet())
+        assertEquals(setOf("google-meet"),MoskomSelective.filterChoices("  mEEt  ",apps,catalog()).services.map{it.id}.toSet())
+        assertEquals(setOf("youtube"),MoskomSelective.filterChoices("youtu.be",apps,catalog()).services.map{it.id}.toSet())
+        val absent=MoskomSelective.filterChoices("no-such-fixture-choice",apps,catalog());assertTrue(absent.apps.isEmpty());assertTrue(absent.services.isEmpty())
+        assertEquals(200,MoskomSelective.searchQuery("x".repeat(500)).length)
+        assertEquals(setOf("google-meet"),MoskomSelective.filterChoices("meet",emptyList(),catalog()).services.map{it.id}.toSet())
+        assertTrue(MoskomSelective.filterChoices("",emptyList(),emptyList()).apps.isEmpty())
+    }
     @Test fun `catalog includes all 27 requested services and call media`() {
         val rows=catalog();assertEquals(27,rows.size)
         assertEquals(setOf("youtube","chatgpt","telegram","whatsapp","flibusta","gemini","kimi","deepseek","perplexity","claude","cursor","instagram","speedtest","discord","viber","snapchat","netflix","spotify","x","facebook","tiktok","playstation","signal","notion","miro","facetime","google-meet"),rows.map{it.id}.toSet())
