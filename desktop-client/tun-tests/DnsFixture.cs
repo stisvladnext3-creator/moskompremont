@@ -26,6 +26,9 @@ internal static partial class Program
         if (serviceMode) Check(_proxyDnsRequests == dnsRequests, "An unselected site's DNS was sent through VPN");
         var start = new ProcessStartInfo(Mac ? "/usr/bin/sudo" : executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
         if (Mac) foreach (var arg in new[] { "-n", "-u", Environment.GetEnvironmentVariable("SUDO_USER")!, "--", executable }) start.ArgumentList.Add(arg);
+        // Schannel's external CRL lookups are outside this DNS fixture. Keep CA
+        // and hostname verification enabled; omit only online CRL retrieval here.
+        if (!Mac) start.ArgumentList.Add("--ssl-no-revoke");
         foreach (var arg in new[] { "--silent", "--show-error", "--fail", "--noproxy", "*", "--proxy", "", "--connect-timeout", "8", "--max-time", "25", "--resolve", PublicHost + ":443:" + address,
             "https://" + PublicHost + "/stisvladnext3-creator/moskompremont/main/shared/service-catalog.json" }) start.ArgumentList.Add(arg);
         using var process = Process.Start(start)!;
