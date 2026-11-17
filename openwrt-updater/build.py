@@ -107,7 +107,7 @@ def build(version,out,apk):
    (out/f'{name}-{version}-r1.apk').write_bytes(result.stdout)
   for p in out.glob('*.ipk'):assert p.read_bytes().startswith(b'\x1f\x8b')
   for p in out.glob('*.apk'):assert p.read_bytes().startswith(b'ADB'),p
-  for fn in ['README.md','INSTALL-OPENWRT.md','LICENSE']:
+  for fn in ['README.md','INSTALL-OPENWRT.md','LICENSE','install.sh']:
    if (ROOT/fn).is_file():shutil.copyfile(ROOT/fn,out/fn)
   (out/'BUILD.json').write_text(json.dumps({'version':version,'source_date_epoch':EPOCH,'apk_builder_url':APK_URL,'apk_builder_sha256':APK_SHA},indent=2)+'\n')
   assets=sorted(p for p in out.iterdir() if p.is_file() and p.name!='SHA256SUMS.txt' and p.suffix!='.zip')

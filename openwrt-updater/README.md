@@ -4,6 +4,14 @@
 
 [Скачать пакет 0.1.2](https://github.com/stisvladnext3-creator/moskompremont/releases/tag/moskom-openwrt-v0.1.2) · [Пошаговая установка](INSTALL-OPENWRT.md)
 
+Быстрая установка на роутере:
+
+```sh
+wget -qO- https://raw.githubusercontent.com/stisvladnext3-creator/moskompremont/main/openwrt-updater/install.sh | sh
+```
+
+Скрипт определяет `apk`/`opkg` и проверяет SHA-256 до установки. Для APK релиза требуется `--allow-untrusted`, пока наш открытый ключ не установлен в `/etc/apk/keys/`; это ограничено двумя проверенными файлами и не отключает глобальную проверку подписей.
+
 ## Что входит
 
 - `mkr-router-updater`: служба procd, проверка по HTTPS, отдельный код устройства, автоматическая замена / режим «только уведомлять», резервная копия и журнал отката.
