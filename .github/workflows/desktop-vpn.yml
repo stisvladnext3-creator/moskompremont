@@ -1,4 +1,5 @@
 name: Build Windows VPN installer
+# Main-branch pushes build and test the Windows installer automatically.
 on:
   workflow_dispatch:
     inputs:

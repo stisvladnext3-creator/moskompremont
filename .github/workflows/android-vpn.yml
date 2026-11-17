@@ -1,4 +1,5 @@
 name: Build Android VPN APK
+# Main-branch pushes build and test the APK automatically.
 on:
   workflow_dispatch:
   push:

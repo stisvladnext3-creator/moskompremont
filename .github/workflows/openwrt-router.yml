@@ -1,6 +1,9 @@
 name: OpenWrt router updater
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['openwrt-updater/**', '.github/workflows/openwrt-router.yml']
 permissions:
   contents: write
 jobs:
