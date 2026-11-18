@@ -20,6 +20,12 @@ info=root/'v2rayN/ServiceLib/Services/MoskomBuildInfo.cs';info.write_text(info.r
 if legacy:
  props=root/'v2rayN/Directory.Build.props';s=props.read_text(encoding='utf-8');s=s.replace('<TargetFramework>net8.0</TargetFramework>','<TargetFramework>net6.0</TargetFramework>');props.write_text(s,encoding='utf-8')
  winproj=root/'v2rayN/v2rayN/v2rayN.csproj';s=winproj.read_text(encoding='utf-8');s=s.replace('net8.0-windows10.0.19041.0','net6.0-windows');winproj.write_text(s,encoding='utf-8')
+ packages=root/'v2rayN/Directory.Packages.props';s=packages.read_text(encoding='utf-8')
+ for old,new in [('ReactiveUI.Avalonia" Version="11.4.12','ReactiveUI.Avalonia" Version="11.3.8'),('Downloader" Version="5.1.0','Downloader" Version="3.3.4'),('ReactiveUI" Version="23.1.8','ReactiveUI" Version="22.2.1')]: s=s.replace(old,new)
+ packages.write_text(s,encoding='utf-8')
+ hotkeys=root/'v2rayN/GlobalHotKeys/src/GlobalHotKeys/GlobalHotKeys.csproj'
+ if hotkeys.exists():
+  s=hotkeys.read_text(encoding='utf-8').replace('<TargetFramework>net8.0</TargetFramework>','<TargetFramework>net6.0</TargetFramework>');hotkeys.write_text(s,encoding='utf-8')
  launcher=root/'v2rayN/v2rayN.Desktop/Views/MoskomLauncherView.cs';s=launcher.read_text(encoding='utf-8').replace('v2rayN 7.25.6',f'v2rayN {upstream_version}');launcher.write_text(s,encoding='utf-8')
 assets=root/'v2rayN/v2rayN.Desktop/Assets'
 for name in ['v2rayN.ico','moskom-vpn.ico']+[f'NotifyIcon{i}.ico' for i in range(1,6)]:shutil.copyfile(own/'branding/moskom-vpn.ico',assets/name)
