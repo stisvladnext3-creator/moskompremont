@@ -1,5 +1,5 @@
 name: Build Windows VPN installer
-# Main-branch pushes build and test the Windows installer automatically.
+# Main-branch pushes build and test both the current and Windows 8 installers automatically.
 on:
   workflow_dispatch:
     inputs:
