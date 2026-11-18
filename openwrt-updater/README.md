@@ -2,7 +2,7 @@
 
 Пакет подключает роутер к **одной** подписке или одному ключу из личного кабинета. Раз в 15 минут он получает актуальное подключение; по умолчанию сам заменяет `proxy_string` выбранной секции Podkop. Пароль клиента на роутере не хранится.
 
-[Скачать пакет 0.1.3](https://github.com/stisvladnext3-creator/moskompremont/releases/tag/moskom-openwrt-v0.1.3) · [Пошаговая установка](INSTALL-OPENWRT.md)
+[Скачать пакет 0.1.4](https://github.com/stisvladnext3-creator/moskompremont/releases/tag/moskom-openwrt-v0.1.4) · [Пошаговая установка](INSTALL-OPENWRT.md)
 
 Быстрая установка на роутере:
 
@@ -32,7 +32,7 @@ wget -qO- https://raw.githubusercontent.com/stisvladnext3-creator/moskompremont/
 
 - **Заблокированное** — к прокси-секции добавляется официальный список `russia_inside`; российские ресурсы идут напрямую, а список заблокированных/ограниченных ресурсов — через прокси.
 - **Всё** — к выбранной прокси-секции добавляется `fully_routed_ips 0.0.0.0/0`, поэтому весь трафик клиентов LAN, который обрабатывает Podkop, направляется через прокси.
-- **Всё, кроме РФ** — в прокси-секции задаётся штатное пользовательское subnet-правило `0.0.0.0/0` и `::/0`, а перед ним создаётся управляемая секция `exclusion` с IPv4/IPv6 CIDR всей страны RU из ipverse/rir-ip. Российские IP идут напрямую, остальные — через прокси; `russia_outside` намеренно не используется, потому что это список отдельных сервисов. Для старых Podkop 0.3–0.6 записываются совместимые `mode`/`community_lists_enabled`, для 0.7 — `connection_type`.
+- **Всё, кроме РФ** — в прокси-секции задаётся штатное пользовательское subnet-правило `0.0.0.0/0`, а перед ним создаётся управляемая секция `exclusion` с актуальным SagerNet `geoip-ru.srs` и доменными суффиксами `ru`/`xn--p1ai` (`.рф`). Российские IP и русские домены идут напрямую, остальные — через прокси; `russia_outside` намеренно не используется, потому что это список отдельных сервисов. SRS подключается напрямую в конфигурацию sing-box и не ждёт фонового обновления plain-text списка. Для старых Podkop 0.3–0.6 записываются совместимые `mode`/`community_lists_enabled`, для 0.7 — `connection_type`.
 
 Пакет не заменяет конфигурацию Podkop целиком: он добавляет только свои списки, `fully_routed_ips` и секцию с маркером `mkr-router`. Чужие поля и секции сохраняются. Если пользователь уже задал конфликтующие региональные списки или вручную изменил управляемые значения после применения, пакет остановится с ручным состоянием вместо перезаписи.
 
@@ -60,8 +60,8 @@ wget -qO- https://raw.githubusercontent.com/stisvladnext3-creator/moskompremont/
 
 ```sh
 python3 openwrt-updater/tests/platforms.py --work /tmp/mkr-build-platforms
-python3 openwrt-updater/build.py --version 0.1.3 --out /tmp/mkr-dist
-python3 openwrt-updater/tests/install.py --dist /tmp/mkr-dist --version 0.1.3
+python3 openwrt-updater/build.py --version 0.1.4 --out /tmp/mkr-dist
+python3 openwrt-updater/tests/install.py --dist /tmp/mkr-dist --version 0.1.4
 python3 openwrt-updater/tests/router.py
 ```
 
