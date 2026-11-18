@@ -3,7 +3,7 @@
 # Usage: wget -qO- https://raw.githubusercontent.com/stisvladnext3-creator/moskompremont/main/openwrt-updater/install.sh | sh
 set -eu
 
-RELEASE_VERSION="${MKR_RELEASE_VERSION:-0.1.2}"
+RELEASE_VERSION="${MKR_RELEASE_VERSION:-0.1.3}"
 case "$RELEASE_VERSION" in
   *[!0-9.]*|'') echo "Некорректная версия релиза." >&2; exit 1 ;;
 esac

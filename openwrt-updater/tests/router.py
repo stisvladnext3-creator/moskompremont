@@ -33,7 +33,7 @@ class Router:
    self.put('/etc/config/podkop',config.replace("option proxy_string ''","option proxy_string '"+OLD+"'")+"\n"+extra)
   else:self.put('/etc/config/podkop',"config main 'main'\n option mode 'proxy'\n option proxy_config_type 'url'\n option proxy_string '"+OLD+"'\n option dns_server '1.1.1.1'\n"+extra)
   self.put('/etc/sing-box/config.json','{}');self.put('/tmp/podkop-version',version);self.source()
-  self.cli('configure',{'mode':mode,'interval':900,'section':'','endpoint':'https://site.example/api/router-agent.php','token':TOKEN})
+  self.cli('configure',{'mode':mode,'routing_mode':'blocked','interval':900,'section':'','endpoint':'https://site.example/api/router-agent.php','token':TOKEN})
  def value(self):return self.sh('uci -q get podkop.main.proxy_string')
  def install_fixtures(self):
   self.sh('mkdir -p /tmp/mkr-mocks')
@@ -75,6 +75,12 @@ esac
   for version in ['0.3.4','0.4.11','0.5.8','0.6.1','0.7.22']:
    self.reset(version);self.cli('check');assert self.value()==NEW;assert self.status()['state']=='applied';assert self.sh('test ! -f /tmp/restarts && echo yes')=='yes'
    self.cli('check');assert self.status()['state']=='current';assert TOKEN not in self.cli('status').stdout.decode();assert self.status()['podkop_version']==version
+  # Podkop-native routing policies are applied without replacing the proxy URL.
+  self.reset('0.7.22');self.cli('configure',{'mode':'auto','routing_mode':'all','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and '0.0.0.0/0' in self.sh('uci -q get podkop.main.fully_routed_ips');assert self.status()['settings']['routing_mode']=='all'
+  self.cli('configure',{'mode':'auto','routing_mode':'blocked','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and '0.0.0.0/0' not in self.sh('uci -q get podkop.main.fully_routed_ips || :') and self.sh('uci -q get podkop.main.community_lists')=='russia_inside'
+  self.reset('0.7.22');self.cli('configure',{'mode':'auto','routing_mode':'except_ru','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and '0.0.0.0/0' in self.sh('uci -q get podkop.main.fully_routed_ips');assert self.sh('uci -q get podkop.mkr_router_main.connection_type')=='exclusion';assert self.sh('uci -q get podkop.mkr_router_main.mode')=='exclusion';assert self.sh('uci -q get podkop.mkr_router_main.community_lists')=='russia_outside'
+  self.cli('configure',{'mode':'auto','routing_mode':'all','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and self.sh('uci -q get podkop.mkr_router_main || :')=='' and '0.0.0.0/0' in self.sh('uci -q get podkop.main.fully_routed_ips')
+  self.reset('0.7.22');self.sh('uci add_list podkop.main.community_lists=russia_outside;uci commit podkop');self.cli('configure',{'mode':'auto','routing_mode':'blocked','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.status()['state']=='manual' and self.status()['reason']=='routing_conflict' and self.value()==OLD
   # Real 0.7 schema: separate settings, connection_type, and configurable health-check path.
   self.reset('0.7.22',mode='notify');before=self.sh('uci export podkop');assert self.sh('uci -q get podkop.main.mode || :')==''
   self.sh('touch /tmp/podkop-on;uci set podkop.settings.config_path=/etc/sing-box/podkop-custom.json;uci commit podkop');self.put('/etc/sing-box/podkop-custom.json','{}')
@@ -87,7 +93,7 @@ esac
    self.reset('0.7.22');self.sh('uci set podkop.main.proxy_config_type='+kind+';uci commit podkop');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
   self.reset('0.7.22',extra="config section 'second'\n option connection_type 'proxy'\n option proxy_config_type 'url'\n option proxy_string 'vless://other@other.example:443#Other'\n")
   self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
-  self.cli('configure',{'mode':'auto','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and 'other.example' in self.sh('uci get podkop.second.proxy_string')
+  self.cli('configure',{'mode':'auto','routing_mode':'blocked','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and 'other.example' in self.sh('uci get podkop.second.proxy_string')
   # Firmware may have no usable package query. The compiled version is data, not shell.
   self.reset('0.7.22');self.sh('touch /tmp/no-package-version');self.put('/usr/lib/podkop/constants.sh','PODKOP_VERSION="0.7.22"\n');self.cli('check');assert self.status()['state']=='applied' and self.status()['podkop_version']=='0.7.22'
   self.reset('0.7.22');self.sh('touch /tmp/no-package-version');self.put('/usr/lib/podkop/constants.sh','PODKOP_VERSION="$(touch /tmp/version-injected)"\n');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual';assert self.sh('test ! -f /tmp/version-injected && echo yes')=='yes'
@@ -99,7 +105,7 @@ esac
   self.reset('0.8.0');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
   self.reset(extra="config extra 'other'\n option mode 'proxy'\n option proxy_config_type 'url'\n option proxy_string 'vless://other@other.example:443#Other'\n");self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
   # Explicit section works without touching another section.
-  self.cli('configure',{'mode':'auto','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and 'other.example' in self.sh('uci -q get podkop.other.proxy_string')
+  self.cli('configure',{'mode':'auto','routing_mode':'blocked','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and 'other.example' in self.sh('uci -q get podkop.other.proxy_string')
   self.reset();self.sh("uci set podkop.main.proxy_config_type=urltest;uci commit podkop");self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
   self.reset();self.put('/tmp/multiline',OLD+'\n// vless://backup@backup.example:443#Backup');self.sh('uci set "podkop.main.proxy_string=$(cat /tmp/multiline)";uci commit podkop');self.cli('check');assert self.status()['state']=='manual' and 'backup' in self.value()
   # Download a base64 subscription, pin the existing node while the host changes.
@@ -117,7 +123,7 @@ esac
   self.put('/tmp/http-code','410');self.cli('check',ok=False);assert self.value()==OLD and self.status()['state']=='unavailable'
   self.reset();self.put('/tmp/curl-fail','');self.cli('check',ok=False);assert self.value()==OLD and self.status()['reason']=='network'
   self.reset();evil=NEW+"'$(touch${IFS}/tmp/INJECTED)";self.source(evil);self.cli('check');assert self.value()==evil;assert self.sh('test ! -f /tmp/INJECTED && test ! -f /tmp/argv-leak && echo yes')=='yes'
-  self.reset();self.cli('configure',{'mode':'auto','interval':900,'section':'','endpoint':'https://site.example/api/router-agent.php','token':'','injected.option':'bad'});assert 'injected' not in self.sh('uci show mkr_router')
+  self.reset();self.cli('configure',{'mode':'auto','routing_mode':'blocked','interval':900,'section':'','endpoint':'https://site.example/api/router-agent.php','token':'','injected.option':'bad'});assert 'injected' not in self.sh('uci show mkr_router')
   self.cli('disable');assert self.sh('uci -q get mkr_router.main.token || :')=='' and self.status()['state']=='unconfigured';assert self.value()==OLD
   assert self.sh('ls -l /etc/config/mkr_router | cut -c1-10')=='-rw-------'
   print('PASS',self.version,': real UCI, Podkop 0.3–0.7 fixtures including upstream 0.7.22, version detection/fallback, settings and connection_type, auto/notify, unknown/complex fallback, subscription selection, token isolation, rollback/recovery, conflicts, auth/network failures, injection and permissions.',flush=True)

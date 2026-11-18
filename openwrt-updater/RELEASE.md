@@ -1,5 +1,7 @@
 Исправлена автоматическая замена для Podkop 0.7.22 на OpenWrt с apk 3.
 
+Добавлена маршрутизация Podkop из LuCI: «Заблокированное» (`russia_inside`), «Всё» (`fully_routed_ips 0.0.0.0/0`) и «Всё, кроме РФ» (полный маршрут с управляемым исключением `russia_outside`). Для Podkop 0.3–0.6 записываются совместимые `mode`/`community_lists_enabled`, для 0.7 — `connection_type`. Чужие поля и секции не перезаписываются, конфликтующие региональные списки требуют ручного решения.
+
 Добавлен `install.sh`: он одной командой определяет `apk`/`opkg`, скачивает нужные пакеты из релиза и проверяет SHA-256 до установки.
 
 - Версия пакета определяется через `apk info -e -v`; при необходимости читается встроенная версия Podkop.
@@ -9,7 +11,7 @@
 **Как обновить:** скачайте два APK на компьютер, перенесите в `/tmp` роутера через WinSCP (SCP), затем выполните в SSH:
 
 ```sh
-apk add --allow-untrusted /tmp/mkr-router-updater-0.1.2-r1.apk /tmp/luci-app-mkr-router-0.1.2-r1.apk
+apk add --allow-untrusted /tmp/mkr-router-updater-0.1.3-r1.apk /tmp/luci-app-mkr-router-0.1.3-r1.apk
 /etc/init.d/rpcd restart
 ```
 
