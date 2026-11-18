@@ -32,6 +32,28 @@ if legacy:
             using var gz = new GZipStream(fs, CompressionMode.Decompress, leaveOpen: true);
             TarFile.ExtractToDirectory(gz, toPath, overwriteFiles: true);''','''            throw new PlatformNotSupportedException("Tar extraction is unavailable in the Windows 8 compatibility build.");''')
  fileutils.write_text(s,encoding='utf-8')
+ compat=root/'v2rayN/ServiceLib/Services/MoskomNet6Compat.cs'
+ compat.write_text('''using System;
+
+namespace System.Runtime.CompilerServices
+{
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Field | AttributeTargets.Property | AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
+    internal sealed class RequiredMemberAttribute : Attribute { }
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Method | AttributeTargets.Constructor, AllowMultiple = true, Inherited = false)]
+    internal sealed class CompilerFeatureRequiredAttribute(string feature) : Attribute
+    {
+        public string FeatureName { get; } = feature;
+        public bool IsOptional { get; set; }
+    }
+    internal static class IsExternalInit { }
+}
+
+namespace System.Diagnostics.CodeAnalysis
+{
+    [AttributeUsage(AttributeTargets.Constructor, AllowMultiple = false, Inherited = false)]
+    internal sealed class SetsRequiredMembersAttribute : Attribute { }
+}
+''',encoding='utf-8')
  launcher=root/'v2rayN/v2rayN.Desktop/Views/MoskomLauncherView.cs';s=launcher.read_text(encoding='utf-8').replace('v2rayN 7.25.6',f'v2rayN {upstream_version}');launcher.write_text(s,encoding='utf-8')
 assets=root/'v2rayN/v2rayN.Desktop/Assets'
 for name in ['v2rayN.ico','moskom-vpn.ico']+[f'NotifyIcon{i}.ico' for i in range(1,6)]:shutil.copyfile(own/'branding/moskom-vpn.ico',assets/name)
