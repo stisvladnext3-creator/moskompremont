@@ -32,8 +32,48 @@ if legacy:
             using var gz = new GZipStream(fs, CompressionMode.Decompress, leaveOpen: true);
             TarFile.ExtractToDirectory(gz, toPath, overwriteFiles: true);''','''            throw new PlatformNotSupportedException("Tar extraction is unavailable in the Windows 8 compatibility build.");''')
  fileutils.write_text(s,encoding='utf-8')
+ # v2rayN 7.20 predates several APIs used by the current overlay. Keep the
+ # compatibility code in the generated legacy tree so the normal channel is
+ # built from the unmodified upstream APIs.
+ for name in ('v2rayN/ServiceLib/Handler/SysProxy/ProxySettingWindows.cs', 'v2rayN/ServiceLib/Services/WindowsJobService.cs'):
+  p=root/name;s=p.read_text(encoding='utf-8').replace('nint.Zero','IntPtr.Zero');p.write_text(s,encoding='utf-8')
+ for p in (root/'v2rayN').rglob('*.cs'):
+  s=p.read_text(encoding='utf-8')
+  if 'nint.Zero' in s: p.write_text(s.replace('nint.Zero','IntPtr.Zero'),encoding='utf-8')
+ downloader=root/'v2rayN/ServiceLib/Helper/DownloaderHelper.cs'
+ s=downloader.read_text(encoding='utf-8')
+ s=s.replace('            MaxTryAgainOnFailure = 2,\n','')
+ s=s.replace('                    ConnectTimeout = timeout * 1000,\n','').replace('                    ConnectTimeout= timeout * 1000,\n','')
+ downloader.write_text(s,encoding='utf-8')
+ utils_legacy=root/'v2rayN/ServiceLib/Common/Utils.cs'
+ s=utils_legacy.read_text(encoding='utf-8')
+ s=s.replace('''                var currentMode = File.GetUnixFileMode(fileName);
+                File.SetUnixFileMode(fileName, currentMode | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+                return true;''','''                // Unix permission bits are unavailable in the net6 Windows 8
+                // target. The legacy payload only executes on Windows.
+                return false;''')
+ utils_legacy.write_text(s,encoding='utf-8')
  compat=root/'v2rayN/ServiceLib/Services/MoskomNet6Compat.cs'
  compat.write_text('''using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace System.IO
+{
+    internal static class StreamCompatExtensions
+    {
+        public static async ValueTask ReadExactlyAsync(this Stream stream, Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var offset = 0;
+            while (offset < buffer.Length)
+            {
+                var read = await stream.ReadAsync(buffer.Slice(offset), cancellationToken).ConfigureAwait(false);
+                if (read == 0) throw new EndOfStreamException();
+                offset += read;
+            }
+        }
+    }
+}
 
 namespace System.Runtime.CompilerServices
 {
@@ -54,6 +94,36 @@ namespace System.Diagnostics.CodeAnalysis
     internal sealed class SetsRequiredMembersAttribute : Attribute { }
 }
 ''',encoding='utf-8')
+ # Unix-only file mode calls are intentionally no-ops in the Windows 8 tree.
+ selective=root/'v2rayN/ServiceLib/Services/MoskomSelectiveRuntime.cs'
+ s=selective.read_text(encoding='utf-8').replace('if(!OperatingSystem.IsWindows())File.SetUnixFileMode(directory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);','')
+ selective.write_text(s,encoding='utf-8')
+ settings_smoke=root/'v2rayN/v2rayN.Desktop/Views/MoskomSettingsSmoke.cs'
+ s=settings_smoke.read_text(encoding='utf-8').replace('if(!OperatingSystem.IsWindows())File.SetUnixFileMode(copy,UnixFileMode.UserRead|UnixFileMode.UserWrite);','')
+ settings_smoke.write_text(s,encoding='utf-8')
+ tun=root/'v2rayN/ServiceLib/Services/MoskomTunSupervisor.cs'
+ s=tun.read_text(encoding='utf-8')
+ s=s.replace('Directory.CreateDirectory(owner._socketDirectory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);','Directory.CreateDirectory(owner._socketDirectory);')
+ s=s.replace('File.SetUnixFileMode(endpoint,UnixFileMode.UserRead|UnixFileMode.UserWrite);','')
+ s=s.replace('var directory=Directory.CreateTempSubdirectory("moskom-tun-").FullName;','var directory=Path.Combine(Path.GetTempPath(),"moskom-tun-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);')
+ s=s.replace('    if(!OperatingSystem.IsWindows())File.SetUnixFileMode(directory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);\n','')
+ s=s.replace(';if(!OperatingSystem.IsWindows())options.UnixCreateMode=UnixFileMode.UserRead|UnixFileMode.UserWrite;',';')
+ tun.write_text(s,encoding='utf-8')
+ # The 7.20 view model exposes the status bar as a singleton.
+ for name in ('v2rayN/v2rayN.Desktop/Views/MoskomLauncherView.cs', 'v2rayN/v2rayN.Desktop/Views/MoskomSettingsSmoke.cs', 'v2rayN/v2rayN.Desktop/Views/MoskomWebsiteSmoke.cs', 'v2rayN/v2rayN.Desktop/Views/MoskomWindowIntegration.cs'):
+  p=root/name;s=p.read_text(encoding='utf-8').replace('_vm.StatusBarViewModel','StatusBarViewModel.Instance').replace('vm.StatusBarViewModel','StatusBarViewModel.Instance');p.write_text(s,encoding='utf-8')
+ settings=root/'v2rayN/ServiceLib/Services/MoskomSettingsRuntime.cs'
+ s=settings.read_text(encoding='utf-8').replace('ViewModel.StatusBarViewModel.RefreshRoutingsMenu()','ServiceLib.ViewModels.StatusBarViewModel.Instance.RefreshRoutingsMenu()')
+ settings.write_text(s,encoding='utf-8')
+ website=root/'v2rayN/ServiceLib/Services/MoskomWebsiteRuntime.cs'
+ s=website.read_text(encoding='utf-8').replace('''            await test.RunLoop(ESpeedActionType.Realping, [selected], timeout.Token);
+            return new(selected.Remarks, delay, DateTimeOffset.Now);''','''            test.RunLoop(ESpeedActionType.Realping, [selected]);
+            while (delay == null && !timeout.IsCancellationRequested)
+            {
+                await Task.Delay(50, timeout.Token);
+            }
+            return new(selected.Remarks, delay, DateTimeOffset.Now);''')
+ website.write_text(s,encoding='utf-8')
  launcher=root/'v2rayN/v2rayN.Desktop/Views/MoskomLauncherView.cs';s=launcher.read_text(encoding='utf-8').replace('v2rayN 7.25.6',f'v2rayN {upstream_version}');launcher.write_text(s,encoding='utf-8')
 assets=root/'v2rayN/v2rayN.Desktop/Assets'
 for name in ['v2rayN.ico','moskom-vpn.ico']+[f'NotifyIcon{i}.ico' for i in range(1,6)]:shutil.copyfile(own/'branding/moskom-vpn.ico',assets/name)
@@ -112,6 +182,36 @@ if legacy:
 
         Servers.Clear();''')
  edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'var name = it.GetSummary();', 'var name = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary();')
+ # The 7.20 speed-test API is fire-and-forget, and its MainWindowViewModel
+ # refresh method is synchronous around the subscription event.
+ if legacy:
+  edit(vm, '''    public async Task RefreshForLauncherAsync()
+    {
+        await RefreshSubscriptions();
+        await RefreshServersDispatcherAsync();
+    }
+    public async Task StopForLauncherAsync()
+    {
+        ServiceLib.Services.MoskomLauncherRuntime.AllowCoreReload = false;
+        await _reloadSemaphore.WaitAsync();
+        try { await CoreManager.Instance.CoreStop(); }
+        finally { _reloadSemaphore.Release(); }
+    }
+
+    #region core job''', '''    public async Task RefreshForLauncherAsync()
+    {
+        RefreshSubscriptions();
+        await RefreshServers();
+    }
+    public async Task StopForLauncherAsync()
+    {
+        ServiceLib.Services.MoskomLauncherRuntime.AllowCoreReload = false;
+        await _reloadSemaphore.WaitAsync();
+        try { await CoreManager.Instance.CoreStop(); }
+        finally { _reloadSemaphore.Release(); }
+    }
+
+    #region core job''')
 else:
  edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', '''        var lstModel = await AppManager.Instance.ProfileModels(_config.SubIndexId, "");
 
