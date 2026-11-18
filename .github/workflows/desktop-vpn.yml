@@ -54,3 +54,39 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
           gh release upload $tag "$env:RUNNER_TEMP/moskom-output/MoskomVPN-menu.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-dns.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-update.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-help.png" "$env:RUNNER_TEMP/moskom-output/MoskomVPN-subscriptions.png" --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Preview upload failed' }
+
+  windows8:
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      MOSKOM_VERSION: 0.3.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          # .NET 8 SDK can compile the net6.0 legacy target while the
+          # self-contained payload carries the .NET 6 runtime to Windows 8.
+          dotnet-version: '8.0.x'
+      - name: Build and inspect Windows 8 installer
+        shell: pwsh
+        run: ./desktop-client/build/Build-Windows.ps1 -Windows8 -Version $env:MOSKOM_VERSION -Output "$env:RUNNER_TEMP/moskom-output-win8"
+      - name: Save Windows 8 build results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moskom-vpn-windows8
+          path: |
+            ${{ runner.temp }}/moskom-output-win8/**
+          if-no-files-found: warn
+      - name: Publish Windows 8 installer and corresponding source
+        if: github.event_name != 'workflow_dispatch' || inputs.publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "moskom-vpn-v$env:MOSKOM_VERSION"
+          gh release upload $tag "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-Setup-$env:MOSKOM_VERSION-win8.exe" "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-Source-$env:MOSKOM_VERSION-win8.zip" "$env:RUNNER_TEMP/moskom-output-win8/SHA256SUMS-win8.txt" "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-Preview-win8.png" "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-Login-win8.png" --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Windows 8 release upload failed' }
+          gh release upload $tag "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-menu-win8.png" "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-dns-win8.png" "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-update-win8.png" "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-help-win8.png" "$env:RUNNER_TEMP/moskom-output-win8/MoskomVPN-subscriptions-win8.png" --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Windows 8 preview upload failed' }

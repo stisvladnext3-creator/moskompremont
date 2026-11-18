@@ -2,6 +2,8 @@
 from pathlib import Path
 import shutil,sys,re
 root=Path(sys.argv[1]).resolve();own=Path(__file__).resolve().parents[1]
+legacy='--legacy' in sys.argv
+upstream_version='7.20.0' if legacy else '7.25.6'
 version=sys.argv[sys.argv.index('--version')+1] if '--version' in sys.argv else '0.3.0'
 if not re.fullmatch(r'\d+\.\d+\.\d+',version):raise SystemExit('Invalid application version')
 def edit(path,old,new,count=1):
@@ -12,6 +14,13 @@ for f in (own/'overlay').rglob('*'):
  if f.is_file():
   p=root/'v2rayN'/f.relative_to(own/'overlay');p.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(f,p)
 info=root/'v2rayN/ServiceLib/Services/MoskomBuildInfo.cs';info.write_text(info.read_text().replace('"0.3.0"',f'"{version}"'),encoding='utf-8')
+# The legacy channel is built from the same source tree with a .NET 6 target.
+# v2rayN 7.20 has one Windows-only project that declares a Windows 10 TFM
+# explicitly, so lower that declaration as well as the shared target.
+if legacy:
+ props=root/'v2rayN/Directory.Build.props';s=props.read_text(encoding='utf-8');s=s.replace('<TargetFramework>net8.0</TargetFramework>','<TargetFramework>net6.0</TargetFramework>');props.write_text(s,encoding='utf-8')
+ winproj=root/'v2rayN/v2rayN/v2rayN.csproj';s=winproj.read_text(encoding='utf-8');s=s.replace('net8.0-windows10.0.19041.0','net6.0-windows');winproj.write_text(s,encoding='utf-8')
+ launcher=root/'v2rayN/v2rayN.Desktop/Views/MoskomLauncherView.cs';s=launcher.read_text(encoding='utf-8').replace('v2rayN 7.25.6',f'v2rayN {upstream_version}');launcher.write_text(s,encoding='utf-8')
 assets=root/'v2rayN/v2rayN.Desktop/Assets'
 for name in ['v2rayN.ico','moskom-vpn.ico']+[f'NotifyIcon{i}.ico' for i in range(1,6)]:shutil.copyfile(own/'branding/moskom-vpn.ico',assets/name)
 shutil.copyfile(own/'branding/app-logo.png',assets/'moskom-logo.png')
@@ -57,14 +66,27 @@ edit(vm,'    #region core job','''    public async Task RefreshForLauncherAsync(
 
     #region core job''')
 # The launcher server picker includes every subscription and must not inherit the tray's limit.
-edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', '''        var lstModel = await AppManager.Instance.ProfileModels(_config.SubIndexId, "");
+if legacy:
+ edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', '''        var lstModel = await AppManager.Instance.ProfileModels(_config.SubIndexId, "");
+
+        Servers.Clear();
+        if (lstModel.Count > _config.GuiItem.TrayMenuServersLimit)
+        {
+            BlServers = false;
+            return;
+        }''', '''        var lstModel = await AppManager.Instance.ProfileModels("", "") ?? [];
+
+        Servers.Clear();''')
+ edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'var name = it.GetSummary();', 'var name = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary();')
+else:
+ edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', '''        var lstModel = await AppManager.Instance.ProfileModels(_config.SubIndexId, "");
 
         if (lstModel?.Count > _config.GuiItem.TrayMenuServersLimit)
         {
             BlServers = false;
             return;
         }''', '''        var lstModel = await AppManager.Instance.ProfileModels("", "") ?? [];''')
-edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'Text = it.GetSummary()', 'Text = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary()')
+ edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'Text = it.GetSummary()', 'Text = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary()')
 # Default-server recovery must remain inside the selected subscription, including
 # an empty subscription. The upstream fallback otherwise picks any stored server.
 edit('v2rayN/ServiceLib/Handler/ConfigHandler.cs', '''        var item = await AppManager.Instance.GetProfileItem(config.IndexId);
@@ -85,10 +107,16 @@ edit('v2rayN/ServiceLib/Handler/ConfigHandler.cs', '''        var item = await A
 # No unattended upstream updater may replace the branded application or bundled rules.
 edit('v2rayN/ServiceLib/Manager/TaskManager.cs','        Task.Run(ScheduledTasks);','        // Updates are explicit in the launcher; binary updates are versioned installer releases.')
 app='v2rayN/v2rayN.Desktop/App.axaml.cs'
-edit(app,'            desktop.MainWindow = mainWindow;','            mainWindow.EnableMoskomLauncher(mainWindowViewModel);\n            desktop.MainWindow = mainWindow;')
+if legacy:
+ edit(app,'            desktop.MainWindow = new MainWindow();','            var mainWindow = new MainWindow();\n            mainWindow.EnableMoskomLauncher(mainWindow.ViewModel!);\n            desktop.MainWindow = mainWindow;')
+else:
+ edit(app,'            desktop.MainWindow = mainWindow;','            mainWindow.EnableMoskomLauncher(mainWindowViewModel);\n            desktop.MainWindow = mainWindow;')
 main='v2rayN/v2rayN.Desktop/Views/MainWindow.axaml.cs'
 edit(main,'        KeyDown += MainWindow_KeyDown;','        // Launcher owns its controls; hidden advanced shortcuts cannot alter proxy state.')
-edit(main,'                HotkeyManager.Instance.Init(_config, OnHotkeyHandler);','                // Global proxy shortcuts are disabled in the simple launcher.')
+if legacy:
+ edit(main,'            HotkeyManager.Instance.Init(_config, OnHotkeyHandler);','            // Global proxy shortcuts are disabled in the simple launcher.')
+else:
+ edit(main,'                HotkeyManager.Instance.Init(_config, OnHotkeyHandler);','                // Global proxy shortcuts are disabled in the simple launcher.')
 program='v2rayN/v2rayN.Desktop/Program.cs'
 edit(program,'        if (OnStartup(args) == false)','''        if (OperatingSystem.IsWindows() && args.Length == 3 && args[0] == "--moskom-watch-proxy")
         {
@@ -108,7 +136,7 @@ s=s[:a]+'''                    <NativeMenu>
                         <NativeMenuItem Command="{Binding ShowWindowCmd}" Header="Открыть МосКомпРемонт VPN" />
                         <NativeMenuItem Click="MenuExit_Click" Header="Выход" />
                     </NativeMenu>'''+s[b:];s=s.replace('ToolTipText="{Binding RunningServerToolTipText}"','ToolTipText="МосКомпРемонт VPN"');p.write_text(s,encoding='utf-8')
-print('Prepared MosKomRemont VPN launcher over upstream 7.25.6.')
+print(f'Prepared MosKomRemont VPN launcher over upstream {upstream_version}.')
 
 # TUN helper runs without opening the GUI or touching account storage.
 edit(program, '        if (OperatingSystem.IsWindows() && args.Length == 3', '        if (args.Length == 6 && args[0] == "--moskom-tun-helper")\n        {\n            try { Environment.ExitCode = ServiceLib.Services.MoskomTunSupervisor.RunHelperAsync(args).GetAwaiter().GetResult(); } catch { Environment.ExitCode = 2; }\n            return;\n        }\n        if (OperatingSystem.IsWindows() && args.Length == 3')

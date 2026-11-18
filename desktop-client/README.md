@@ -9,6 +9,7 @@
 Сборка создаётся workflow `Build Windows VPN installer` и публикуется в GitHub Releases как предварительный выпуск `moskom-vpn-v0.3.<номер сборки>`. Файлы:
 
 - `MoskomVPN-Setup-<версия>.exe` — установщик Windows 10/11 x64.
+- `MoskomVPN-Setup-<версия>-win8.exe` — отдельный установщик Windows 8/8.1 x64.
 - `MoskomVPN-Source-<версия>.zip` — соответствующие изменённые исходники и скрипты.
 - `SHA256SUMS.txt` — контрольные суммы.
 - `MoskomVPN-Preview.png` — снимок работающего окна на Windows.
@@ -53,6 +54,14 @@ CI проверяет меню и диалоги на Windows, шифрован�
 
 ```powershell
 ./desktop-client/build/Build-Windows.ps1 -Version '0.1.0' -Output './out'
+```
+
+Для Windows 8/8.1 workflow запускает отдельный legacy-профиль на v2rayN 7.20.0
+и .NET 6. Его можно собрать вручную той же командой с ключом `-Windows8`;
+результат получает суффикс `-win8` и не заменяет Windows 10/11 установщик:
+
+```powershell
+./desktop-client/build/Build-Windows.ps1 -Windows8 -Version '0.1.0' -Output './out-win8'
 ```
 
 Скрипт скачивает закреплённый исходник v2rayN и его подмодули, применяет точные патчи/оверлеи, публикует self-contained Windows-приложение, проверяет официальный ZIP и геоданные по SHA-256, включает Russia и компилирует Inno Setup. Установщик не скачивает компоненты при установке.

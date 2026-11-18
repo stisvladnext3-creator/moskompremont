@@ -1,6 +1,12 @@
 ﻿#ifndef AppVersion
 #define AppVersion "0.1.0"
 #endif
+#ifndef MinVersion
+#define MinVersion "10.0"
+#endif
+#ifndef SetupSuffix
+#define SetupSuffix ""
+#endif
 [Setup]
 AppId={{837F99C2-A13B-4994-B7B0-AE3B4D178D8D}
 AppName=МосКомпРемонт VPN
@@ -11,7 +17,7 @@ DefaultGroupName=МосКомпРемонт VPN
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-MinVersion=10.0
+MinVersion={#MinVersion}
 WizardStyle=modern
 DisableWelcomePage=no
 DisableDirPage=yes
@@ -19,7 +25,7 @@ DisableProgramGroupPage=yes
 DisableReadyPage=yes
 DisableFinishedPage=yes
 OutputDir={#OutputDir}
-OutputBaseFilename=MoskomVPN-Setup-{#AppVersion}
+OutputBaseFilename=MoskomVPN-Setup-{#AppVersion}{#SetupSuffix}
 Compression=lzma2
 SolidCompression=yes
 UninstallDisplayIcon={app}\MoskomVPN.exe

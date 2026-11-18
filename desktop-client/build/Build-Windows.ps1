@@ -1,4 +1,4 @@
-param([string]$Version = '0.1.0', [string]$Output = "$PSScriptRoot/../out")
+param([string]$Version = '0.1.0', [string]$Output = "$PSScriptRoot/../out", [switch]$Windows8)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $Client = (Resolve-Path "$PSScriptRoot/..").Path
@@ -8,17 +8,23 @@ $TempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTemp
 $Work = Join-Path $TempBase ('moskom-vpn-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $Work | Out-Null
 $Sources = Get-Content "$PSScriptRoot/sources.json" -Raw | ConvertFrom-Json
+$BuildSource = if ($Windows8) { $Sources.windows8 } else { $Sources.upstream }
+$Framework = if ($Windows8) { [string]$Sources.windows8.framework } else { 'net10.0' }
+$InstallerSuffix = if ($Windows8) { '-win8' } else { '' }
+$MinVersion = if ($Windows8) { [string]$Sources.windows8.minVersion } else { '10.0' }
 function Run([scriptblock]$Command) { & $Command; if ($LASTEXITCODE -ne 0) { throw "Command failed: $Command" } }
 function Download([string]$Url, [string]$To, [string]$Sha = '') {
     Invoke-WebRequest -Uri $Url -OutFile $To -MaximumRedirection 10
     if ($Sha -and (Get-FileHash -Algorithm SHA256 $To).Hash.ToLowerInvariant() -ne $Sha.ToLowerInvariant()) { throw "Checksum mismatch: $([IO.Path]::GetFileName($To))" }
 }
 $Upstream = Join-Path $Work 'upstream'
-Run { git clone --quiet --depth 1 --branch $Sources.upstream.version https://github.com/2dust/v2rayN.git $Upstream }
+Run { git clone --quiet --depth 1 --branch $BuildSource.version https://github.com/2dust/v2rayN.git $Upstream }
 $Actual = (git -C $Upstream rev-parse HEAD).Trim()
-if ($Actual -ne $Sources.upstream.commit) { throw 'Upstream commit mismatch.' }
+if ($Actual -ne $BuildSource.commit) { throw 'Upstream commit mismatch.' }
 Run { git -C $Upstream submodule update --init --recursive --depth 1 }
-Run { python "$PSScriptRoot/prepare.py" $Upstream --version $Version }
+$PrepareArgs = @("$PSScriptRoot/prepare.py", $Upstream, '--version', $Version)
+if ($Windows8) { $PrepareArgs += '--legacy' }
+Run { & python @PrepareArgs }
 $Project = Join-Path $Upstream 'v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj'
 $Publish = Join-Path $Work 'publish'
 Run { dotnet publish $Project -c Release -r win-x64 --self-contained true -p:Version=$Version -p:PublishSingleFile=true -p:DebugType=None -p:RestorePackagesWithLockFile=true -o $Publish }
@@ -29,7 +35,7 @@ Rename-Item "$Payload/v2rayN.exe" 'MoskomVPN.exe'
 Copy-Item "$Client/branding" "$Payload/brand" -Recurse -Force
 Copy-Item "$Client/../shared/service-catalog.json" "$Payload/service-catalog.json"
 $StockZip = Join-Path $Work 'stock.zip'
-Download $Sources.upstream.url $StockZip $Sources.upstream.sha256
+Download $BuildSource.url $StockZip $BuildSource.sha256
 $Stock = Join-Path $Work 'stock'
 Expand-Archive $StockZip $Stock
 $StockExe = Get-ChildItem $Stock -Recurse -File -Filter v2rayN.exe | Select-Object -First 1
@@ -75,8 +81,13 @@ foreach ($Tag in $Tags) {
 }
 @{routingCommit=$Sources.russia.routingCommit;rulesCommit=$Sources.russia.rulesCommit;geoRelease=$Sources.russia.geoRelease;fetchedAt=[DateTimeOffset]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content "$Preset/manifest.json" -Encoding utf8NoBOM
 Copy-Item "$Client/LICENSE" "$Payload/LICENSE-v2rayN-GPL-3.0.txt"
-Copy-Item "$Client/КАК-ПОЛЬЗОВАТЬСЯ.txt" $Payload
-Copy-Item "$Client/THIRD-PARTY-NOTICES.txt" $Payload
+if ($Windows8) {
+    (Get-Content "$Client/КАК-ПОЛЬЗОВАТЬСЯ.txt" -Raw).Replace('v2rayN 7.25.6','v2rayN 7.20.0') | Set-Content "$Payload/КАК-ПОЛЬЗОВАТЬСЯ.txt" -Encoding utf8
+    (Get-Content "$Client/THIRD-PARTY-NOTICES.txt" -Raw).Replace('v2rayN 7.25.6','v2rayN 7.20.0') | Set-Content "$Payload/THIRD-PARTY-NOTICES.txt" -Encoding utf8
+} else {
+    Copy-Item "$Client/КАК-ПОЛЬЗОВАТЬСЯ.txt" $Payload
+    Copy-Item "$Client/THIRD-PARTY-NOTICES.txt" $Payload
+}
 Copy-Item "$PSScriptRoot/sources.json" "$Payload/sources.json"
 # Every delivered executable/preset gets a manifest. The installer never needs to download it.
 Get-ChildItem $Payload -Recurse -File | ForEach-Object {
@@ -131,23 +142,26 @@ function SmokeCheck([string]$Exe, [string]$Profile, [string]$Destination) {
     }
 }
 $TunHost=Join-Path $Work 'tun-tests'
-Run { dotnet publish "$Client/tun-tests/Moskom.Tun.Tests.csproj" -c Release -r win-x64 --self-contained true "-p:UpstreamSource=$Upstream" -o $TunHost }
+Run { dotnet publish "$Client/tun-tests/Moskom.Tun.Tests.csproj" -c Release -r win-x64 --self-contained true "-p:UpstreamSource=$Upstream" "-p:MoskomTargetFramework=$Framework" -o $TunHost }
 $env:MOSKOM_TUN_BIN=Join-Path $Payload 'bin'
 try { Run { & "$TunHost/Moskom.Tun.Tests.exe" (Join-Path $Output 'tun-tests') } }
 finally { Remove-Item Env:MOSKOM_TUN_BIN }
 SmokeCheck "$Payload/MoskomVPN.exe" (Join-Path $Work 'smoke-profile') (Join-Path $Output 'smoke')
 $Compiler = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
 if (!(Test-Path $Compiler)) { throw 'Inno Setup compiler not found.' }
-Run { & $Compiler "/DAppVersion=$Version" "/DPayloadDir=$Payload" "/DOutputDir=$Output" "$Client/installer/MoskomVPN.iss" }
+Run { & $Compiler "/DAppVersion=$Version" "/DPayloadDir=$Payload" "/DOutputDir=$Output" "/DMinVersion=$MinVersion" "/DSetupSuffix=$InstallerSuffix" "$Client/installer/MoskomVPN.iss" }
 # Install the actual package, launch it, then uninstall on this disposable Windows runner.
 $Install = Join-Path $Work 'Installed App'
-$Setup = Join-Path $Output "MoskomVPN-Setup-$Version.exe"
-# Verify an in-place upgrade from the installer already delivered to clients.
-$Previous = Join-Path $Work 'previous-setup.exe'
-Download 'https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.3.12/MoskomVPN-Setup-0.3.12.exe' $Previous 'e3b52d591ee796643cc8723749ac1552fd8f84054fa5a3da18c42ebf0e7752c1'
-$OldInstall = Start-Process $Previous -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $Install)) -Wait -PassThru
-if ($OldInstall.ExitCode -ne 0) { throw 'Previous version installation failed.' }
-$PreviousHash = (Get-FileHash "$Install/MoskomVPN.exe").Hash
+$Setup = Join-Path $Output "MoskomVPN-Setup-$Version$InstallerSuffix.exe"
+$PreviousHash = $null
+if (!$Windows8) {
+    # Verify an in-place upgrade from the installer already delivered to clients.
+    $Previous = Join-Path $Work 'previous-setup.exe'
+    Download 'https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.3.12/MoskomVPN-Setup-0.3.12.exe' $Previous 'e3b52d591ee796643cc8723749ac1552fd8f84054fa5a3da18c42ebf0e7752c1'
+    $OldInstall = Start-Process $Previous -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $Install)) -Wait -PassThru
+    if ($OldInstall.ExitCode -ne 0) { throw 'Previous version installation failed.' }
+    $PreviousHash = (Get-FileHash "$Install/MoskomVPN.exe").Hash
+}
 $InstallLog = Join-Path $Output 'smoke/install.log'
 $Installed = Start-Process $Setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $Install),('"/LOG={0}"' -f $InstallLog)) -Wait -PassThru
 if ($Installed.ExitCode -ne 0) { throw "Installer failed: $($Installed.ExitCode)" }
@@ -155,7 +169,7 @@ foreach ($File in @('MoskomVPN.exe','preset-russia/route-0.json','preset-russia/
     if (!(Test-Path (Join-Path $Install $File))) { throw "Installer omitted $File" }
 }
 if ((Get-FileHash "$Install/MoskomVPN.exe").Hash -ne (Get-FileHash "$Payload/MoskomVPN.exe").Hash) { throw 'Installed binary differs from payload.' }
-if ((Get-FileHash "$Install/MoskomVPN.exe").Hash -eq $PreviousHash) { throw 'Upgrade did not replace the previous application.' }
+if (!$Windows8 -and (Get-FileHash "$Install/MoskomVPN.exe").Hash -eq $PreviousHash) { throw 'Upgrade did not replace the previous application.' }
 $DesktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'МосКомпРемонт VPN.lnk'
 $StartLink = Join-Path ([Environment]::GetFolderPath('Programs')) 'МосКомпРемонт VPN.lnk'
 if (!(Test-Path $DesktopLink) -or !(Test-Path $StartLink)) { throw 'Installer did not create shortcuts.' }
@@ -180,7 +194,7 @@ function VerifyInstallerShortcuts([string]$Label) {
         if (!(Test-Path -LiteralPath $Detail.icon -PathType Leaf) -or (Get-FileHash -LiteralPath $Detail.icon).Hash -ne $ExpectedIconHash) { throw "Shortcut does not use the website logo: $($Detail.link)" }
     }
 }
-VerifyInstallerShortcuts 'upgrade'
+if (!$Windows8) { VerifyInstallerShortcuts 'upgrade' }
 if ((Get-FileHash "$Install/brand/moskom-vpn.ico").Hash -ne (Get-FileHash "$Client/branding/moskom-vpn.ico").Hash) { throw 'Installed icon differs from website branding.' }
 SmokeCheck "$Install/MoskomVPN.exe" (Join-Path $Work 'installed-smoke-profile') (Join-Path $Output 'smoke/installed')
 # Exercise the same parent-wait + silent install + automatic relaunch used by the app updater.
@@ -207,13 +221,15 @@ if($Fresh.ExitCode -ne 0 -or !(Test-Path $DesktopLink)){throw 'Fresh install did
 VerifyInstallerShortcuts 'fresh'
 $Removed=Start-Process "$Install/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
 if($Removed.ExitCode -ne 0){throw 'Fresh installation could not be uninstalled.'}
-@{installed=$true;upgradedFrom0312=$true;automaticRelaunch=$true;freshDesktopShortcut=$true;installedAppLaunched=$true;shortcutsVerified=$true;uninstalled=$true;realProxyUnchanged=$true} | ConvertTo-Json | Set-Content "$Output/smoke/installer-validation.json" -Encoding utf8
-Copy-Item "$Output/smoke/launcher.png" "$Output/MoskomVPN-Preview.png"
-Copy-Item "$Output/smoke/login.png" "$Output/MoskomVPN-Login.png"
-foreach($Name in @('menu','dns','update','help','subscriptions')){Copy-Item "$Output/smoke/$Name.png" "$Output/MoskomVPN-$Name.png"}
+@{installed=$true;upgradedFrom0312=(!$Windows8);automaticRelaunch=$true;freshDesktopShortcut=$true;installedAppLaunched=$true;shortcutsVerified=$true;uninstalled=$true;realProxyUnchanged=$true} | ConvertTo-Json | Set-Content "$Output/smoke/installer-validation.json" -Encoding utf8
+ $AssetSuffix = if ($Windows8) { '-win8' } else { '' }
+Copy-Item "$Output/smoke/launcher.png" "$Output/MoskomVPN-Preview$AssetSuffix.png"
+Copy-Item "$Output/smoke/login.png" "$Output/MoskomVPN-Login$AssetSuffix.png"
+foreach($Name in @('menu','dns','update','help','subscriptions')){Copy-Item "$Output/smoke/$Name.png" "$Output/MoskomVPN-$Name$AssetSuffix.png"}
 # Corresponding modified application source and build instructions, without secrets/cache/output.
 $SourceBundle = Join-Path $Work 'source-bundle'
 Run { python "$PSScriptRoot/source-bundle.py" $Upstream $Client $SourceBundle }
-Compress-Archive "$SourceBundle/*" "$Output/MoskomVPN-Source-$Version.zip" -CompressionLevel Optimal
-Get-ChildItem $Output -File | ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name } | Set-Content "$Output/SHA256SUMS.txt" -Encoding utf8
+Compress-Archive "$SourceBundle/*" "$Output/MoskomVPN-Source-$Version$AssetSuffix.zip" -CompressionLevel Optimal
+$ChecksumsName = if ($Windows8) { 'SHA256SUMS-win8.txt' } else { 'SHA256SUMS.txt' }
+Get-ChildItem $Output -File | ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name } | Set-Content (Join-Path $Output $ChecksumsName) -Encoding utf8
 Write-Host "Installer, source, SHA256SUMS and smoke report prepared in $Output"

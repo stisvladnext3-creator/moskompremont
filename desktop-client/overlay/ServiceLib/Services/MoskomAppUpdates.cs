@@ -16,6 +16,12 @@ public sealed record MoskomAppRelease(Version Version, string Tag, Uri Installer
 public sealed class MoskomAppUpdates(MoskomTransfers downloads)
 {
     private const string Prefix = "moskom-vpn-v";
+    public static string InstallerFileName(Version version)
+    {
+        var legacy = OperatingSystem.IsWindows() && !OperatingSystem.IsWindowsVersionAtLeast(10);
+        return legacy ? $"MoskomVPN-Setup-{version}-win8.exe" : $"MoskomVPN-Setup-{version}.exe";
+    }
+
     public static MoskomAppRelease? SelectRelease(JsonElement releases, Version current)
     {
         if (releases.ValueKind != JsonValueKind.Array) throw new InvalidOperationException("Не удалось прочитать список обновлений.");
@@ -27,12 +33,14 @@ public sealed class MoskomAppUpdates(MoskomTransfers downloads)
             var tag = tagValue.GetString() ?? "";
             if (!tag.StartsWith(Prefix, StringComparison.Ordinal) || !Regex.IsMatch(tag[Prefix.Length..], @"\A\d+\.\d+\.\d+\z") || !Version.TryParse(tag[Prefix.Length..], out var version) || version <= current) continue;
             if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array) continue;
-            var name = $"MoskomVPN-Setup-{version}.exe";
+            var name = InstallerFileName(version);
+            var checksumName = name.EndsWith("-win8.exe", StringComparison.Ordinal) ? "SHA256SUMS-win8.txt" : "SHA256SUMS.txt";
             Uri? installer = null, checksums = null; long size = 0;
             foreach (var asset in assets.EnumerateArray())
             {
                 if (!asset.TryGetProperty("name", out var n) || !asset.TryGetProperty("browser_download_url", out var u)) continue;
-                var file = n.GetString(); if (file != name && file != "SHA256SUMS.txt") continue;
+                var file = n.GetString();
+                if (file != name && file != checksumName && !(name.EndsWith("-win8.exe", StringComparison.Ordinal) && file == "SHA256SUMS.txt")) continue;
                 if (!Uri.TryCreate(u.GetString(), UriKind.Absolute, out var uri)) continue;
                 var expected = $"https://github.com/{MoskomBuildInfo.Repository}/releases/download/{tag}/{file}";
                 if (uri.AbsoluteUri != expected) continue;

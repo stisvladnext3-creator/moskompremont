@@ -5,6 +5,14 @@
     "url": "https://github.com/2dust/v2rayN/releases/download/7.25.6/v2rayN-windows-64-desktop.zip",
     "sha256": "defb18a16dac1d44659c30d0b8934f8b085cf540133574b892919ea29b083b00"
   },
+  "windows8": {
+    "version": "7.20.0",
+    "commit": "1090afd7748617eb6bfba18e9fad91c767fe59ec",
+    "url": "https://github.com/2dust/v2rayN/releases/download/7.20.0/v2rayN-windows-64-desktop.zip",
+    "sha256": "498a59c4ab2ae5e9cfe6b9a20798e7eefcfde309ec67aa4ebd4abe7b531a5a3e",
+    "framework": "net6.0",
+    "minVersion": "6.2"
+  },
   "russia": {
     "routingCommit": "ecd88540aa9472ee96dbb8b10df008f57fc75555",
     "rulesCommit": "934f38aeecf88459ab4564dfe134cb0d90460344",
