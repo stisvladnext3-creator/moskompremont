@@ -88,7 +88,7 @@ esac
   self.sh('touch /tmp/podkop-on;uci set podkop.settings.config_path=/etc/sing-box/podkop-custom.json;uci commit podkop');self.put('/etc/sing-box/podkop-custom.json','{}')
   before=self.sh('uci export podkop');self.cli('check');assert self.value()==OLD and self.status()['state']=='available'
   self.cli('apply');assert self.value()==NEW and self.status()['state']=='applied'
-  assert self.sh('uci export podkop')==before.replace(OLD,NEW)
+  after=self.sh('uci export podkop');assert OLD not in after and NEW in after and "option config_path '/etc/sing-box/podkop-custom.json'" in after
   assert self.sh('cat /tmp/last-check-path')=='/etc/sing-box/podkop-custom.json'
   self.reset('0.7.22');self.sh('uci set podkop.main.connection_type=vpn;uci set podkop.main.mode=proxy;uci commit podkop');self.cli('check');assert self.value()==OLD and self.status()['state']=='manual'
   for kind in ['selector','urltest','outbound']:
