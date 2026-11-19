@@ -67,7 +67,8 @@ function replaceRouterDevice(PDO $db,int $id,string $type,int $resourceId,int $a
  $same=$device['resource_type']===$type&&(int)$device['resource_id']===$resourceId;
  if(!$same){
   query($db,"UPDATE internet_router_devices SET resource_type=?,resource_id=?,last_state='available',last_revision=NULL WHERE id=?",[$type,$resourceId,$id]);
-  notifyClient($db,$owner,'router-device-replaced:'.$id.':'.bin2hex(random_bytes(8)),'router_device_available','Для роутера обновлён ключ','Роутер «'.$device['label'].'» теперь использует «'.$source['label'].'». Код устройства на роутере менять не нужно.','openwrt');
+  $target=$type==='router_key'?'router-keys':'subscriptions';
+  notifyClient($db,$owner,'router-device-replaced:'.$id.':'.bin2hex(random_bytes(8)),'router_device_available','Для роутера обновлён ключ','Роутер «'.$device['label'].'» теперь использует «'.$source['label'].'». Код устройства на роутере менять не нужно.',$target);
  }
  $db->commit();
  return ['ok'=>true,'changed'=>!$same,'resource_label'=>$source['label']];
