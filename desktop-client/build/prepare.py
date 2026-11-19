@@ -118,7 +118,7 @@ namespace System.Diagnostics.CodeAnalysis
   s=p.read_text(encoding='utf-8').replace('await StatusBarViewModel.Instance.RefreshRoutingsMenu();','AppEvents.RoutingsMenuRefreshRequested.Publish();')
   p.write_text(s,encoding='utf-8')
  settings=root/'v2rayN/ServiceLib/Services/MoskomSettingsRuntime.cs'
- s=settings.read_text(encoding='utf-8').replace('ViewModel.StatusBarViewModel.RefreshRoutingsMenu()','ServiceLib.Events.AppEvents.RoutingsMenuRefreshRequested.Publish()')
+ s=settings.read_text(encoding='utf-8').replace('await ViewModel.StatusBarViewModel.RefreshRoutingsMenu()','ServiceLib.Events.AppEvents.RoutingsMenuRefreshRequested.Publish()')
  settings.write_text(s,encoding='utf-8')
  website=root/'v2rayN/ServiceLib/Services/MoskomWebsiteRuntime.cs'
  s=website.read_text(encoding='utf-8').replace('''            await test.RunLoop(ESpeedActionType.Realping, [selected], timeout.Token);
