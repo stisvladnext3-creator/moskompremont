@@ -192,6 +192,10 @@ if legacy:
                 await SQLiteHelper.Instance.DeleteAsync(item);''','''            foreach (var item in existing.Where(r => r.Remarks.StartsWith(template.Version + "-", StringComparison.Ordinal) || r.Remarks.StartsWith("V4-", StringComparison.Ordinal)))
                 await SQLiteHelper.Instance.DeleteAsync(item);''')
  launcher_runtime.write_text(s,encoding='utf-8')
+ builtin=root/'v2rayN/ServiceLib/Handler/ConfigHandler.cs'
+ s=builtin.read_text(encoding='utf-8')
+ s=s.replace('        var ver = "V4-";', '        return 0;\n        var ver = "V4-";', 1)
+ builtin.write_text(s,encoding='utf-8')
  # The 7.20 speed-test API is fire-and-forget, and its MainWindowViewModel
  # refresh method is synchronous around the subscription event.
  if legacy:
