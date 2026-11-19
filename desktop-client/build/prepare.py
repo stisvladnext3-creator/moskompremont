@@ -111,12 +111,20 @@ namespace System.Diagnostics.CodeAnalysis
  website=root/'v2rayN/ServiceLib/Services/MoskomWebsiteRuntime.cs'
  s=website.read_text(encoding='utf-8').replace('''            await test.RunLoop(ESpeedActionType.Realping, [selected], timeout.Token);
             return new(selected.Remarks, delay, DateTimeOffset.Now);''','''            test.RunLoop(ESpeedActionType.Realping, [selected]);
-            while (delay == null && !timeout.IsCancellationRequested)
-            {
-                await Task.Delay(50, timeout.Token);
-            }
+            await test.WaitForCompletionAsync(timeout.Token);
             return new(selected.Remarks, delay, DateTimeOffset.Now);''')
  website.write_text(s,encoding='utf-8')
+ speedtest=root/'v2rayN/ServiceLib/Services/SpeedtestService.cs'
+ s=speedtest.read_text(encoding='utf-8')
+ s=s.replace('''    public void RunLoop(ESpeedActionType actionType, List<ProfileItem> selecteds)
+    {
+        Task.Run(async () =>''','''    private Task? _moskomCompletion;
+    public Task WaitForCompletionAsync(CancellationToken ct) => (_moskomCompletion ?? Task.CompletedTask).WaitAsync(ct);
+
+    public void RunLoop(ESpeedActionType actionType, List<ProfileItem> selecteds)
+    {
+        _moskomCompletion = Task.Run(async () =>''')
+ speedtest.write_text(s,encoding='utf-8')
  launcher=root/'v2rayN/v2rayN.Desktop/Views/MoskomLauncherView.cs';s=launcher.read_text(encoding='utf-8').replace('v2rayN 7.25.6',f'v2rayN {upstream_version}');launcher.write_text(s,encoding='utf-8')
 assets=root/'v2rayN/v2rayN.Desktop/Assets'
 for name in ['v2rayN.ico','moskom-vpn.ico']+[f'NotifyIcon{i}.ico' for i in range(1,6)]:shutil.copyfile(own/'branding/moskom-vpn.ico',assets/name)
