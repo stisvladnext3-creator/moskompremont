@@ -39,11 +39,13 @@ if legacy:
   p=root/name;s=p.read_text(encoding='utf-8').replace('nint.Zero','IntPtr.Zero');p.write_text(s,encoding='utf-8')
  for p in (root/'v2rayN').rglob('*.cs'):
   s=p.read_text(encoding='utf-8')
-  if 'nint.Zero' in s: p.write_text(s.replace('nint.Zero','IntPtr.Zero'),encoding='utf-8')
+  if 'nint.Zero' in s or 'new nint(' in s: p.write_text(s.replace('nint.Zero','IntPtr.Zero').replace('new nint(','new IntPtr('),encoding='utf-8')
  downloader=root/'v2rayN/ServiceLib/Helper/DownloaderHelper.cs'
  s=downloader.read_text(encoding='utf-8')
+ s=s.replace('            BlockTimeout = timeout * 1000,\n','')
  s=s.replace('            MaxTryAgainOnFailure = 2,\n','')
  s=s.replace('                    ConnectTimeout = timeout * 1000,\n','').replace('                    ConnectTimeout= timeout * 1000,\n','')
+ s=s.replace('await reader.ReadToEndAsync(cts.Token)','await reader.ReadToEndAsync()')
  downloader.write_text(s,encoding='utf-8')
  utils_legacy=root/'v2rayN/ServiceLib/Common/Utils.cs'
  s=utils_legacy.read_text(encoding='utf-8')
@@ -112,8 +114,11 @@ namespace System.Diagnostics.CodeAnalysis
  # The 7.20 view model exposes the status bar as a singleton.
  for name in ('v2rayN/v2rayN.Desktop/Views/MoskomLauncherView.cs', 'v2rayN/v2rayN.Desktop/Views/MoskomSettingsSmoke.cs', 'v2rayN/v2rayN.Desktop/Views/MoskomWebsiteSmoke.cs', 'v2rayN/v2rayN.Desktop/Views/MoskomWindowIntegration.cs'):
   p=root/name;s=p.read_text(encoding='utf-8').replace('_vm.StatusBarViewModel','StatusBarViewModel.Instance').replace('vm.StatusBarViewModel','StatusBarViewModel.Instance');p.write_text(s,encoding='utf-8')
+ for p in (root/'v2rayN/v2rayN.Desktop/Views').glob('Moskom*.cs'):
+  s=p.read_text(encoding='utf-8').replace('await StatusBarViewModel.Instance.RefreshRoutingsMenu();','AppEvents.RoutingsMenuRefreshRequested.Publish();')
+  p.write_text(s,encoding='utf-8')
  settings=root/'v2rayN/ServiceLib/Services/MoskomSettingsRuntime.cs'
- s=settings.read_text(encoding='utf-8').replace('ViewModel.StatusBarViewModel.RefreshRoutingsMenu()','ServiceLib.ViewModels.StatusBarViewModel.Instance.RefreshRoutingsMenu()')
+ s=settings.read_text(encoding='utf-8').replace('ViewModel.StatusBarViewModel.RefreshRoutingsMenu()','ServiceLib.Events.AppEvents.RoutingsMenuRefreshRequested.Publish()')
  settings.write_text(s,encoding='utf-8')
  website=root/'v2rayN/ServiceLib/Services/MoskomWebsiteRuntime.cs'
  s=website.read_text(encoding='utf-8').replace('''            await test.RunLoop(ESpeedActionType.Realping, [selected], timeout.Token);
