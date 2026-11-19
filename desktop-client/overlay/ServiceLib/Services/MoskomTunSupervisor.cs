@@ -33,8 +33,8 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
     endpoint="MoskomVPN-Tun-"+nonce;var pipe=SecurePipe(endpoint);owner._listener=pipe;
     accept=Task.Run(async()=>{await pipe.WaitForConnectionAsync(ct);if(Encoding.UTF8.GetString(await Read(pipe,ct))!="hello:"+nonce)throw new IOException("Не подтверждён канал TUN.");var authenticated=false;pipe.RunAsClient(()=>authenticated=new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator));if(!authenticated)throw new InvalidOperationException("Служба TUN не получила права администратора.");return (Stream)pipe;},ct);
    }else{
-    owner._socketDirectory=Path.Combine(Path.GetTempPath(),"mkr-"+nonce[..12]);Directory.CreateDirectory(owner._socketDirectory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);endpoint=Path.Combine(owner._socketDirectory,"tun.sock");
-    var listener=new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);listener.Bind(new UnixDomainSocketEndPoint(endpoint));File.SetUnixFileMode(endpoint,UnixFileMode.UserRead|UnixFileMode.UserWrite);listener.Listen(1);owner._listener=listener;
+    owner._socketDirectory=Path.Combine(Path.GetTempPath(),"mkr-"+nonce[..12]);MoskomNetCompat.CreateDirectory(owner._socketDirectory);endpoint=Path.Combine(owner._socketDirectory,"tun.sock");
+    var listener=new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);listener.Bind(new UnixDomainSocketEndPoint(endpoint));MoskomNetCompat.SetPrivateUnixFileMode(endpoint);listener.Listen(1);owner._listener=listener;
     accept=Task.Run(async()=>{var socket=await listener.AcceptAsync(ct);if(VerifyUnixPeer?.Invoke((int)socket.Handle,0,0)!=true){socket.Dispose();throw new InvalidOperationException("Не подтверждены права службы TUN.");}var channel=new NetworkStream(socket,true);if(Encoding.UTF8.GetString(await Read(channel,ct))!="hello:"+nonce){channel.Dispose();throw new IOException("Не подтверждён канал TUN.");}return (Stream)channel;},ct);
    }
    var args=new[]{"--moskom-tun-helper",Environment.ProcessId.ToString(),Started,endpoint,nonce,OperatingSystem.IsWindows()?"0":(UnixUid?.Invoke()??uint.MaxValue).ToString()};
@@ -67,13 +67,13 @@ public sealed class MoskomTunSupervisor : IAsyncDisposable
    using var setup=new CancellationTokenSource(TimeSpan.FromSeconds(20));await Write(channel,Encoding.UTF8.GetBytes("hello:"+args[4]),setup.Token);var bytes=await Read(channel,setup.Token);var json=JsonNode.Parse(bytes) as JsonObject;
    if(json?["inbounds"] is not JsonArray inbounds||!inbounds.OfType<JsonObject>().Any(i=>i["type"]?.GetValue<string>()=="tun")||inbounds.OfType<JsonObject>().Where(i=>i["type"]?.GetValue<string>()!="tun").Any(i=>i["listen"]?.GetValue<string>()!="127.0.0.1"))return 2;
    var core=Utils.GetBinPath(OperatingSystem.IsWindows()?"sing-box.exe":"sing-box","sing_box");if(!File.Exists(core))return 2;
-   var directory=Directory.CreateTempSubdirectory("moskom-tun-").FullName;Process? process=null;WindowsJobService? job=null;
+   var directory=MoskomNetCompat.CreateTempDirectory("moskom-tun-");Process? process=null;WindowsJobService? job=null;
 #if MOSKOM_TUN_TEST
    Task<string>? diagnosticOut=null,diagnosticError=null;
 #endif
    try{
-    if(!OperatingSystem.IsWindows())File.SetUnixFileMode(directory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);
-    var file=Path.Combine(directory,"config.json");var options=new FileStreamOptions{Mode=FileMode.CreateNew,Access=FileAccess.Write,Share=FileShare.None};if(!OperatingSystem.IsWindows())options.UnixCreateMode=UnixFileMode.UserRead|UnixFileMode.UserWrite;await using(var output=new FileStream(file,options)){await output.WriteAsync(bytes,setup.Token);}
+    MoskomNetCompat.SetPrivateUnixFileMode(directory);
+    var file=Path.Combine(directory,"config.json");var options=MoskomNetCompat.PrivateFileStreamOptions();await using(var output=new FileStream(file,options)){await output.WriteAsync(bytes,setup.Token);}
     var start=new ProcessStartInfo(core){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=directory,RedirectStandardOutput=true,RedirectStandardError=true};foreach(var arg in new[]{"run","-c",file,"--disable-color"})start.ArgumentList.Add(arg);
     process=Process.Start(start)??throw new IOException("Не запущено ядро.");if(OperatingSystem.IsWindows()){job=new();if(!job.AddProcess(process.Id))throw new IOException("Не подготовлено завершение ядра.");}
 #if MOSKOM_TUN_TEST

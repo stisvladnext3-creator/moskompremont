@@ -33,10 +33,14 @@ internal static partial class Program {
  static async Task Run(string output){
   Check(!Tunnel(),"Fixture must start without the test TUN");await PrepareDns();var listener=new TcpListener(IPAddress.Loopback,0);listener.Start();var socks=((IPEndPoint)listener.LocalEndpoint).Port;
   using var stop=new CancellationTokenSource();var accept=Task.Run(async()=>{try{while(!stop.IsCancellationRequested){var socket=await listener.AcceptTcpClientAsync(stop.Token);_=Serve(socket,stop.Token);}}catch(OperationCanceledException){}});
-  var directory=Mac?Directory.CreateDirectory(Path.Combine("/private/tmp","moskom-process-fixture-"+Guid.NewGuid().ToString("N"))).FullName:Directory.CreateTempSubdirectory("moskom-process-fixture-").FullName;var selected=Path.Combine(directory,Mac?"selected-curl":"selected-curl.exe");var direct=Path.Combine(directory,Mac?"direct-curl":"direct-curl.exe");
+  var directory=Mac?Directory.CreateDirectory(Path.Combine("/private/tmp","moskom-process-fixture-"+Guid.NewGuid().ToString("N"))).FullName:MoskomNetCompat.CreateTempDirectory("moskom-process-fixture-");var selected=Path.Combine(directory,Mac?"selected-curl":"selected-curl.exe");var direct=Path.Combine(directory,Mac?"direct-curl":"direct-curl.exe");
   try{
    var source=Mac?"/usr/bin/curl":Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"curl.exe");File.Copy(source,selected);File.Copy(source,direct);
-   if(Mac){File.SetUnixFileMode(selected,UnixFileMode.UserRead|UnixFileMode.UserExecute|UnixFileMode.GroupRead|UnixFileMode.GroupExecute|UnixFileMode.OtherRead|UnixFileMode.OtherExecute);File.SetUnixFileMode(direct,UnixFileMode.UserRead|UnixFileMode.UserExecute|UnixFileMode.GroupRead|UnixFileMode.GroupExecute|UnixFileMode.OtherRead|UnixFileMode.OtherExecute);}
+   if(Mac){
+#if NET7_0_OR_GREATER
+    File.SetUnixFileMode(selected,UnixFileMode.UserRead|UnixFileMode.UserExecute|UnixFileMode.GroupRead|UnixFileMode.GroupExecute|UnixFileMode.OtherRead|UnixFileMode.OtherExecute);File.SetUnixFileMode(direct,UnixFileMode.UserRead|UnixFileMode.UserExecute|UnixFileMode.GroupRead|UnixFileMode.GroupExecute|UnixFileMode.OtherRead|UnixFileMode.OtherExecute);
+#endif
+   }
    var port=18838;var apps=Config(socks,port,selected,false);await File.WriteAllBytesAsync(Path.Combine(output,"selected-apps.json"),apps);await CoreCheck(apps,directory);
    await using(var tunnel=await MoskomTunSupervisor.StartAsync(apps,CancellationToken.None)){
    await Wait(Tunnel,"Real test TUN did not open");await Task.Delay(5000);var routed=await Curl(selected,"unselected.invalid");Check(routed.Contains(Marker),"Selected executable did not traverse the proxy");

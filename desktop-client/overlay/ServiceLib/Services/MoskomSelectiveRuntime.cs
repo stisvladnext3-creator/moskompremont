@@ -43,7 +43,7 @@ public static partial class MoskomLauncherRuntime {
    if(!SelectionReady)throw new InvalidOperationException(Preferences.Selective.Mode=="apps"?"Сначала выберите приложения в меню ☰.":"Сначала выберите сервисы в меню ☰.");
    var copy=JsonUtils.Deserialize<ProfileItem>(JsonUtils.Serialize(profile))??throw new InvalidDataException("Не прочитано подключение.");copy.CoreType=ECoreType.sing_box;
    var built=await CoreConfigContextBuilder.Build(AppManager.Instance.Config,copy);if(!built.Success)throw new InvalidOperationException("Этот сервер не поддерживает режим TUN. Выберите другое подключение.");
-   var directory=Path.Combine(Utils.GetTempPath(),"selective");Directory.CreateDirectory(directory);if(!OperatingSystem.IsWindows())File.SetUnixFileMode(directory,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);var source=Path.Combine(directory,"source.json");
+   var directory=Path.Combine(Utils.GetTempPath(),"selective");MoskomNetCompat.CreateDirectory(directory);MoskomNetCompat.SetPrivateUnixFileMode(directory);var source=Path.Combine(directory,"source.json");
    var result=await CoreConfigHandler.GenerateClientConfig(built.Context with{IsTunEnabled=false,RunCoreType=ECoreType.sing_box},source);if(!result.Success)throw new InvalidOperationException("Не удалось подготовить конфигурацию TUN.");
    JsonObject json;try{json=JsonNode.Parse(await File.ReadAllTextAsync(source,ct)) as JsonObject??throw new InvalidDataException("Не прочитана конфигурация.");}finally{File.Delete(source);}
    var port=AppManager.Instance.GetLocalPort(EInboundProtocol.socks);var tun=OperatingSystem.IsMacOS()?"utun"+System.Security.Cryptography.RandomNumberGenerator.GetInt32(100,200):"MoskomVPN";

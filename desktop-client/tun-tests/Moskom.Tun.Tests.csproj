@@ -2,6 +2,7 @@
 <PropertyGroup><TargetFramework Condition="'$(MoskomTargetFramework)' == ''">net10.0</TargetFramework><TargetFramework Condition="'$(MoskomTargetFramework)' != ''">$(MoskomTargetFramework)</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>preview</LangVersion><DefineConstants>$(DefineConstants);MOSKOM_TUN_TEST</DefineConstants></PropertyGroup>
 <ItemGroup>
 <Compile Include="../overlay/ServiceLib/Services/MoskomTunSupervisor.cs" Link="Supervisor.cs"/>
+<Compile Include="../overlay/ServiceLib/Services/MoskomNetCompat.cs" Link="NetCompat.cs"/>
 <Compile Include="../overlay/ServiceLib/Services/MoskomSelectivePolicy.cs" Link="Policy.cs"/>
 <Compile Include="../overlay/ServiceLib/Services/MoskomNetworkDns.cs" Link="NetworkDns.cs"/>
 <Compile Include="../../macos-client/overlay/ServiceLib/Services/MoskomMacNative.cs" Link="MacNative.cs"/>

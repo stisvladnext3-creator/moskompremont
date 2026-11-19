@@ -57,25 +57,6 @@ if legacy:
  utils_legacy.write_text(s,encoding='utf-8')
  compat=root/'v2rayN/ServiceLib/Services/MoskomNet6Compat.cs'
  compat.write_text('''using System;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace System.IO
-{
-    public static class StreamCompatExtensions
-    {
-        public static async ValueTask ReadExactlyAsync(this Stream stream, Memory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            var offset = 0;
-            while (offset < buffer.Length)
-            {
-                var read = await stream.ReadAsync(buffer.Slice(offset), cancellationToken).ConfigureAwait(false);
-                if (read == 0) throw new EndOfStreamException();
-                offset += read;
-            }
-        }
-    }
-}
 
 namespace System.Runtime.CompilerServices
 {
