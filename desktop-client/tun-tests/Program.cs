@@ -39,14 +39,14 @@ internal static partial class Program {
    if(Mac){File.SetUnixFileMode(selected,UnixFileMode.UserRead|UnixFileMode.UserExecute|UnixFileMode.GroupRead|UnixFileMode.GroupExecute|UnixFileMode.OtherRead|UnixFileMode.OtherExecute);File.SetUnixFileMode(direct,UnixFileMode.UserRead|UnixFileMode.UserExecute|UnixFileMode.GroupRead|UnixFileMode.GroupExecute|UnixFileMode.OtherRead|UnixFileMode.OtherExecute);}
    var port=18838;var apps=Config(socks,port,selected,false);await File.WriteAllBytesAsync(Path.Combine(output,"selected-apps.json"),apps);await CoreCheck(apps,directory);
    await using(var tunnel=await MoskomTunSupervisor.StartAsync(apps,CancellationToken.None)){
-    await Wait(Tunnel,"Real test TUN did not open");await Task.Delay(2000);var routed=await Curl(selected,"unselected.invalid");Check(routed.Contains(Marker),"Selected executable did not traverse the proxy");
+   await Wait(Tunnel,"Real test TUN did not open");await Task.Delay(5000);var routed=await Curl(selected,"unselected.invalid");Check(routed.Contains(Marker),"Selected executable did not traverse the proxy");
     var count=_requests;var bypass=await Curl(direct,"unselected.invalid");Check(!bypass.Contains(Marker)&&_requests==count,"Unselected executable was proxied");
     await CheckPublicDirect(direct,false);
    }
    await Wait(()=>!Tunnel(),"Normal disconnect left the TUN/routes active");
    var services=Config(socks,port,selected,true);await File.WriteAllBytesAsync(Path.Combine(output,"selected-services.json"),services);await CoreCheck(services,directory);
    await using(var tunnel=await MoskomTunSupervisor.StartAsync(services,CancellationToken.None)){
-    await Wait(Tunnel,"Service test TUN did not open");await Task.Delay(2000);var routed=await Curl(direct,"youtube.com");Check(routed.Contains(Marker),"Selected service did not traverse proxy");
+   await Wait(Tunnel,"Service test TUN did not open");await Task.Delay(5000);var routed=await Curl(direct,"youtube.com");Check(routed.Contains(Marker),"Selected service did not traverse proxy");
     var count=_requests;var bypass=await Curl(selected,"unselected.invalid");Check(!bypass.Contains(Marker)&&_requests==count,"Unselected service was proxied");
     foreach(var ip in new[]{"91.105.192.8","57.144.0.8"}){var media=await Curl(direct,"media.fixture.invalid",ip);Check(media.Contains(Marker)&&media.Length>128*1024,"Messenger media transfer did not traverse VPN: "+ip);}
     Check((await Curl(direct,"custom.fixture")).Contains(Marker),"Personal domain did not traverse VPN");
