@@ -87,6 +87,16 @@
   document.querySelectorAll('[data-admin-refresh]').forEach(b => b.onclick = () => run(b, () => loadAdmin(b.dataset.adminRefresh)));
   function clearRouterDeviceCodes() { for (const id of ['router-device-code', 'admin-router-device-code']) { $(id).replaceChildren(); $(id).hidden = true; } }
   function routerDeviceSources(select, sources) { select.replaceChildren(new Option(sources.length ? 'Выберите одну запись' : 'Нет назначенных ключей или подписок', '')); for (const source of sources) select.append(new Option(source.group + ' · ' + source.label, source.type + ':' + source.id)); }
+  function routerDeviceReplacePanel(item, admin, sources) {
+    let available = sources;
+    const panel = el('form', null, 'router-device-replace'); panel.hidden = true;
+    const label = el('label', 'Новый ключ или подписка'), select = el('select'); select.name = 'source'; select.required = true; label.append(select);
+    const submit = el('button', 'Сохранить новый ключ', 'account-primary'); submit.type = 'submit'; panel.append(label, submit);
+    panel.onsubmit = event => { event.preventDefault(); run(submit, async () => { const [type, id] = select.value.split(':'); if (!id) throw Error('Выберите ключ или подписку.'); await api(admin ? 'admin_router_device_replace' : 'router_device_replace', { id: Number(item.id), resource_type: type, resource_id: Number(id) }); await loadRouterDevices(admin); message('Ключ заменён. Код устройства на роутере менять не нужно.'); }); };
+    const toggle = button('Заменить ключ', async () => { if (!available) available = (await api('admin_router_device_sources', undefined, { user_id: Number(item.user_id) })).sources; routerDeviceSources(select, available); select.value = item.resource_type + ':' + item.resource_id; panel.hidden = false; toggle.hidden = true; });
+    const cancel = button('Отмена', () => { panel.hidden = true; toggle.hidden = false; });
+    panel.append(cancel); return { toggle, panel };
+  }
   function showRouterDeviceCode(result, admin) {
     const box = $(admin ? 'admin-router-device-code' : 'router-device-code'); box.replaceChildren(el('h3', 'Код устройства — сохраните сейчас'), el('p', 'Вставьте код и адрес API в настройки пакета на роутере. Повторно код не показывается. Передавайте его только владельцу этого роутера.'));
     for (const [label, value] of [['Адрес API', result.endpoint], ['Код устройства', result.token]]) { const row = el('label', label), input = el('textarea'); input.value = value; input.readOnly = true; input.rows = 3; input.setAttribute('autocomplete', 'off'); row.append(input, button('Копировать', async () => { try { await navigator.clipboard.writeText(value); message('Скопировано.'); } catch { input.focus(); input.select(); message('Скопируйте выделенный текст.'); } })); box.append(row); }
@@ -101,7 +111,7 @@
       const inactive = !!item.revoked_at || Date.parse(item.expires_at.replace(' ', 'T') + 'Z') <= Date.now();
       card.append(el('p', inactive ? 'Код отключён или истёк' : (status[item.last_state] || 'Ожидает подключения'), 'status-badge'), el('p', 'Последняя связь: ' + (date(item.last_seen_at) || 'ещё не было') + ' · Код до: ' + date(item.expires_at), 'account-muted'));
       if (item.resource_expired) card.append(el('p', 'Срок подписки истёк. Обновление возобновится после продления.', 'account-muted'));
-      if (!inactive) card.append(button('Отключить код', async () => { if (!confirm('Отключить обновление для роутера «' + item.label + '»?')) return; await api(admin ? 'admin_router_device_revoke' : 'router_device_revoke', { id: Number(item.id) }); clearRouterDeviceCodes(); await loadRouterDevices(admin); message('Код устройства отключён.'); }, 'account-secondary account-danger'));
+      if (!inactive) { const actions = el('div', null, 'order-buttons'), replacement = routerDeviceReplacePanel(item, admin, admin ? null : data.sources); actions.append(replacement.toggle, button('Отключить код', async () => { if (!confirm('Отключить обновление для роутера «' + item.label + '»?')) return; await api(admin ? 'admin_router_device_revoke' : 'router_device_revoke', { id: Number(item.id) }); clearRouterDeviceCodes(); await loadRouterDevices(admin); message('Код устройства отключён.'); }, 'account-secondary account-danger')); card.append(actions, replacement.panel); }
       box.append(card);
     }
   }

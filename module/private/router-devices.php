@@ -55,6 +55,23 @@ function revokeRouterDevice(PDO $db,int $id,int $actor,bool $admin): array {
  if(!$q->rowCount()&&!query($db,'SELECT id FROM internet_router_devices WHERE id=?'.($admin?'':' AND user_id=?'),$admin?[$id]:[$id,$actor])->fetch())problem('Устройство не найдено.',404);
  return ['ok'=>true];
 }
+function replaceRouterDevice(PDO $db,int $id,string $type,int $resourceId,int $actor,bool $admin): array {
+ routerDevicesReady($db);
+ if($id<1||!in_array($type,['router_key','subscription'],true)||$resourceId<1)problem('Выберите ключ или подписку.');
+ $db->beginTransaction();
+ $where=$admin?'':' AND user_id=?';$args=$admin?[$id]:[$id,$actor];
+ $device=query($db,'SELECT * FROM internet_router_devices WHERE id=?'.$where.' FOR UPDATE',$args)->fetch();
+ if(!$device)problem('Роутер не найден.',404);
+ $owner=(int)$device['user_id'];$source=routerDeviceSource($db,$type,$resourceId,$owner,true);
+ if(!$source)problem('Ключ или подписка не найдены у этого клиента.',404);
+ $same=$device['resource_type']===$type&&(int)$device['resource_id']===$resourceId;
+ if(!$same){
+  query($db,"UPDATE internet_router_devices SET resource_type=?,resource_id=?,last_state='available',last_revision=NULL WHERE id=?",[$type,$resourceId,$id]);
+  notifyClient($db,$owner,'router-device-replaced:'.$id.':'.bin2hex(random_bytes(8)),'router_device_available','Для роутера обновлён ключ','Роутер «'.$device['label'].'» теперь использует «'.$source['label'].'». Код устройства на роутере менять не нужно.','openwrt');
+ }
+ $db->commit();
+ return ['ok'=>true,'changed'=>!$same,'resource_label'=>$source['label']];
+}
 function revokeResourceDevices(PDO $db,string $type,int $id): void {
  if(routerDevicesReady($db,false))query($db,'UPDATE internet_router_devices SET revoked_at=COALESCE(revoked_at,CURRENT_TIMESTAMP) WHERE resource_type=? AND resource_id=?',[$type,$id]);
 }

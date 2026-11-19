@@ -3,6 +3,7 @@
   const repository = 'stisvladnext3-creator/moskompremont';
   const platforms = [
     { key: 'windows', tag: /^moskom-vpn-v(\d+\.\d+\.\d+)$/, filename: version => `MoskomVPN-Setup-${version}.exe` },
+    { key: 'windows8', tag: /^moskom-vpn-v(\d+\.\d+\.\d+)$/, filename: version => `MoskomVPN-Setup-${version}-win8.exe` },
     { key: 'android', tag: /^moskom-android-v(\d+\.\d+\.\d+)$/, filename: version => `MoskomVPN-Android-${version}.apk` },
     ...['legacy', 'modern'].flatMap(flavor => ['osx-x64', 'osx-arm64'].map(rid => ({
       key: `mac-${flavor}-${rid}`, tag: /^moskom-mac-v(\d+\.\d+\.\d+)$/,
