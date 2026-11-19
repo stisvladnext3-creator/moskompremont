@@ -117,6 +117,13 @@ namespace System.Diagnostics.CodeAnalysis
  for p in (root/'v2rayN/v2rayN.Desktop/Views').glob('Moskom*.cs'):
   s=p.read_text(encoding='utf-8').replace('await StatusBarViewModel.Instance.RefreshRoutingsMenu();','AppEvents.RoutingsMenuRefreshRequested.Publish();')
   p.write_text(s,encoding='utf-8')
+ smoke_engine=root/'v2rayN/v2rayN.Desktop/Views/MoskomConnectionSmokeEngine.cs'
+ s=smoke_engine.read_text(encoding='utf-8')
+ if 'using System.IO;\n' not in s: s='using System.IO;\n'+s
+ smoke_engine.write_text(s,encoding='utf-8')
+ selective_smoke=root/'v2rayN/v2rayN.Desktop/Views/MoskomSelectiveSmoke.cs'
+ s=selective_smoke.read_text(encoding='utf-8').replace('Preferences.Selective.Services.Order().SequenceEqual','Preferences.Selective.Services.OrderBy(x => x, StringComparer.Ordinal).SequenceEqual')
+ selective_smoke.write_text(s,encoding='utf-8')
  settings=root/'v2rayN/ServiceLib/Services/MoskomSettingsRuntime.cs'
  s=settings.read_text(encoding='utf-8').replace('await ViewModel.StatusBarViewModel.RefreshRoutingsMenu()','ServiceLib.Events.AppEvents.RoutingsMenuRefreshRequested.Publish()')
  settings.write_text(s,encoding='utf-8')
