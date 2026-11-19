@@ -62,7 +62,7 @@ using System.Threading.Tasks;
 
 namespace System.IO
 {
-    internal static class StreamCompatExtensions
+    public static class StreamCompatExtensions
     {
         public static async ValueTask ReadExactlyAsync(this Stream stream, Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
