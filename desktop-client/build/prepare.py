@@ -183,6 +183,15 @@ if legacy:
 
         Servers.Clear();''')
  edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'var name = it.GetSummary();', 'var name = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary();')
+ # v2rayN 7.20 ships three stock V4 policies alongside the MosKom Russia
+ # preset. Remove those stock entries on first-run so legacy exposes the same
+ # three routing choices as the current channel while preserving user rules.
+ launcher_runtime=root/'v2rayN/ServiceLib/Services/MoskomLauncherRuntime.cs'
+ s=launcher_runtime.read_text(encoding='utf-8')
+ s=s.replace('''            foreach (var item in existing.Where(r => r.Remarks.StartsWith(template.Version + "-", StringComparison.Ordinal)))
+                await SQLiteHelper.Instance.DeleteAsync(item);''','''            foreach (var item in existing.Where(r => r.Remarks.StartsWith(template.Version + "-", StringComparison.Ordinal) || r.Remarks.StartsWith("V4-", StringComparison.Ordinal)))
+                await SQLiteHelper.Instance.DeleteAsync(item);''')
+ launcher_runtime.write_text(s,encoding='utf-8')
  # The 7.20 speed-test API is fire-and-forget, and its MainWindowViewModel
  # refresh method is synchronous around the subscription event.
  if legacy:
