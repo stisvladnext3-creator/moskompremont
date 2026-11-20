@@ -83,6 +83,20 @@ jobs:
           cp "$RUNNER_TEMP/moskom-android/V2rayNG/app/build/outputs/apk/fdroid/release/"*universal*.apk "$RUNNER_TEMP/moskom-result/" || true
       - name: Package corresponding Android source
         run: python android-client/build/package-source.py "$RUNNER_TEMP/moskom-android" "$RUNNER_TEMP/moskom-result/MoskomVPN-Android-0.1.$GITHUB_RUN_NUMBER-source.zip" "0.1.$GITHUB_RUN_NUMBER"
+      - name: Publish Android release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="0.1.$GITHUB_RUN_NUMBER"
+          apk=$(find "$RUNNER_TEMP/moskom-android/V2rayNG/app/build/outputs/apk/fdroid/release" -maxdepth 1 -type f -name '*universal*.apk' | head -n 1)
+          test -n "$apk"
+          cp "$apk" "$RUNNER_TEMP/moskom-result/MoskomVPN-Android-$version.apk"
+          cd "$RUNNER_TEMP/moskom-result"
+          sha256sum "MoskomVPN-Android-$version.apk" "MoskomVPN-Android-$version-source.zip" > SHA256SUMS.txt
+          tag="moskom-android-v$version"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "МосКомпРемонт VPN · Android $version" --notes-file "$GITHUB_WORKSPACE/android-client/README.md"
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "MoskomVPN-Android-$version.apk" "MoskomVPN-Android-$version-source.zip" SHA256SUMS.txt
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
       - uses: actions/upload-artifact@v4
         if: always()
         with:
