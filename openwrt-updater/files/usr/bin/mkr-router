@@ -370,7 +370,7 @@ apply_value() {
  version_ok && target || { state manual unsupported_podkop; return 1; }
  [ -z "$(uci -q changes podkop 2>/dev/null)" ] || { state manual unsaved_changes; return 1; }
  routing_mode_ok "$ROUTING_MODE" || { state manual routing_mode; return 1; }
- if [ "$ROUTING_MODE" = podkop ] && [ "$ROUTING_APPLIED_MODE" != podkop ]; then routing_release_managed || { state failed write_failed; return 1; }; ROUTING_SHA="$(routing_hash_current)"; fi
+ if [ "$ROUTING_MODE" = podkop ] && [ -n "$ROUTING_APPLIED_MODE" ] && [ "$ROUTING_APPLIED_MODE" != podkop ]; then routing_release_managed || { state failed write_failed; return 1; }; ROUTING_SHA="$(routing_hash_current)"; fi
  [ -n "$BASELINE" ] && [ "$CURRENT_SHA" = "$BASELINE" ] && { [ "$ROUTING_MODE" = podkop ] || [ -z "$ROUTING_BASELINE" ] || [ "$ROUTING_SHA" = "$ROUTING_BASELINE" ]; } || { state manual local_changed; return 1; }
  WAS_RUNNING=no
  case "$(podkop_state)" in active) WAS_RUNNING=yes;; stopped) ;; *) state manual runtime_state; report manual; return 0;; esac
@@ -437,7 +437,7 @@ check() {
   if [ "$ROUTING_MODE" != podkop ] && [ -n "$ROUTING_BASELINE" ] && [ "$ROUTING_BASELINE" != "$ROUTING_SHA" ]; then state manual local_changed; report manual; return 0; fi
   if [ -z "$BASELINE" ] || [ -z "$ROUTING_BASELINE" ]; then BINDING_APPLIED_MODE="$ROUTING_APPLIED_MODE"; binding "$CURRENT_SHA" "$ROUTING_SHA" || { unset BINDING_APPLIED_MODE; return 1; }; unset BINDING_APPLIED_MODE; BASELINE="$CURRENT_SHA"; ROUTING_BASELINE="$ROUTING_SHA"; fi
   if [ "$ROUTING_MODE" = podkop ]; then
-   if [ "$ROUTING_APPLIED_MODE" != podkop ]; then routing_release_managed || { state failed write_failed; return 1; }; ROUTING_SHA="$(routing_hash_current)"; fi
+   if [ -n "$ROUTING_APPLIED_MODE" ] && [ "$ROUTING_APPLIED_MODE" != podkop ]; then routing_release_managed || { state failed write_failed; return 1; }; ROUTING_SHA="$(routing_hash_current)"; fi
    binding "$CURRENT_SHA" "$ROUTING_SHA" || return 1
    rm -f "$STATE/pending.json"; state current ''; report current; return 0
   fi
