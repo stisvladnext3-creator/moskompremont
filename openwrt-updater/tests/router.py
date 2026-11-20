@@ -81,7 +81,11 @@ esac
   for version in ['0.3.4','0.4.11','0.5.8','0.6.1','0.7.22']:
    self.reset(version);self.cli('check');assert self.value()==NEW;assert self.status()['state']=='applied';assert self.sh('test ! -f /tmp/restarts && echo yes')=='yes'
    assert self.sh('uci -q get podkop.mkr_router_speedtest_main.user_domains_text')=='speedtest.net ooklaserver.net ookla.com'
-   self.cli('check');assert self.status()['state']=='current';assert TOKEN not in self.cli('status').stdout.decode();assert self.status()['podkop_version']==version
+   self.cli('check')
+   current_status=self.status()
+   assert current_status['state']=='current',current_status
+   assert TOKEN not in self.cli('status').stdout.decode(),current_status
+   assert current_status['podkop_version']==version,current_status
   # Podkop-native routing policies are applied without replacing the proxy URL.
   self.reset('0.7.22');self.cli('configure',{'mode':'auto','routing_mode':'all','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and '0.0.0.0/0' in self.sh('uci -q get podkop.main.fully_routed_ips');assert self.status()['settings']['routing_mode']=='all'
   self.cli('configure',{'mode':'auto','routing_mode':'blocked','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and '0.0.0.0/0' not in self.sh('uci -q get podkop.main.fully_routed_ips || :') and self.sh('uci -q get podkop.main.community_lists')=='russia_inside'
