@@ -236,6 +236,9 @@ proxy_section() {
 targets() {
  uci -q show podkop 2>/dev/null | sed -n 's/^podkop\.\([A-Za-z0-9_]*\)=[^=]*$/\1/p' | while IFS= read -r section; do
   [ -n "$section" ] || continue
+  case "$section" in
+   mkr_router_speedtest_*) [ "$(uci -q get "podkop.$section.mkr_router_owner" 2>/dev/null)" = mkr-router ] && continue ;;
+  esac
   kind="$(uci -q get "podkop.$section.proxy_config_type" 2>/dev/null)"
   proxy_section "$section" || continue
   jq -cn --arg id "$section" --arg kind "$kind" '{id:$id,type:$kind,supported:($kind=="url")}'
