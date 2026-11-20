@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace ServiceLib.Services;
 
-public sealed record MoskomAppRelease(Version Version, string Tag, Uri Installer, Uri Checksums, string FileName, long Size);
+public sealed record MoskomAppRelease(Version Version, string Tag, Uri Installer, Uri Checksums, string FileName, long Size, string Changes = "");
 
 public sealed class MoskomAppUpdates(MoskomTransfers downloads)
 {
@@ -47,7 +47,8 @@ public sealed class MoskomAppUpdates(MoskomTransfers downloads)
                 if (file == name) { installer = uri; if (asset.TryGetProperty("size", out var s)) size = s.GetInt64(); }
                 else checksums = uri;
             }
-            if (installer != null && checksums != null && size is > 0 and <= 512L * 1024 * 1024) candidates.Add(new(version, tag, installer, checksums, name, size));
+            if (installer != null && checksums != null && size is > 0 and <= 512L * 1024 * 1024)
+                candidates.Add(new(version, tag, installer, checksums, name, size, MoskomUpdateNotes.Summarize(release.TryGetProperty("body", out var body) ? body.GetString() : null, MoskomUpdateNotes.Desktop)));
         }
         return candidates.OrderByDescending(c => c.Version).FirstOrDefault();
     }

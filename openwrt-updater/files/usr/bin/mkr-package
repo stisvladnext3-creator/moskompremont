@@ -23,7 +23,9 @@ versions() {
          ([$r.assets[].name] | index("luci-app-mkr-router_"+$v+"-1_all.ipk")) and
          ([$r.assets[].name] | index("mkr-router-updater-"+$v+"-r1.apk")) and
          ([$r.assets[].name] | index("luci-app-mkr-router-"+$v+"-r1.apk"))) |
-  {version:$v, order:($v | split(".") | map(tonumber))}] | sort_by(.order) | reverse | .[:2] | map(.version) | {versions:.}' "$tmp"
+  {version:$v, order:($v | split(".") | map(tonumber)), changes:($r.body // "")}] |
+  sort_by(.order) | reverse | .[:2] as $rows |
+  {versions:($rows | map(.version)), changes:($rows | map({key:.version,value:.changes}) | from_entries)}' "$tmp"
  rm -f "$tmp"
 }
 status() { if [ -s "$STATE/status.json" ]; then cat "$STATE/status.json"; else printf '{"state":"idle"}\n'; fi; }

@@ -83,6 +83,7 @@ public static class MoskomSettingsViews
     {
         var panel = new StackPanel(); panel.Children.Add(MoskomBrand.Heading("Доступно обновление " + release.Version));
         panel.Children.Add(Text("Установлена версия " + MoskomBuildInfo.Version + ". Подписки и настройки сохранятся."));
+        panel.Children.Add(Text("Основные изменения:\n" + release.Changes, 12));
         var status = Text("После загрузки проверим файл, завершим подключение и запустим установку.");
         var now = Button("Обновить сейчас", "MoskomUpdateNow"); var later = Button("Позже", "MoskomUpdateLater");
         now.Background = MoskomBrand.Primary; now.Foreground = Brush.Parse("#070B15"); panel.Children.Add(now); panel.Children.Add(later); panel.Children.Add(status);

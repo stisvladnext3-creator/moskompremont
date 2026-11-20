@@ -92,7 +92,7 @@ public sealed class MoskomLauncherView : UserControl
         foot.Children.Add(help); Grid.SetColumn(exit, 1); foot.Children.Add(exit); shell.Children.Add(foot);
         shell.Children.Add(new TextBlock { Text = "МосКомпРемонт VPN " + MoskomBuildInfo.Version + " · v2rayN 7.25.6 · GPL-3.0", FontSize = 10, Foreground = Brush.Parse("#7D89A5"), TextAlignment = TextAlignment.Center });
         Content = new ScrollViewer { Content = shell, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
-        _servers.ItemTemplate = new FuncDataTemplate<ComboItem>((x, _) => new TextBlock { Text = MoskomServerDisplay.WithCountryFlag(x?.Text), TextTrimming = TextTrimming.CharacterEllipsis });
+        _servers.ItemTemplate = new FuncDataTemplate<ComboItem>((x, _) => MoskomServerItemView.Create(x));
         _routing.ItemTemplate = new FuncDataTemplate<RoutingItem>((x, _) => new TextBlock { Text = x?.Remarks?.Replace("RUv1-", ""), TextTrimming = TextTrimming.CharacterEllipsis });
         _subscriptions.ItemTemplate = new FuncDataTemplate<MoskomSubscriptionGroup>((x, _) => new TextBlock { Text = x?.DisplayName, TextTrimming = TextTrimming.CharacterEllipsis });
         _routing.ItemsSource = MoskomLauncherRuntime.RoutingChoices(vm.StatusBarViewModel.RoutingItems);

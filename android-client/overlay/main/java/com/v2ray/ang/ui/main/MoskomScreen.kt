@@ -145,6 +145,7 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
         if(release!=null) {
             Sheet(stringResource(R.string.moskom_update_title,release.version),onClose={if(!state.busy)action(MoskomAction.Later)}) {
                 Text(stringResource(R.string.moskom_update_description))
+                Text("Основные изменения:\n"+release.changes,color=Muted,fontSize=13.sp)
                 if(state.progress!=null)Text(stringResource(R.string.moskom_progress,state.progress?:0),color=Cyan)
                 if(state.error!=0)Text(stringResource(state.error),color=Color(0xFFFFB0BB))
                 PrimaryButton(if(state.updateFile!=null)R.string.moskom_install_update else R.string.moskom_update_now,!state.busy,{action(if(state.updateFile!=null)MoskomAction.InstallUpdate else MoskomAction.DownloadUpdate)},Modifier.testTag("moskom_update_now"))

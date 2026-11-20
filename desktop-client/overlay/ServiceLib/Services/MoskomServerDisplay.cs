@@ -36,4 +36,17 @@ public static class MoskomServerDisplay
         foreach (var letter in country) flag.Append(char.ConvertFromUtf32(0x1F1E6 + letter - 'a'));
         return $"{match.Groups["protocol"].Value} {flag} {match.Groups["name"].Value}".TrimEnd();
     }
+
+    public static bool TrySplit(string? summary, out string protocol, out string country, out string name)
+    {
+        protocol = country = name = string.Empty;
+        if (string.IsNullOrWhiteSpace(summary)) return false;
+        var match = CountryPrefix.Match(summary);
+        if (!match.Success) return false;
+        country = match.Groups["country"].Value.ToLowerInvariant();
+        if (!CountryCodes.Contains(country)) return false;
+        protocol = match.Groups["protocol"].Value;
+        name = match.Groups["name"].Value;
+        return true;
+    }
 }

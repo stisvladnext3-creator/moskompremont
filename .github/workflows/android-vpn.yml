@@ -94,7 +94,7 @@ jobs:
           cd "$RUNNER_TEMP/moskom-result"
           sha256sum "MoskomVPN-Android-$version.apk" "MoskomVPN-Android-$version-source.zip" > SHA256SUMS.txt
           tag="moskom-android-v$version"
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "МосКомпРемонт VPN · Android $version" --notes-file "$GITHUB_WORKSPACE/android-client/README.md"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "МосКомпРемонт VPN · Android $version" --notes-file "$GITHUB_WORKSPACE/android-client/RELEASE-NOTES.md"
           gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "MoskomVPN-Android-$version.apk" "MoskomVPN-Android-$version-source.zip" SHA256SUMS.txt
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
       - uses: actions/upload-artifact@v4

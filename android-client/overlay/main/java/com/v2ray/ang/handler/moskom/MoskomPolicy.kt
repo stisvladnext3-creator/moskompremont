@@ -14,7 +14,7 @@ data class MoskomServer(val id: String, val name: String)
 data class MoskomGroup(val id: String, val name: String, val servers: List<MoskomServer>)
 data class MoskomNotice(val enabled: Boolean = false, val level: String = "warning", val message: String = "")
 data class MoskomNode(val name: String, val status: String, val ms: Long?, val checked: String)
-data class MoskomRelease(val version: String, val code: Long, val url: String, val filename: String, val checksumUrl: String)
+data class MoskomRelease(val version: String, val code: Long, val url: String, val filename: String, val checksumUrl: String, val changes: String)
 
 fun JsonObject.text(key: String, fallback: String = ""): String = get(key)?.takeUnless { it.isJsonNull }?.asString ?: fallback
 
@@ -50,6 +50,13 @@ object MoskomPolicy {
     fun time(value: String): Instant? = runCatching { Instant.parse(value) }.getOrNull()
         ?: runCatching { LocalDateTime.parse(value, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).toInstant(ZoneOffset.UTC) }.getOrNull()
     fun fresh(value: String, now: Instant = Instant.now()) = time(value)?.let { it <= now.plusSeconds(60) && it >= now.minusSeconds(300) } ?: false
+    fun releaseChanges(value: String): String {
+        val lines=value.replace("\r", "").lineSequence().map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .map { if (it.startsWith("-") || it.startsWith("*")) "•"+it.drop(1).trim() else "• "+it }
+            .take(5).toList()
+        return if (lines.isEmpty()) "• Обновлены маршрутизация и каталог сервисов.\n• Подписки и настройки сохраняются.\n• APK проверяется по SHA-256 перед установкой." else lines.joinToString("\n")
+    }
     fun dns(choice: String, custom: String = ""): String? = when (choice) {
         "auto" -> null
         "cloudflare" -> "https://1.1.1.1/dns-query"
@@ -73,7 +80,8 @@ object MoskomPolicy {
         val apk = assets.firstOrNull { it.asJsonObject.text("name") == filename && it.asJsonObject.text("browser_download_url") == prefix + filename } ?: return@mapNotNull null
         if (apk.asJsonObject.text("size").toLongOrNull() !in 1..512L * 1024 * 1024) return@mapNotNull null
         if (assets.none { it.asJsonObject.text("name") == "SHA256SUMS.txt" && it.asJsonObject.text("browser_download_url") == prefix + "SHA256SUMS.txt" }) return@mapNotNull null
-        MoskomRelease(version, versionParts(version)!!.last().toLong(), prefix + filename, filename, prefix + "SHA256SUMS.txt")
+        MoskomRelease(version, versionParts(version)!!.last().toLong(), prefix + filename, filename, prefix + "SHA256SUMS.txt",
+            releaseChanges(release.text("body")))
     }.maxWithOrNull { a, b -> compareVersions(a.version, b.version) }
     fun checksum(text: String, filename: String): String = text.removePrefix("\uFEFF").lineSequence().mapNotNull { line ->
         Regex("^([a-fA-F0-9]{64}) [ *](.+)$").matchEntire(line.trimEnd('\r'))?.takeIf { it.groupValues[2] == filename }?.groupValues?.get(1)?.lowercase()
