@@ -40,6 +40,8 @@ for file in ['v2rayN.Desktop/Views/MoskomLauncherView.cs','v2rayN.Desktop/Views/
 q=root/'v2rayN/ServiceLib/Common/Utils.cs';code=q.read_text();start=code.index('    public static string GetBinPath(');end=code.index('    public static string GetLogPath(',start);part=code[start:end];part=re.sub(r'        if \(!Directory.Exists\(tempPath\)\)\n        \{\n            Directory.CreateDirectory\(tempPath\);\n        \}\n','',part);part=re.sub(r'            if \(!Directory.Exists\(tempPath\)\)\n            \{\n                Directory.CreateDirectory\(tempPath\);\n            \}\n','',part);q.write_text(code[:start]+part+code[end:])
 q=root/'v2rayN/ServiceLib/Manager/CoreManager.cs';code=q.read_text().replace('if (Utils.IsNonWindows())','if (Utils.IsNonWindows() && !OperatingSystem.IsMacOS())');q.write_text(code)
 if not a.probe:
+ shared_server_display=REPO/'desktop-client/overlay/ServiceLib/Services/MoskomServerDisplay.cs'
+ if not shared_server_display.is_file(): raise SystemExit('Missing shared server flag formatter')
  for f in (OWN/'overlay').rglob('*.cs'):
   target=root/'v2rayN'/f.relative_to(OWN/'overlay');target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(f,target)
  edit('ServiceLib/Services/MoskomLauncherRuntime.cs','if (OperatingSystem.IsWindows() && !SmokeTest) MoskomProxyLease.RecoverAfterCrash();','if (!SmokeTest) MoskomMacProxyLease.RecoverAfterCrashAsync().GetAwaiter().GetResult();')
