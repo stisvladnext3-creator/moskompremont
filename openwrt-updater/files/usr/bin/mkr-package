@@ -1,0 +1,66 @@
+#!/bin/sh
+# Manage only the two published OpenWrt packages; never execute a downloaded script.
+set -eu
+umask 077
+STATE=/tmp/mkr-package
+API=https://api.github.com/repos/stisvladnext3-creator/moskompremont/releases
+BASE=https://github.com/stisvladnext3-creator/moskompremont/releases/download
+mkdir -p "$STATE"
+chmod 700 "$STATE"
+valid_version() { printf '%s' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; }
+get() { curl -fsSL --connect-timeout 15 --max-time 120 --retry 2 -H 'User-Agent: mkr-router' "$1" -o "$2"; }
+versions() {
+ tmp="$(mktemp "$STATE/releases.XXXXXX")" || return 1
+ if ! get "$API?per_page=100" "$tmp"; then rm -f "$tmp"; return 1; fi
+ # Releases may include unrelated platform releases; select actual OpenWrt assets.
+ jq -c '[.[] | select(.draft == false and .prerelease == false) | . as $r |
+  select(.tag_name | startswith("moskom-openwrt-v")) |
+  (.tag_name | ltrimstr("moskom-openwrt-v")) as $v |
+  select(($v | split(".") | length) == 3) |
+  select(all($v | split(".")[]; length > 0 and (explode | all(. >= 48 and . <= 57)))) |
+  select([$r.assets[].name] | index("SHA256SUMS.txt")) |
+  select(([$r.assets[].name] | index("mkr-router-updater_"+$v+"-1_all.ipk")) and
+         ([$r.assets[].name] | index("luci-app-mkr-router_"+$v+"-1_all.ipk")) and
+         ([$r.assets[].name] | index("mkr-router-updater-"+$v+"-r1.apk")) and
+         ([$r.assets[].name] | index("luci-app-mkr-router-"+$v+"-r1.apk"))) |
+  {version:$v, order:($v | split(".") | map(tonumber))}] | sort_by(.order) | reverse | .[:2] | map(.version) | {versions:.}' "$tmp"
+ rm -f "$tmp"
+}
+status() { if [ -s "$STATE/status.json" ]; then cat "$STATE/status.json"; else printf '{"state":"idle"}\n'; fi; }
+set_status() { jq -n --arg state "$1" --arg version "$2" '{state:$state,version:$version}' > "$STATE/status.new"; mv "$STATE/status.new" "$STATE/status.json"; }
+install_version() {
+ version="$1"; valid_version "$version" || return 1
+ exec 8>"$STATE/lock"
+ flock -n 8 || return 1
+ set_status checking "$version"
+ tmpdir="$(mktemp -d "$STATE/install.XXXXXX")"
+ trap 'rm -rf "$tmpdir"' EXIT
+ if ! versions > "$tmpdir/versions.json" || ! jq -e --arg v "$version" '.versions | index($v) != null' "$tmpdir/versions.json" >/dev/null; then set_status failed "$version"; return 1; fi
+ if command -v apk >/dev/null 2>&1; then
+  file1="mkr-router-updater-$version-r1.apk"; file2="luci-app-mkr-router-$version-r1.apk"
+ elif command -v opkg >/dev/null 2>&1; then
+  file1="mkr-router-updater_${version}-1_all.ipk"; file2="luci-app-mkr-router_${version}-1_all.ipk"
+ else set_status failed "$version"; return 1; fi
+ url="$BASE/moskom-openwrt-v$version"
+ set_status downloading "$version"
+ if ! get "$url/SHA256SUMS.txt" "$tmpdir/SHA256SUMS.txt"; then set_status failed "$version"; return 1; fi
+ for file in "$file1" "$file2"; do
+  if ! get "$url/$file" "$tmpdir/$file"; then set_status failed "$version"; return 1; fi
+  expected="$(awk -v f="$file" '$2 == f {print $1}' "$tmpdir/SHA256SUMS.txt")"
+  actual="$(sha256sum "$tmpdir/$file" | cut -d ' ' -f1)"
+  if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then set_status failed "$version"; return 1; fi
+ done
+ set_status installing "$version"
+ if command -v apk >/dev/null 2>&1; then
+  apk add --allow-untrusted --force-old-apk "$tmpdir/$file1" "$tmpdir/$file2" >"$STATE/install.log" 2>&1 || { set_status failed "$version"; return 1; }
+ else
+  opkg install --force-downgrade "$tmpdir/$file1" "$tmpdir/$file2" >"$STATE/install.log" 2>&1 || { set_status failed "$version"; return 1; }
+ fi
+ set_status done "$version"
+}
+case "${1:-}" in
+ versions) versions;;
+ status) status;;
+ install) install_version "${2:-}";;
+ *) exit 1;;
+esac

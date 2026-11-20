@@ -1,6 +1,6 @@
 #!/bin/sh
 # Data-only updater: the website supplies a URI, never a shell command or a package.
-MKR_VERSION='0.1.4'
+MKR_VERSION='0.1.5'
 umask 077
 [ "$(id -u)" = 0 ] || { printf '{"error":"root_required"}\n'; exit 1; }
 STATE=/tmp/mkr-router
@@ -16,14 +16,15 @@ number() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
 endpoint_ok() { printf '%s' "$1" | grep -Eq '^https://[^/@?#[:space:]]+(/[A-Za-z0-9_.~-]+)*/router-agent\.php$'; }
 token_ok() { printf '%s' "$1" | grep -Eq '^mkr1\.[a-f0-9]{24}\.[a-f0-9]{64}$'; }
 supported_uri() { printf '%s' "$1" | grep -Eq '^(vless|ss|trojan|hysteria2|hy2)://[^[:space:]]+$'; }
-routing_mode_ok() { case "$1" in blocked|except_ru|all) return 0;; *) return 1;; esac; }
+routing_mode_ok() { case "$1" in blocked|except_ru|all|podkop) return 0;; *) return 1;; esac; }
 routing_mode_supported() { case "$1" in blocked) return 0;; all|except_ru) case "$(podkop_version)" in 0.7.*) return 0;; *) return 1;; esac;; *) return 1;; esac; }
 list_has() { for item in $1; do [ "$item" = "$2" ] && return 0; done; return 1; }
 list_without() { for item in $1; do [ "$item" = "$2" ] || printf '%s ' "$item"; done | sed 's/[[:space:]]*$//'; }
 routing_section_name() { printf 'mkr_router_%s' "$TARGET"; }
-routing_hash_values() { printf '%s\n' "$TARGET" "$1" "$2" "$3" "$4" "$5" "$6" "$7" | sha; }
+routing_speedtest_section_name() { printf 'mkr_router_speedtest_%s' "$TARGET"; }
+routing_hash_values() { printf '%s\n' "$TARGET" "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" | sha; }
 routing_hash_current() {
- local lists full lists_enabled user_type user_text exists owner managed_lists managed_connection managed_mode managed_lists_enabled managed_remote_subnets managed_domain_type managed_domains_text managed_signature
+ local lists full lists_enabled user_type user_text exists owner managed_lists managed_connection managed_mode managed_lists_enabled managed_remote_subnets managed_domain_type managed_domains_text managed_signature speedtest_exists speedtest_owner
  lists="$(uci -q get "podkop.$TARGET.community_lists" 2>/dev/null)"
  full="$(uci -q get "podkop.$TARGET.fully_routed_ips" 2>/dev/null)"
  lists_enabled="$(uci -q get "podkop.$TARGET.community_lists_enabled" 2>/dev/null)"
@@ -41,10 +42,13 @@ routing_hash_current() {
  fi
  managed_signature="$managed_lists:$managed_connection:$managed_mode:$managed_remote_subnets"
  [ -n "$managed_domain_type$managed_domains_text" ] && managed_signature="$managed_signature:$managed_domain_type:$managed_domains_text"
- routing_hash_values "$lists" "$full" "$lists_enabled:$user_type:$user_text" "$exists" "$owner" "$managed_signature" "$managed_lists_enabled"
+ speedtest_exists=no; speedtest_owner=''
+ if [ "$(uci -q get "podkop.$(routing_speedtest_section_name)" 2>/dev/null)" = section ]; then speedtest_exists=yes; speedtest_owner="$(uci -q get "podkop.$(routing_speedtest_section_name).mkr_router_owner" 2>/dev/null)"; fi
+ routing_hash_values "$lists" "$full" "$lists_enabled:$user_type:$user_text" "$exists" "$owner" "$managed_signature" "$managed_lists_enabled" "$speedtest_exists:$speedtest_owner"
 }
 routing_capture() {
  MKR_SECTION="$(routing_section_name)"
+ MKR_SPEEDTEST_SECTION="$(routing_speedtest_section_name)"
  OLD_LISTS="$(uci -q get "podkop.$TARGET.community_lists" 2>/dev/null)"
  OLD_FULL="$(uci -q get "podkop.$TARGET.fully_routed_ips" 2>/dev/null)"
  OLD_LISTS_ENABLED="$(uci -q get "podkop.$TARGET.community_lists_enabled" 2>/dev/null)"
@@ -54,7 +58,7 @@ routing_capture() {
  if [ "$(uci -q get "podkop.$MKR_SECTION" 2>/dev/null)" = section ]; then
   OLD_MANAGED_EXISTS=yes
   OLD_MANAGED_OWNER="$(uci -q get "podkop.$MKR_SECTION.mkr_router_owner" 2>/dev/null)"
-  [ "$OLD_MANAGED_OWNER" = mkr-router ] || return 1
+  [ "$OLD_MANAGED_OWNER" = mkr-router ] || [ "$ROUTING_MODE" = podkop ] || return 1
   OLD_MANAGED_LISTS="$(uci -q get "podkop.$MKR_SECTION.community_lists" 2>/dev/null)"
   OLD_MANAGED_CONNECTION="$(uci -q get "podkop.$MKR_SECTION.connection_type" 2>/dev/null)"
   OLD_MANAGED_MODE="$(uci -q get "podkop.$MKR_SECTION.mode" 2>/dev/null)"
@@ -63,11 +67,14 @@ routing_capture() {
   OLD_MANAGED_DOMAIN_TYPE="$(uci -q get "podkop.$MKR_SECTION.user_domain_list_type" 2>/dev/null)"
   OLD_MANAGED_DOMAINS_TEXT="$(uci -q get "podkop.$MKR_SECTION.user_domains_text" 2>/dev/null)"
  elif [ -n "$(uci -q get "podkop.$MKR_SECTION" 2>/dev/null)" ]; then
-  return 1
+  [ "$ROUTING_MODE" = podkop ] || return 1
+ fi
+ if [ "$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION" 2>/dev/null)" = section ]; then
+  [ "$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION.mkr_router_owner" 2>/dev/null)" = mkr-router ] || [ "$ROUTING_MODE" = podkop ] || return 1
  fi
  OLD_MANAGED_SIGNATURE="$OLD_MANAGED_LISTS:$OLD_MANAGED_CONNECTION:$OLD_MANAGED_MODE:$OLD_MANAGED_REMOTE_SUBNETS"
  [ -n "$OLD_MANAGED_DOMAIN_TYPE$OLD_MANAGED_DOMAINS_TEXT" ] && OLD_MANAGED_SIGNATURE="$OLD_MANAGED_SIGNATURE:$OLD_MANAGED_DOMAIN_TYPE:$OLD_MANAGED_DOMAINS_TEXT"
- ROUTING_SHA="$(routing_hash_values "$OLD_LISTS" "$OLD_FULL" "$OLD_LISTS_ENABLED:$OLD_USER_SUBNET_TYPE:$OLD_USER_SUBNET_TEXT" "$OLD_MANAGED_EXISTS" "$OLD_MANAGED_OWNER" "$OLD_MANAGED_SIGNATURE" "$OLD_MANAGED_LISTS_ENABLED")"
+ ROUTING_SHA="$(routing_hash_values "$OLD_LISTS" "$OLD_FULL" "$OLD_LISTS_ENABLED:$OLD_USER_SUBNET_TYPE:$OLD_USER_SUBNET_TEXT" "$OLD_MANAGED_EXISTS" "$OLD_MANAGED_OWNER" "$OLD_MANAGED_SIGNATURE" "$OLD_MANAGED_LISTS_ENABLED" "$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION" 2>/dev/null):$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION.mkr_router_owner" 2>/dev/null)")"
 }
 batch_add_list() {
  local section="$1" option="$2" value="$3"
@@ -78,6 +85,12 @@ routing_commit_batch() {
  rm -rf "$delta"; mkdir -p "$delta" || return 1
  uci -q -t "$delta" batch < "$WORK/routing.batch" || return 1
  uci -q -t "$delta" commit podkop || return 1
+}
+routing_speedtest_batch() {
+ local section="$MKR_SPEEDTEST_SECTION" uri="$(uci -q get "podkop.$TARGET.proxy_string" 2>/dev/null)" kind
+ printf '%s\n' "delete podkop.$section" "set podkop.$section=section" "set podkop.$section.mkr_router_owner='mkr-router'" "set podkop.$section.proxy_config_type='url'" "set podkop.$section.proxy_string=$(printf '%s' "$uri" | jq -Rrs '@sh')" "set podkop.$section.user_domain_list_type='text'" "set podkop.$section.user_domains_text='speedtest.net ooklaserver.net ookla.com'" "set podkop.$section.community_lists_enabled='1'" >> "$WORK/routing.batch"
+ case "$(podkop_version)" in 0.7.*) printf '%s\n' "set podkop.$section.connection_type='proxy'" >> "$WORK/routing.batch";; *) printf '%s\n' "set podkop.$section.mode='proxy'" >> "$WORK/routing.batch";; esac
+ printf '%s\n' "reorder podkop.$section=0" >> "$WORK/routing.batch"
 }
 routing_set_lists() {
  local section="$1" option="$2" values="$3" value
@@ -101,6 +114,7 @@ routing_restore() {
  else
   printf '%s\n' "delete podkop.$MKR_SECTION" >> "$WORK/routing.batch"
  fi
+ printf '%s\n' "delete podkop.$MKR_SPEEDTEST_SECTION" >> "$WORK/routing.batch"
  routing_commit_batch
 }
 routing_apply_mode() {
@@ -109,6 +123,10 @@ routing_apply_mode() {
  add_lists_enabled="$(cfg routing_added_lists_enabled)"; add_world="$(cfg routing_added_world_routes)"; lists_enabled="$OLD_LISTS_ENABLED"; user_type="$OLD_USER_SUBNET_TYPE"; user_text="$OLD_USER_SUBNET_TEXT"
  routing_mode_ok "$ROUTING_MODE" || return 1
  case "$ROUTING_MODE" in
+ podkop)
+  # Leave every Podkop routing option exactly as the administrator configured it.
+  return 0
+  ;;
  blocked)
   if list_has "$lists" russia_outside || list_has "$lists" ukraine_inside; then return 2; fi
   if ! list_has "$lists" russia_inside; then lists="$lists russia_inside"; add_russia=1; else add_russia=0; fi
@@ -121,6 +139,7 @@ routing_apply_mode() {
   routing_set_lists "$TARGET" community_lists "$lists" || return 1
   printf '%s\n' "delete podkop.$TARGET.fully_routed_ips" "set podkop.$TARGET.community_lists_enabled='${lists_enabled}'" "set podkop.$TARGET.user_subnet_list_type=$(printf '%s' "$user_type" | jq -Rrs '@sh')" "set podkop.$TARGET.user_subnets_text=$(printf '%s' "$user_text" | jq -Rrs '@sh')" "delete podkop.$MKR_SECTION" >> "$WORK/routing.batch"
   for value in $full; do batch_add_list "$TARGET" fully_routed_ips "$value" >> "$WORK/routing.batch" || return 1; done
+  routing_speedtest_batch
   ;;
  all)
   routing_mode_supported all || return 3
@@ -130,20 +149,43 @@ routing_apply_mode() {
   printf '%s\n' "delete podkop.$MKR_SECTION" "set podkop.$TARGET.user_subnet_list_type='${user_type}'" "set podkop.$TARGET.user_subnets_text=$(printf '%s' "$user_text" | jq -Rrs '@sh')" >> "$WORK/routing.batch"
   printf '%s\n' "delete podkop.$TARGET.fully_routed_ips" >> "$WORK/routing.batch"
   for value in $full; do batch_add_list "$TARGET" fully_routed_ips "$value" >> "$WORK/routing.batch" || return 1; done
+  routing_speedtest_batch
   ;;
  except_ru)
   routing_mode_supported except_ru || return 3
   if ! list_has "$full" 0.0.0.0/0; then full="$full 0.0.0.0/0"; add_full=1; fi
-  if [ "$add_full" = 1 ]; then full="$(list_without "$full" 0.0.0.0/0)"; add_full=0; else if list_has "$full" 0.0.0.0/0; then return 2; fi; fi
-  if [ "$add_world" = 1 ]; then user_type=text; user_text='0.0.0.0/0 ::/0'; else if [ "$user_type" != '' ] && [ "$user_type" != disabled ] && [ -n "$user_text" ]; then return 2; else user_type=text; user_text='0.0.0.0/0 ::/0'; add_world=1; fi; fi
+  # Older releases installed a catch-all destination text list. Remove only
+  # the list owned by this package; Podkop's source route preserves localv4.
+  remove_world=no
+  if [ "$add_world" = 1 ]; then
+   [ "$user_type" = text ] && [ "$user_text" = '0.0.0.0/0 ::/0' ] || return 2
+   remove_world=yes; add_world=0
+  fi
   routing_set_lists "$TARGET" community_lists "$lists" || return 1
-  printf '%s\n' "delete podkop.$TARGET.fully_routed_ips" "set podkop.$TARGET.user_subnet_list_type='${user_type}'" "set podkop.$TARGET.user_subnets_text=$(printf '%s' "$user_text" | jq -Rrs '@sh')" "set podkop.$MKR_SECTION=section" "set podkop.$MKR_SECTION.mkr_router_owner='mkr-router'" "set podkop.$MKR_SECTION.connection_type='exclusion'" "set podkop.$MKR_SECTION.mode='exclusion'" "set podkop.$MKR_SECTION.community_lists_enabled='1'" "set podkop.$MKR_SECTION.user_domain_list_type='text'" "set podkop.$MKR_SECTION.user_domains_text='ru xn--p1ai'" "delete podkop.$MKR_SECTION.community_lists" "delete podkop.$MKR_SECTION.remote_subnet_lists" "add_list podkop.$MKR_SECTION.remote_subnet_lists='https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs'" "reorder podkop.$MKR_SECTION=0" >> "$WORK/routing.batch"
+  if [ "$remove_world" = yes ]; then printf '%s\n' "delete podkop.$TARGET.user_subnet_list_type" "delete podkop.$TARGET.user_subnets_text" >> "$WORK/routing.batch"; fi
+  printf '%s\n' "delete podkop.$TARGET.fully_routed_ips" "set podkop.$MKR_SECTION=section" "set podkop.$MKR_SECTION.mkr_router_owner='mkr-router'" "set podkop.$MKR_SECTION.connection_type='exclusion'" "set podkop.$MKR_SECTION.mode='exclusion'" "set podkop.$MKR_SECTION.community_lists_enabled='1'" "set podkop.$MKR_SECTION.user_subnet_list_type='dynamic'" "delete podkop.$MKR_SECTION.user_subnets" "add_list podkop.$MKR_SECTION.user_subnets='192.168.31.1'" "delete podkop.$MKR_SECTION.user_domain_list_type" "delete podkop.$MKR_SECTION.user_domains_text" "delete podkop.$MKR_SECTION.community_lists" "delete podkop.$MKR_SECTION.remote_subnet_lists" "add_list podkop.$MKR_SECTION.remote_subnet_lists='https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs'" "reorder podkop.$MKR_SECTION=1" >> "$WORK/routing.batch"
+  routing_speedtest_batch
   for value in $full; do batch_add_list "$TARGET" fully_routed_ips "$value" >> "$WORK/routing.batch" || return 1; done
   ;;
  esac
  routing_commit_batch || return 1
  ADDED_RUSSIA="$add_russia"; ADDED_FULL="$add_full"; ADDED_LISTS_ENABLED="$add_lists_enabled"; ADDED_WORLD="$add_world"
  return 0
+}
+routing_release_managed() {
+ local lists="$OLD_LISTS" full="$OLD_FULL" value
+ [ "$(cfg routing_added_russia_inside)" = 1 ] && lists="$(list_without "$lists" russia_inside)"
+ [ "$(cfg routing_added_full_route)" = 1 ] && full="$(list_without "$full" 0.0.0.0/0)"
+ routing_set_lists "$TARGET" community_lists "$lists" || return 1
+ printf '%s\n' "delete podkop.$TARGET.fully_routed_ips" >> "$WORK/routing.batch"
+ for value in $full; do batch_add_list "$TARGET" fully_routed_ips "$value" >> "$WORK/routing.batch" || return 1; done
+ if [ "$(cfg routing_added_lists_enabled)" = 1 ]; then printf '%s\n' "set podkop.$TARGET.community_lists_enabled='0'" >> "$WORK/routing.batch"; fi
+ if [ "$(cfg routing_added_world_routes)" = 1 ]; then
+  if [ "$OLD_USER_SUBNET_TYPE" = text ] && [ "$OLD_USER_SUBNET_TEXT" = '0.0.0.0/0 ::/0' ]; then printf '%s\n' "delete podkop.$TARGET.user_subnet_list_type" "delete podkop.$TARGET.user_subnets_text" >> "$WORK/routing.batch"; fi
+ fi
+ if [ "$(uci -q get "podkop.$MKR_SECTION.mkr_router_owner" 2>/dev/null)" = mkr-router ]; then printf '%s\n' "delete podkop.$MKR_SECTION" >> "$WORK/routing.batch"; fi
+ if [ "$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION.mkr_router_owner" 2>/dev/null)" = mkr-router ]; then printf '%s\n' "delete podkop.$MKR_SPEEDTEST_SECTION" >> "$WORK/routing.batch"; fi
+ routing_commit_batch
 }
 
 load_settings() {
@@ -225,7 +267,7 @@ write_options() {
 }
 binding() {
  same_settings || return 1
- jq -n --arg baseline "$1" --arg routing "$2" --arg applied_mode "${BINDING_APPLIED_MODE:-$ROUTING_MODE}" --arg device "$DEVICE" --arg added_russia "${ADDED_RUSSIA:-$(cfg routing_added_russia_inside)}" --arg added_full "${ADDED_FULL:-$(cfg routing_added_full_route)}" --arg added_lists_enabled "${ADDED_LISTS_ENABLED:-$(cfg routing_added_lists_enabled)}" --arg added_world "${ADDED_WORLD:-$(cfg routing_added_world_routes)}" --arg routing_section "${TARGET:-$(cfg routing_section)}" '{baseline:$baseline,routing_baseline:$routing,routing_applied_mode:$applied_mode,routing_added_russia_inside:$added_russia,routing_added_full_route:$added_full,routing_added_lists_enabled:$added_lists_enabled,routing_added_world_routes:$added_world,routing_section:$routing_section,device_id:$device}' > "$WORK/binding.json" || return 1
+ jq -n --arg baseline "$1" --arg routing "$2" --arg schema "${ROUTING_SCHEMA:-$(cfg routing_schema)}" --arg applied_mode "${BINDING_APPLIED_MODE:-$ROUTING_MODE}" --arg device "$DEVICE" --arg added_russia "${ADDED_RUSSIA:-$(cfg routing_added_russia_inside)}" --arg added_full "${ADDED_FULL:-$(cfg routing_added_full_route)}" --arg added_lists_enabled "${ADDED_LISTS_ENABLED:-$(cfg routing_added_lists_enabled)}" --arg added_world "${ADDED_WORLD:-$(cfg routing_added_world_routes)}" --arg routing_section "${TARGET:-$(cfg routing_section)}" '{baseline:$baseline,routing_baseline:$routing,routing_schema:$schema,routing_applied_mode:$applied_mode,routing_added_russia_inside:$added_russia,routing_added_full_route:$added_full,routing_added_lists_enabled:$added_lists_enabled,routing_added_world_routes:$added_world,routing_section:$routing_section,device_id:$device}' > "$WORK/binding.json" || return 1
  write_options mkr_router "$WORK/binding.json"
 }
 transfer() {
@@ -319,7 +361,7 @@ rollback() {
  [ "$(text_sha "$now_value")" = "$REVISION" ] || return 1
  [ -z "$AFTER_ROUTING" ] || [ "$now_routing" = "$AFTER_ROUTING" ] || return 1
  config_value "$CURRENT" || return 1
- routing_restore || return 1
+ [ "${ROUTING_UNTOUCHED:-no}" = yes ] || routing_restore || return 1
  if [ "$WAS_RUNNING" = yes ]; then /etc/init.d/podkop restart 9>&- >/dev/null 2>&1 || return 1; fi
  rm -f "$KEEP/journal.json"
 }
@@ -328,11 +370,13 @@ apply_value() {
  version_ok && target || { state manual unsupported_podkop; return 1; }
  [ -z "$(uci -q changes podkop 2>/dev/null)" ] || { state manual unsaved_changes; return 1; }
  routing_mode_ok "$ROUTING_MODE" || { state manual routing_mode; return 1; }
- [ -n "$BASELINE" ] && [ "$CURRENT_SHA" = "$BASELINE" ] && { [ -z "$ROUTING_BASELINE" ] || [ "$ROUTING_SHA" = "$ROUTING_BASELINE" ]; } || { state manual local_changed; return 1; }
+ if [ "$ROUTING_MODE" = podkop ] && [ "$ROUTING_APPLIED_MODE" != podkop ]; then routing_release_managed || { state failed write_failed; return 1; }; ROUTING_SHA="$(routing_hash_current)"; fi
+ [ -n "$BASELINE" ] && [ "$CURRENT_SHA" = "$BASELINE" ] && { [ "$ROUTING_MODE" = podkop ] || [ -z "$ROUTING_BASELINE" ] || [ "$ROUTING_SHA" = "$ROUTING_BASELINE" ]; } || { state manual local_changed; return 1; }
  WAS_RUNNING=no
  case "$(podkop_state)" in active) WAS_RUNNING=yes;; stopped) ;; *) state manual runtime_state; report manual; return 0;; esac
  cp /etc/config/podkop "$KEEP/podkop.backup" && chmod 600 "$KEEP/podkop.backup" && printf '%s' "$CURRENT" > "$KEEP/previous-value" || { state failed backup_failed; return 1; }
-  jq -n --arg section "$TARGET" --arg revision "$REVISION" --arg old "$CURRENT_SHA" --arg running "$WAS_RUNNING" --arg routing "$ROUTING_SHA" --arg lists "$OLD_LISTS" --arg full "$OLD_FULL" --arg lists_enabled "$OLD_LISTS_ENABLED" --arg user_type "$OLD_USER_SUBNET_TYPE" --arg user_text "$OLD_USER_SUBNET_TEXT" --arg managed_exists "$OLD_MANAGED_EXISTS" --arg managed_owner "$OLD_MANAGED_OWNER" --arg managed_lists "$OLD_MANAGED_LISTS" --arg managed_connection "$OLD_MANAGED_CONNECTION" --arg managed_mode "$OLD_MANAGED_MODE" --arg managed_lists_enabled "$OLD_MANAGED_LISTS_ENABLED" --arg managed_remote_subnets "$OLD_MANAGED_REMOTE_SUBNETS" --arg managed_domain_type "$OLD_MANAGED_DOMAIN_TYPE" --arg managed_domains_text "$OLD_MANAGED_DOMAINS_TEXT" '{section:$section,revision:$revision,previous:$old,running:$running,routing_previous:$routing,old_lists:$lists,old_full:$full,old_lists_enabled:$lists_enabled,old_user_subnet_type:$user_type,old_user_subnets_text:$user_text,old_managed_exists:$managed_exists,old_managed_owner:$managed_owner,old_managed_lists:$managed_lists,old_managed_connection:$managed_connection,old_managed_mode:$managed_mode,old_managed_lists_enabled:$managed_lists_enabled,old_managed_remote_subnets:$managed_remote_subnets,old_managed_domain_type:$managed_domain_type,old_managed_domains_text:$managed_domains_text,after_routing:""}' > "$KEEP/journal.new" && mv "$KEEP/journal.new" "$KEEP/journal.json" || { state failed backup_failed; return 1; }
+ ROUTING_UNTOUCHED=no; [ "$ROUTING_MODE" != podkop ] || ROUTING_UNTOUCHED=yes
+  jq -n --arg untouched "$ROUTING_UNTOUCHED" --arg section "$TARGET" --arg revision "$REVISION" --arg old "$CURRENT_SHA" --arg running "$WAS_RUNNING" --arg routing "$ROUTING_SHA" --arg lists "$OLD_LISTS" --arg full "$OLD_FULL" --arg lists_enabled "$OLD_LISTS_ENABLED" --arg user_type "$OLD_USER_SUBNET_TYPE" --arg user_text "$OLD_USER_SUBNET_TEXT" --arg managed_exists "$OLD_MANAGED_EXISTS" --arg managed_owner "$OLD_MANAGED_OWNER" --arg managed_lists "$OLD_MANAGED_LISTS" --arg managed_connection "$OLD_MANAGED_CONNECTION" --arg managed_mode "$OLD_MANAGED_MODE" --arg managed_lists_enabled "$OLD_MANAGED_LISTS_ENABLED" --arg managed_remote_subnets "$OLD_MANAGED_REMOTE_SUBNETS" --arg managed_domain_type "$OLD_MANAGED_DOMAIN_TYPE" --arg managed_domains_text "$OLD_MANAGED_DOMAINS_TEXT" '{routing_untouched:$untouched,section:$section,revision:$revision,previous:$old,running:$running,routing_previous:$routing,old_lists:$lists,old_full:$full,old_lists_enabled:$lists_enabled,old_user_subnet_type:$user_type,old_user_subnets_text:$user_text,old_managed_exists:$managed_exists,old_managed_owner:$managed_owner,old_managed_lists:$managed_lists,old_managed_connection:$managed_connection,old_managed_mode:$managed_mode,old_managed_lists_enabled:$managed_lists_enabled,old_managed_remote_subnets:$managed_remote_subnets,old_managed_domain_type:$managed_domain_type,old_managed_domains_text:$managed_domains_text,after_routing:""}' > "$KEEP/journal.new" && mv "$KEEP/journal.new" "$KEEP/journal.json" || { state failed backup_failed; return 1; }
  state applying ''
  if ! config_value "$NEW"; then if rollback; then state failed write_failed; else state manual rollback_failed; fi; report failed; return 1; fi
  routing_apply_mode; route_result=$?
@@ -351,6 +395,7 @@ apply_value() {
   while [ "$attempt" -lt 45 ]; do sleep 2; if healthy; then ready=yes; break; fi; attempt=$((attempt + 1)); done
   if [ "$ready" != yes ]; then if rollback; then state failed check_failed; else state manual rollback_failed; fi; report failed; return 1; fi
  fi
+ [ "$ROUTING_MODE" != except_ru ] || ROUTING_SCHEMA=2
  binding "$REVISION" "$AFTER_ROUTING" || { state failed binding_failed; return 1; }
  rm -f "$KEEP/journal.json" "$STATE/pending.json"
  state applied ''; report applied
@@ -358,10 +403,11 @@ apply_value() {
 }
 recover() {
  [ -f "$KEEP/journal.json" ] || return 0
+ ROUTING_UNTOUCHED="$(jq -r '.routing_untouched // "no"' "$KEEP/journal.json")"
   TARGET="$(jq -r '.section' "$KEEP/journal.json")"; REVISION="$(jq -r '.revision' "$KEEP/journal.json")"; WAS_RUNNING="$(jq -r '.running' "$KEEP/journal.json")"; AFTER_ROUTING="$(jq -r '.after_routing // empty' "$KEEP/journal.json")"; CURRENT="$(cat "$KEEP/previous-value" 2>/dev/null)"
  printf '%s' "$TARGET" | grep -Eq '^[A-Za-z0-9_]+$' || return 1
  [ "$(text_sha "$CURRENT")" = "$(jq -r '.previous' "$KEEP/journal.json")" ] || return 1
-  MKR_SECTION="mkr_router_${TARGET}"; OLD_LISTS="$(jq -r '.old_lists // ""' "$KEEP/journal.json")"; OLD_FULL="$(jq -r '.old_full // ""' "$KEEP/journal.json")"; OLD_LISTS_ENABLED="$(jq -r '.old_lists_enabled // ""' "$KEEP/journal.json")"; OLD_USER_SUBNET_TYPE="$(jq -r '.old_user_subnet_type // ""' "$KEEP/journal.json")"; OLD_USER_SUBNET_TEXT="$(jq -r '.old_user_subnets_text // ""' "$KEEP/journal.json")"; OLD_MANAGED_EXISTS="$(jq -r '.old_managed_exists // "no"' "$KEEP/journal.json")"; OLD_MANAGED_OWNER="$(jq -r '.old_managed_owner // ""' "$KEEP/journal.json")"; OLD_MANAGED_LISTS="$(jq -r '.old_managed_lists // ""' "$KEEP/journal.json")"; OLD_MANAGED_CONNECTION="$(jq -r '.old_managed_connection // ""' "$KEEP/journal.json")"; OLD_MANAGED_MODE="$(jq -r '.old_managed_mode // ""' "$KEEP/journal.json")"; OLD_MANAGED_LISTS_ENABLED="$(jq -r '.old_managed_lists_enabled // ""' "$KEEP/journal.json")"; OLD_MANAGED_REMOTE_SUBNETS="$(jq -r '.old_managed_remote_subnets // ""' "$KEEP/journal.json")"; OLD_MANAGED_DOMAIN_TYPE="$(jq -r '.old_managed_domain_type // ""' "$KEEP/journal.json")"; OLD_MANAGED_DOMAINS_TEXT="$(jq -r '.old_managed_domains_text // ""' "$KEEP/journal.json")"; ROUTING_SHA="$(jq -r '.routing_previous' "$KEEP/journal.json")"
+  MKR_SECTION="mkr_router_${TARGET}"; MKR_SPEEDTEST_SECTION="mkr_router_speedtest_${TARGET}"; OLD_LISTS="$(jq -r '.old_lists // ""' "$KEEP/journal.json")"; OLD_FULL="$(jq -r '.old_full // ""' "$KEEP/journal.json")"; OLD_LISTS_ENABLED="$(jq -r '.old_lists_enabled // ""' "$KEEP/journal.json")"; OLD_USER_SUBNET_TYPE="$(jq -r '.old_user_subnet_type // ""' "$KEEP/journal.json")"; OLD_USER_SUBNET_TEXT="$(jq -r '.old_user_subnets_text // ""' "$KEEP/journal.json")"; OLD_MANAGED_EXISTS="$(jq -r '.old_managed_exists // "no"' "$KEEP/journal.json")"; OLD_MANAGED_OWNER="$(jq -r '.old_managed_owner // ""' "$KEEP/journal.json")"; OLD_MANAGED_LISTS="$(jq -r '.old_managed_lists // ""' "$KEEP/journal.json")"; OLD_MANAGED_CONNECTION="$(jq -r '.old_managed_connection // ""' "$KEEP/journal.json")"; OLD_MANAGED_MODE="$(jq -r '.old_managed_mode // ""' "$KEEP/journal.json")"; OLD_MANAGED_LISTS_ENABLED="$(jq -r '.old_managed_lists_enabled // ""' "$KEEP/journal.json")"; OLD_MANAGED_REMOTE_SUBNETS="$(jq -r '.old_managed_remote_subnets // ""' "$KEEP/journal.json")"; OLD_MANAGED_DOMAIN_TYPE="$(jq -r '.old_managed_domain_type // ""' "$KEEP/journal.json")"; OLD_MANAGED_DOMAINS_TEXT="$(jq -r '.old_managed_domains_text // ""' "$KEEP/journal.json")"; ROUTING_SHA="$(jq -r '.routing_previous' "$KEEP/journal.json")"
   now_routing="$(routing_hash_current)"
   if [ "$(text_sha "$(uci -q get "podkop.$TARGET.proxy_string" 2>/dev/null)")" = "$(text_sha "$CURRENT")" ] && [ "$now_routing" = "$ROUTING_SHA" ]; then rm -f "$KEEP/journal.json"; return 0; fi
  if rollback; then state failed recovered; else state manual recovery_conflict; return 1; fi
@@ -388,9 +434,14 @@ check() {
  same_settings || { state manual settings_changed; return 1; }
  if [ "$CURRENT_SHA" = "$REVISION" ]; then
   if [ -n "$BASELINE" ] && [ "$BASELINE" != "$CURRENT_SHA" ]; then state manual local_changed; report manual; return 0; fi
-  if [ -n "$ROUTING_BASELINE" ] && [ "$ROUTING_BASELINE" != "$ROUTING_SHA" ]; then state manual local_changed; report manual; return 0; fi
+  if [ "$ROUTING_MODE" != podkop ] && [ -n "$ROUTING_BASELINE" ] && [ "$ROUTING_BASELINE" != "$ROUTING_SHA" ]; then state manual local_changed; report manual; return 0; fi
   if [ -z "$BASELINE" ] || [ -z "$ROUTING_BASELINE" ]; then BINDING_APPLIED_MODE="$ROUTING_APPLIED_MODE"; binding "$CURRENT_SHA" "$ROUTING_SHA" || { unset BINDING_APPLIED_MODE; return 1; }; unset BINDING_APPLIED_MODE; BASELINE="$CURRENT_SHA"; ROUTING_BASELINE="$ROUTING_SHA"; fi
-  if [ "$ROUTING_APPLIED_MODE" != "$ROUTING_MODE" ]; then
+  if [ "$ROUTING_MODE" = podkop ]; then
+   if [ "$ROUTING_APPLIED_MODE" != podkop ]; then routing_release_managed || { state failed write_failed; return 1; }; ROUTING_SHA="$(routing_hash_current)"; fi
+   binding "$CURRENT_SHA" "$ROUTING_SHA" || return 1
+   rm -f "$STATE/pending.json"; state current ''; report current; return 0
+  fi
+  if [ "$ROUTING_APPLIED_MODE" != "$ROUTING_MODE" ] || { [ "$ROUTING_MODE" = except_ru ] && [ "$(cfg routing_schema)" != 2 ]; }; then
    if [ "$MODE" = auto ] || [ "$1" = force ]; then apply_value
    else state available ''; report available
    fi
@@ -400,14 +451,14 @@ check() {
   rm -f "$STATE/pending.json"; state current ''; report current; return 0
  fi
  if [ -z "$BASELINE" ]; then BINDING_APPLIED_MODE="$ROUTING_APPLIED_MODE"; binding "$CURRENT_SHA" "$ROUTING_SHA" || { unset BINDING_APPLIED_MODE; return 1; }; unset BINDING_APPLIED_MODE; BASELINE="$CURRENT_SHA"; ROUTING_BASELINE="$ROUTING_SHA"; fi
- [ "$BASELINE" = "$CURRENT_SHA" ] && { [ -z "$ROUTING_BASELINE" ] || [ "$ROUTING_BASELINE" = "$ROUTING_SHA" ]; } || { state manual local_changed; report manual; return 0; }
+ [ "$BASELINE" = "$CURRENT_SHA" ] && { [ "$ROUTING_MODE" = podkop ] || [ -z "$ROUTING_BASELINE" ] || [ "$ROUTING_BASELINE" = "$ROUTING_SHA" ]; } || { state manual local_changed; report manual; return 0; }
  if [ "$MODE" = auto ] || [ "$1" = force ]; then apply_value
  else state available ''; report available; fi
 }
 configure() {
  cat > "$WORK/input.json"
  [ "$(wc -c < "$WORK/input.json")" -le 4096 ] || return 1
- jq -e '(.mode=="auto" or .mode=="notify") and (.routing_mode=="blocked" or .routing_mode=="except_ru" or .routing_mode=="all") and (.interval|type=="number" and .>=300 and .<=86400 and floor==.) and (.section|type=="string" and (explode|all((.>=48 and .<=57) or (.>=65 and .<=90) or (.>=97 and .<=122) or .==95))) and (.endpoint|type=="string" and (explode|all(.>32 and .!=127))) and (.token|type=="string" and (explode|all(.>32 and .!=127)))' "$WORK/input.json" >/dev/null 2>&1 || return 1
+ jq -e '(.mode=="auto" or .mode=="notify") and (.routing_mode=="blocked" or .routing_mode=="except_ru" or .routing_mode=="all" or .routing_mode=="podkop") and (.interval|type=="number" and .>=300 and .<=86400 and floor==.) and (.section|type=="string" and (explode|all((.>=48 and .<=57) or (.>=65 and .<=90) or (.>=97 and .<=122) or .==95))) and (.endpoint|type=="string" and (explode|all(.>32 and .!=127))) and (.token|type=="string" and (explode|all(.>32 and .!=127)))' "$WORK/input.json" >/dev/null 2>&1 || return 1
  endpoint="$(jq -r '.endpoint' "$WORK/input.json")"; endpoint_ok "$endpoint" || return 1
  token="$(jq -r '.token' "$WORK/input.json")"; [ -n "$token" ] || token="$(cfg token)"; token_ok "$token" || return 1
  printf '%s' "$token" > "$WORK/config-token"
@@ -417,6 +468,7 @@ configure() {
  baseline=''; [ -z "$section" ] || baseline="$(text_sha "$current")"
  old_section="$(cfg routing_section)"; reset='{}'
  if [ -n "$old_section" ] && [ "$old_section" != "$section" ]; then reset='{"routing_baseline":"","routing_applied_mode":"","routing_added_russia_inside":"0","routing_added_full_route":"0","routing_added_lists_enabled":"0","routing_added_world_routes":"0","routing_section":""}'; fi
+ if [ "$(cfg routing_mode)" = podkop ] && [ "$(jq -r '.routing_mode' "$WORK/input.json")" != podkop ]; then reset='{"routing_baseline":"","routing_applied_mode":"","routing_added_russia_inside":"0","routing_added_full_route":"0","routing_added_lists_enabled":"0","routing_added_world_routes":"0"}'; fi
  jq --rawfile token "$WORK/config-token" --arg baseline "$baseline" --argjson reset "$reset" '{mode,routing_mode,interval,section,endpoint}+{token:$token,enabled:"1",baseline:$baseline,device_id:""}+$reset' "$WORK/input.json" > "$WORK/settings.json" || return 1
  write_options mkr_router "$WORK/settings.json" || return 1
  rm -f "$STATE/pending.json"; state configured ''; printf '{"ok":true}\n'

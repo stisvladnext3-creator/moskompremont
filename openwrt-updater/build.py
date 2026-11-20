@@ -117,4 +117,4 @@ def build(version,out,apk):
     if p.is_file() and p.suffix!='.zip':z.write(p,p.name)
  return out
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--version',default='0.1.4');p.add_argument('--out',type=Path,required=True);p.add_argument('--apk-tool',type=Path);a=p.parse_args();build(a.version,a.out.resolve(),a.apk_tool)
+ p=argparse.ArgumentParser();p.add_argument('--version',default='0.1.5');p.add_argument('--out',type=Path,required=True);p.add_argument('--apk-tool',type=Path);a=p.parse_args();build(a.version,a.out.resolve(),a.apk_tool)

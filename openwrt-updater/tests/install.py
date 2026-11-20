@@ -45,4 +45,4 @@ def install(dist,version):
    docker('exec',name,'test','-f',path)
   print('PASS native package installation/repeat installation + real rpcd/ubus:',platform,flush=True)
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--dist',type=Path,required=True);p.add_argument('--version',default='0.1.4');a=p.parse_args();install(a.dist,a.version)
+ p=argparse.ArgumentParser();p.add_argument('--dist',type=Path,required=True);p.add_argument('--version',default='0.1.5');a=p.parse_args();install(a.dist,a.version)

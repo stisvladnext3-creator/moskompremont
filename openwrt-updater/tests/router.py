@@ -72,15 +72,34 @@ esac
   self.put('/tmp/mkr-mocks/sleep','#!/bin/sh\n# Simulated retry timer; no production code bypass.\nexit 0\n',0o755)
  def tests(self):
   self.install_fixtures()
+  # Podkop mode must preserve all routing settings during key updates and
+  # accept subsequent manual routing changes, including on failed restart.
+  self.reset('0.7.22');self.sh("uci set podkop.main.user_subnet_list_type=dynamic; uci add_list podkop.main.user_subnets=192.168.31.1; uci commit podkop")
+  self.cli('configure',{'mode':'auto','routing_mode':'podkop','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''})
+  before=self.sh("uci show podkop | grep -v proxy_string");self.cli('check');assert self.value()==NEW and self.sh("uci show podkop | grep -v proxy_string")==before
+  self.sh('uci add_list podkop.main.user_subnets=10.1.2.3; uci commit podkop');before=self.sh("uci show podkop | grep -v proxy_string");self.source(OLD);self.sh('touch /tmp/podkop-on /tmp/restart-fail');self.cli('check',ok=False);assert self.value()==OLD and self.sh("uci show podkop | grep -v proxy_string")==before
   for version in ['0.3.4','0.4.11','0.5.8','0.6.1','0.7.22']:
    self.reset(version);self.cli('check');assert self.value()==NEW;assert self.status()['state']=='applied';assert self.sh('test ! -f /tmp/restarts && echo yes')=='yes'
+   assert self.sh('uci -q get podkop.mkr_router_speedtest_main.user_domains_text')=='speedtest.net ooklaserver.net ookla.com'
    self.cli('check');assert self.status()['state']=='current';assert TOKEN not in self.cli('status').stdout.decode();assert self.status()['podkop_version']==version
   # Podkop-native routing policies are applied without replacing the proxy URL.
   self.reset('0.7.22');self.cli('configure',{'mode':'auto','routing_mode':'all','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and '0.0.0.0/0' in self.sh('uci -q get podkop.main.fully_routed_ips');assert self.status()['settings']['routing_mode']=='all'
   self.cli('configure',{'mode':'auto','routing_mode':'blocked','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and '0.0.0.0/0' not in self.sh('uci -q get podkop.main.fully_routed_ips || :') and self.sh('uci -q get podkop.main.community_lists')=='russia_inside'
-  self.reset('0.7.22');self.cli('configure',{'mode':'auto','routing_mode':'except_ru','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and self.sh('uci -q get podkop.main.user_subnet_list_type')=='text' and '0.0.0.0/0' in self.sh('uci -q get podkop.main.user_subnets_text');assert self.sh('uci -q get podkop.mkr_router_main.connection_type')=='exclusion';assert self.sh('uci -q get podkop.mkr_router_main.mode')=='exclusion';assert self.sh('uci -q get podkop.mkr_router_main.user_domain_list_type')=='text';assert self.sh('uci -q get podkop.mkr_router_main.user_domains_text')=='ru xn--p1ai';assert self.sh('uci -q get podkop.mkr_router_main.remote_subnet_lists')=='https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs';assert '.srs' in self.sh('uci -q get podkop.mkr_router_main.remote_subnet_lists')
-  # A failed refresh must restore the previously active routing policy along with the URI.
-  self.source(OLD);self.sh('touch /tmp/restart-fail');self.cli('check',ok=False);rollback_value=self.value();rollback_section=self.sh('uci -q get podkop.mkr_router_main || :');rollback_type=self.sh('uci -q get podkop.main.user_subnet_list_type || :');rollback_domains=self.sh('uci -q get podkop.mkr_router_main.user_domains_text || :');rollback_subnets=self.sh('uci -q get podkop.main.user_subnets_text || :');rollback_remote=self.sh('uci -q get podkop.mkr_router_main.remote_subnet_lists || :');assert rollback_value==OLD and rollback_section=='section' and rollback_type=='text' and rollback_domains=='ru xn--p1ai' and rollback_remote=='https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs' and '0.0.0.0/0' in rollback_subnets,(rollback_value,rollback_section,rollback_type,rollback_domains,rollback_subnets,rollback_remote,self.status())
+  self.reset('0.7.22');self.cli('configure',{'mode':'auto','routing_mode':'except_ru','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check')
+  assert self.value()==NEW and '0.0.0.0/0' in self.sh('uci -q get podkop.main.fully_routed_ips')
+  assert self.sh('uci -q get podkop.main.user_subnets_text || :')==''
+  assert self.sh('uci -q get podkop.mkr_router_main.connection_type')=='exclusion'
+  assert self.sh('uci -q get podkop.mkr_router_main.user_subnet_list_type')=='dynamic' and self.sh('uci -q get podkop.mkr_router_main.user_subnets')=='192.168.31.1'
+  assert self.sh('uci -q get podkop.mkr_router_speedtest_main.connection_type')=='proxy'
+  assert self.sh('uci -q get podkop.mkr_router_main.user_domains_text || :')==''
+  assert self.sh('uci -q get podkop.mkr_router_main.remote_subnet_lists')=='https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs'
+  # A failed refresh restores the URI and the same routing fields.
+  self.source(OLD);self.sh('touch /tmp/podkop-on /tmp/restart-fail');self.cli('check',ok=False)
+  assert self.value()==NEW and '0.0.0.0/0' in self.sh('uci -q get podkop.main.fully_routed_ips') and self.sh('uci -q get podkop.mkr_router_main.connection_type')=='exclusion'
+  assert self.sh('uci -q get podkop.main.user_subnets_text || :')=='' and self.sh('uci -q get podkop.mkr_router_main.user_domains_text || :')==''
+  self.cli('configure',{'mode':'auto','routing_mode':'podkop','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check')
+  assert self.sh('uci -q get podkop.mkr_router_main || :')=='' and self.sh('uci -q get podkop.mkr_router_speedtest_main || :')==''
+  assert self.sh('uci -q get podkop.main.user_subnets_text || :')=='' and self.sh('uci -q get podkop.main.fully_routed_ips || :')==''
   self.source(NEW);self.cli('configure',{'mode':'auto','routing_mode':'all','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check');assert self.value()==NEW and self.sh('uci -q get podkop.mkr_router_main || :')=='' and '0.0.0.0/0' in self.sh('uci -q get podkop.main.fully_routed_ips')
   self.reset('0.7.22');self.sh('uci add_list podkop.main.community_lists=russia_outside;uci commit podkop');self.cli('configure',{'mode':'auto','routing_mode':'blocked','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''});self.cli('check',ok=False);conflict_status=self.status();assert conflict_status['state']=='manual' and self.value()==OLD
   # Real 0.7 schema: separate settings, connection_type, and configurable health-check path.
