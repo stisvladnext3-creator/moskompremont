@@ -42,7 +42,7 @@ jobs:
           sha256sum *.ipk *.apk *.zip *.md install.sh > SHA256SUMS.txt
       - name: Publish permanent downloads
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           moskom_tag=moskom-openwrt-v0.1.6
           if ! gh release view "$moskom_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then

@@ -8,5 +8,6 @@
 <Compile Include="../overlay/ServiceLib/Services/MoskomMacUpdateInstaller.cs" Link="Installer.cs"/>
 <Compile Include="../../desktop-client/overlay/ServiceLib/Services/MoskomTransfers.cs" Link="Transfers.cs"/>
 <Compile Include="../../desktop-client/overlay/ServiceLib/Services/MoskomConnection.cs" Link="Connection.cs"/>
+<Compile Include="../../desktop-client/overlay/ServiceLib/Services/MoskomUpdateNotes.cs" Link="UpdateNotes.cs"/>
 </ItemGroup>
 </Project>
