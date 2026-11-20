@@ -70,7 +70,7 @@ jobs:
           retention-days: 1
   publish:
     needs: build
-    if: inputs.publish
+    if: github.event_name != 'workflow_dispatch' || inputs.publish
     runs-on: ubuntu-latest
     permissions:
       contents: write
