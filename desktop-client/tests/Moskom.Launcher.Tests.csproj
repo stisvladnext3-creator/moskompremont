@@ -12,5 +12,6 @@
     <Compile Include="../overlay/ServiceLib/Services/MoskomTransfers.cs" Link="MoskomTransfers.cs" />
     <Compile Include="../overlay/ServiceLib/Services/MoskomAppUpdates.cs" Link="MoskomAppUpdates.cs" />
     <Compile Include="../overlay/ServiceLib/Services/MoskomRouteDownloads.cs" Link="MoskomRouteDownloads.cs" />
+    <Compile Include="../overlay/ServiceLib/Services/MoskomServerDisplay.cs" Link="MoskomServerDisplay.cs" />
   </ItemGroup>
 </Project>

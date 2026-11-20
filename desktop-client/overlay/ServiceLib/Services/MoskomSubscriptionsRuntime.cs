@@ -39,7 +39,7 @@ public static partial class MoskomLauncherRuntime
     {
         var subscriptions = await AppManager.Instance.SubItems() ?? [];
         var profiles = await AppManager.Instance.ProfileModels("", "") ?? [];
-        var grouped = profiles.GroupBy(p => p.Subid ?? "").ToDictionary(g => g.Key, g => (IReadOnlyList<ComboItem>)g.Select(p => new ComboItem { ID = p.IndexId, Text = p.GetSummary() }).ToList());
+        var grouped = profiles.GroupBy(p => p.Subid ?? "").ToDictionary(g => g.Key, g => (IReadOnlyList<ComboItem>)g.Select(p => new ComboItem { ID = p.IndexId, Text = MoskomServerDisplay.WithCountryFlag(p.GetSummary()) }).ToList());
         var result = new List<MoskomSubscriptionGroup>();
         foreach (var subscription in subscriptions.Where(s => !string.IsNullOrEmpty(s.Id)).OrderBy(s => s.Memo?.StartsWith(CabinetPrefix, StringComparison.Ordinal) == true ? 0 : 1))
         {

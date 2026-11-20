@@ -182,7 +182,7 @@ if legacy:
         }''', '''        var lstModel = await AppManager.Instance.ProfileModels("", "") ?? [];
 
         Servers.Clear();''')
- edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'var name = it.GetSummary();', 'var name = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary();')
+ edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'var name = it.GetSummary();', 'var name = ServiceLib.Services.MoskomServerDisplay.WithCountryFlag(it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary());')
  # v2rayN 7.20 ships three stock V4 policies alongside the MosKom Russia
  # preset. Remove those stock entries on first-run so legacy exposes the same
  # three routing choices as the current channel while preserving user rules.
@@ -234,7 +234,7 @@ else:
             BlServers = false;
             return;
         }''', '''        var lstModel = await AppManager.Instance.ProfileModels("", "") ?? [];''')
- edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'Text = it.GetSummary()', 'Text = it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary()')
+ edit('v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs', 'Text = it.GetSummary()', 'Text = ServiceLib.Services.MoskomServerDisplay.WithCountryFlag(it.SubRemarks?.StartsWith("Кабинет · ", StringComparison.Ordinal) == true ? it.SubRemarks + " · " + it.Remarks : it.GetSummary())')
 # Default-server recovery must remain inside the selected subscription, including
 # an empty subscription. The upstream fallback otherwise picks any stored server.
 edit('v2rayN/ServiceLib/Handler/ConfigHandler.cs', '''        var item = await AppManager.Instance.GetProfileItem(config.IndexId);

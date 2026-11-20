@@ -3,6 +3,13 @@ using Xunit;
 
 public sealed class ConnectionTests
 {
+    [Theory]
+    [InlineData("[VLESS] de Pugovka Booster", "[VLESS] 🇩🇪 Pugovka Booster")]
+    [InlineData("[VLESS] nl Astra", "[VLESS] 🇳🇱 Astra")]
+    [InlineData("[VLESS] Pugovka Booster", "[VLESS] Pugovka Booster")]
+    public void ServerCountryCodeIsDisplayedAsFlag(string source, string expected)
+        => Assert.Equal(expected, MoskomServerDisplay.WithCountryFlag(source));
+
     private sealed class Engine : IMoskomEngine
     {
         public int Starts, Stops;
