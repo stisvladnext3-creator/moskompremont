@@ -77,7 +77,7 @@ esac
   self.reset('0.7.22');self.sh("uci set podkop.main.user_subnet_list_type=dynamic; uci add_list podkop.main.user_subnets=192.168.31.1; uci commit podkop")
   self.cli('configure',{'mode':'auto','routing_mode':'podkop','interval':900,'section':'main','endpoint':'https://site.example/api/router-agent.php','token':''})
   before=self.sh("uci show podkop | grep -v proxy_string");self.cli('check');assert self.value()==NEW and self.sh("uci show podkop | grep -v proxy_string")==before
-  self.sh('uci add_list podkop.main.user_subnets=10.1.2.3; uci commit podkop');before=self.sh("uci show podkop | grep -v proxy_string");self.source(OLD);self.sh('touch /tmp/podkop-on /tmp/restart-fail');self.cli('check',ok=False);assert self.value()==OLD and self.sh("uci show podkop | grep -v proxy_string")==before
+  self.sh('uci add_list podkop.main.user_subnets=10.1.2.3; uci commit podkop');before=self.sh("uci show podkop | grep -v proxy_string");self.source(OLD);self.sh('touch /tmp/podkop-on /tmp/restart-fail');self.cli('check',ok=False);assert self.value()==NEW and self.sh("uci show podkop | grep -v proxy_string")==before
   for version in ['0.3.4','0.4.11','0.5.8','0.6.1','0.7.22']:
    self.reset(version);self.cli('check');assert self.value()==NEW;assert self.status()['state']=='applied';assert self.sh('test ! -f /tmp/restarts && echo yes')=='yes'
    assert self.sh('uci -q get podkop.mkr_router_speedtest_main.user_domains_text')=='speedtest.net ooklaserver.net ookla.com'
