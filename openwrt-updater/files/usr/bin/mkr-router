@@ -74,7 +74,8 @@ routing_capture() {
  fi
  OLD_MANAGED_SIGNATURE="$OLD_MANAGED_LISTS:$OLD_MANAGED_CONNECTION:$OLD_MANAGED_MODE:$OLD_MANAGED_REMOTE_SUBNETS"
  [ -n "$OLD_MANAGED_DOMAIN_TYPE$OLD_MANAGED_DOMAINS_TEXT" ] && OLD_MANAGED_SIGNATURE="$OLD_MANAGED_SIGNATURE:$OLD_MANAGED_DOMAIN_TYPE:$OLD_MANAGED_DOMAINS_TEXT"
- ROUTING_SHA="$(routing_hash_values "$OLD_LISTS" "$OLD_FULL" "$OLD_LISTS_ENABLED:$OLD_USER_SUBNET_TYPE:$OLD_USER_SUBNET_TEXT" "$OLD_MANAGED_EXISTS" "$OLD_MANAGED_OWNER" "$OLD_MANAGED_SIGNATURE" "$OLD_MANAGED_LISTS_ENABLED" "$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION" 2>/dev/null):$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION.mkr_router_owner" 2>/dev/null)")"
+ speedtest_exists=no; speedtest_owner=''; if [ "$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION" 2>/dev/null)" = section ]; then speedtest_exists=yes; speedtest_owner="$(uci -q get "podkop.$MKR_SPEEDTEST_SECTION.mkr_router_owner" 2>/dev/null)"; fi
+ ROUTING_SHA="$(routing_hash_values "$OLD_LISTS" "$OLD_FULL" "$OLD_LISTS_ENABLED:$OLD_USER_SUBNET_TYPE:$OLD_USER_SUBNET_TEXT" "$OLD_MANAGED_EXISTS" "$OLD_MANAGED_OWNER" "$OLD_MANAGED_SIGNATURE" "$OLD_MANAGED_LISTS_ENABLED" "$speedtest_exists:$speedtest_owner")"
 }
 batch_add_list() {
  local section="$1" option="$2" value="$3"
