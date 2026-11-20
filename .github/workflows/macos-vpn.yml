@@ -8,7 +8,7 @@ on:
         default: false
   push:
     branches: [main]
-    paths: ['macos-client/**', '.github/workflows/macos-vpn.yml']
+    paths: ['macos-client/**', 'desktop-client/**', '.github/workflows/macos-vpn.yml']
 permissions:
   contents: read
 jobs:
