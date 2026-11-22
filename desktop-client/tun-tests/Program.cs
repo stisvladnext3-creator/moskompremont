@@ -26,7 +26,7 @@ internal static partial class Program {
  static byte[] Config(int socks,int port,string selected,bool service){
   var core=new JsonObject{["outbounds"]=new JsonArray(new JsonObject{["type"]="socks",["tag"]="proxy",["server"]="127.0.0.1",["server_port"]=socks,["version"]="5"},new JsonObject{["type"]="direct",["tag"]="direct"})};
   core["dns"]=JsonNode.Parse("""{"servers":[{"tag":"direct-dns-1","type":"udp","server":"77.88.8.8"},{"tag":"local-local","type":"udp","server":"77.88.8.8"},{"tag":"remote-dns-1","type":"tcp","server":"192.0.2.53","server_port":53,"detour":"proxy"}]}""");
-  var prefs=new MoskomSelectiveSettings{Mode=service?"services":"apps",Apps=[new(selected,"Selected curl",selected)],Services=["telegram","whatsapp","chatgpt","youtube","speedtest"],CustomDomains=["domain:custom.fixture"]};
+  var prefs=new MoskomSelectiveSettings{Mode=service?"services":"apps",Apps=[new(selected,"Selected curl",selected)],Services=["telegram","whatsapp","chatgpt","youtube","speedtest"],CustomDomains=["domain:custom.fixture","domain:otherside.xyz"]};
   var catalog=MoskomServiceCatalog.Read(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"service-catalog.json")));
   var config=MoskomSelectivePolicy.Configure(core,prefs,catalog,port,Mac?"utun177":"MoskomVPN-test",Mac,_networkDns);config["log"]!["level"]="debug";return JsonSerializer.SerializeToUtf8Bytes(config);
  }
@@ -54,9 +54,11 @@ internal static partial class Program {
     var count=_requests;var bypass=await Curl(selected,"unselected.invalid");Check(!bypass.Contains(Marker)&&_requests==count,"Unselected service was proxied");
     foreach(var ip in new[]{"91.105.192.8","57.144.0.8"}){var media=await Curl(direct,"media.fixture.invalid",ip);Check(media.Contains(Marker)&&media.Length>128*1024,"Messenger media transfer did not traverse VPN: "+ip);}
     Check((await Curl(direct,"custom.fixture")).Contains(Marker),"Personal domain did not traverse VPN");
+    Check((await Curl(direct,"otherside.xyz")).Contains(Marker),"Reported personal domain did not traverse VPN");
     var customDns=await QueryDns("custom.fixture");Check(customDns.Equals(IPAddress.Parse("198.51.100.77")),"Personal domain DNS did not traverse VPN");
     var selectedDns=await QueryDns("youtube.com");Check(selectedDns.Equals(IPAddress.Parse("198.51.100.77")),"Selected service DNS did not traverse the VPN resolver");
     await CheckPublicDirect(selected,true);
+    await CheckRussianDirect(selected);
    }
    await Wait(()=>!Tunnel(),"Service disconnect left TUN/routes active");
    var configFile=Path.Combine(directory,"crash-config.json");await File.WriteAllBytesAsync(configFile,apps);var ready=Path.Combine(directory,"ready");
