@@ -52,7 +52,7 @@ public static class MoskomSelectivePolicy {
   "apps"=>settings.Apps.Count>0,"services"=>catalog.Services.Any(s=>settings.Services.Contains(s.Id))||settings.CustomDomains.Count>0,_=>true
  };
  private static JsonArray Strings(IEnumerable<string> values)=>new(values.Distinct(StringComparer.Ordinal).Select(v=>(JsonNode?)JsonValue.Create(v)).ToArray());
- public static JsonObject Configure(JsonObject original,MoskomSelectiveSettings settings,MoskomServiceCatalog catalog,int port,string tunName,bool mac,IReadOnlyList<string>? networkDns=null) {
+ public static JsonObject Configure(JsonObject original,MoskomSelectiveSettings settings,MoskomServiceCatalog catalog,int port,string tunName,bool mac,IReadOnlyList<string>? networkDns=null,bool ipv6Available=true) {
   if(!Enabled(settings)||!HasSelection(settings,catalog))throw new InvalidOperationException(settings.Mode=="apps"?"Выберите приложения в меню «Приложения».":"Выберите сервисы в меню «Сервисы».");
   if(port<1024||port>65000||settings.Apps.Count>200||settings.Services.Count>200)throw new InvalidDataException("Некорректные настройки маршрутизации.");
   var config=(JsonObject)original.DeepClone();
@@ -111,8 +111,21 @@ public static class MoskomSelectivePolicy {
     if(servers.OfType<JsonObject>().Any(server=>server["tag"]?.GetValue<string>()=="hosts-dns"))dnsRules.Add(new JsonObject{["preferred_by"]="hosts-dns",["server"]="hosts-dns"});
     var hosts=outbounds.OfType<JsonObject>().Select(o=>o["server"]?.GetValue<string>()).Where(host=>!string.IsNullOrEmpty(host)&&!IPAddress.TryParse(host,out _)).Select(host=>host!).ToArray();
     if(hosts.Length>0)dnsRules.Add(new JsonObject{["domain"]=Strings(hosts),["server"]="direct-dns-1"});
-    if(settings.Mode=="services")foreach(var rule in rules.OfType<JsonObject>()){
-     foreach(var field in new[]{"domain","domain_suffix"})if(rule[field] is JsonArray domains)dnsRules.Add(new JsonObject{[field]=domains.DeepClone(),["server"]="remote-dns-1"});
+    var selectedDomains=new JsonArray();
+    if(settings.Mode=="services")foreach(var rule in rules.OfType<JsonObject>().Where(rule=>rule["outbound"]?.GetValue<string>()=="proxy")){
+     foreach(var field in new[]{"domain","domain_suffix"})if(rule[field] is JsonArray domains){
+      dnsRules.Add(new JsonObject{[field]=domains.DeepClone(),["server"]="remote-dns-1"});
+      selectedDomains.Add(new JsonObject{[field]=domains.DeepClone()});
+     }
+    }
+    if(settings.Mode=="services"&&!ipv6Available){
+     // TUN acknowledges the browser's IPv6 TCP connection before the direct
+     // outbound learns that the physical network has no IPv6 route. A later
+     // reset prevents Happy Eyeballs from falling back to IPv4. Do not offer
+     // unusable AAAA answers for direct sites; proxy-selected names retain IPv6.
+     var conditions=new JsonArray(new JsonObject{["query_type"]=Strings(["AAAA"])});
+     if(selectedDomains.Count>0)conditions.Add(new JsonObject{["type"]="logical",["mode"]="or",["rules"]=selectedDomains,["invert"]=true});
+     dnsRules.Insert(0,new JsonObject{["type"]="logical",["mode"]="and",["rules"]=conditions,["action"]="predefined",["rcode"]="NOERROR"});
     }
     // OS DNS brokers cannot reliably attribute a query to its originating desktop app.
     dns["final"]=settings.Mode=="apps"?"remote-dns-1":"direct-dns-1";dns["rules"]=dnsRules;

@@ -9,6 +9,14 @@ internal static partial class Program
         var address = await QueryDns("ya.ru");
         Check(!address.Equals(System.Net.IPAddress.Parse("198.51.100.77")), "Yandex received the proxy fixture DNS answer");
         Check(_proxyDnsRequests == dnsRequests, "Unselected Yandex DNS traversed the VPN");
+        if (!_ipv6Available)
+        {
+            var directV6 = await AskDns("ya.ru", 28);
+            Check(System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(directV6.AsSpan(6)) == 0, "Direct sites must not receive unusable IPv6 addresses");
+            var proxyV6 = await AskDns("youtube.com", 28);
+            Check(System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(proxyV6.AsSpan(6)) > 0, "Selected services must retain proxy IPv6 DNS");
+            dnsRequests = _proxyDnsRequests;
+        }
 
         var start = new ProcessStartInfo(Mac ? "/usr/bin/sudo" : executable)
         {

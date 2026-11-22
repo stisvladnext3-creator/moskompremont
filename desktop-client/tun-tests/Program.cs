@@ -28,7 +28,7 @@ internal static partial class Program {
   core["dns"]=JsonNode.Parse("""{"servers":[{"tag":"direct-dns-1","type":"udp","server":"77.88.8.8"},{"tag":"local-local","type":"udp","server":"77.88.8.8"},{"tag":"remote-dns-1","type":"tcp","server":"192.0.2.53","server_port":53,"detour":"proxy"}]}""");
   var prefs=new MoskomSelectiveSettings{Mode=service?"services":"apps",Apps=[new(selected,"Selected curl",selected)],Services=["telegram","whatsapp","chatgpt","youtube","speedtest"],CustomDomains=["domain:custom.fixture","domain:otherside.xyz"]};
   var catalog=MoskomServiceCatalog.Read(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"service-catalog.json")));
-  var config=MoskomSelectivePolicy.Configure(core,prefs,catalog,port,Mac?"utun177":"MoskomVPN-test",Mac,_networkDns);config["log"]!["level"]="debug";return JsonSerializer.SerializeToUtf8Bytes(config);
+  var config=MoskomSelectivePolicy.Configure(core,prefs,catalog,port,Mac?"utun177":"MoskomVPN-test",Mac,_networkDns,_ipv6Available);config["log"]!["level"]="debug";return JsonSerializer.SerializeToUtf8Bytes(config);
  }
  static async Task Run(string output){
   Check(!Tunnel(),"Fixture must start without the test TUN");await PrepareDns();var listener=new TcpListener(IPAddress.Loopback,0);listener.Start();var socks=((IPEndPoint)listener.LocalEndpoint).Port;
@@ -52,7 +52,7 @@ internal static partial class Program {
    await using(var tunnel=await MoskomTunSupervisor.StartAsync(services,CancellationToken.None)){
    await Wait(Tunnel,"Service test TUN did not open");await Task.Delay(5000);var routed=await Curl(direct,"youtube.com");Check(routed.Contains(Marker),"Selected service did not traverse proxy");
     var count=_requests;var bypass=await Curl(selected,"unselected.invalid");Check(!bypass.Contains(Marker)&&_requests==count,"Unselected service was proxied");
-    foreach(var ip in new[]{"91.105.192.8","57.144.0.8"}){var media=await Curl(direct,"media.fixture.invalid",ip);Check(media.Contains(Marker)&&media.Length>128*1024,"Messenger media transfer did not traverse VPN: "+ip);}
+    foreach(var ip in new[]{"91.105.192.8","57.144.0.8","[2001:b28:f23c::77]"}){var media=await Curl(direct,"media.fixture.invalid",ip);Check(media.Contains(Marker)&&media.Length>128*1024,"Messenger media transfer did not traverse VPN: "+ip);}
     Check((await Curl(direct,"custom.fixture")).Contains(Marker),"Personal domain did not traverse VPN");
     Check((await Curl(direct,"otherside.xyz")).Contains(Marker),"Reported personal domain did not traverse VPN");
     var customDns=await QueryDns("custom.fixture");Check(customDns.Equals(IPAddress.Parse("198.51.100.77")),"Personal domain DNS did not traverse VPN");

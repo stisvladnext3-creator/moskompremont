@@ -8,6 +8,23 @@ namespace ServiceLib.Services;
 // tunnel's own resolver and send direct-site queries back into that resolver.
 public static class MoskomNetworkDns
 {
+    public static bool HasIpv6Route()
+    {
+        if (!Socket.OSSupportsIPv6) return false;
+        try
+        {
+            // UDP connect only asks the OS for a route/source address; it sends
+            // no packet. Capture before TUN adds its synthetic IPv6 interface.
+            using var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+            socket.Connect(new IPEndPoint(IPAddress.Parse("2606:4700:4700::1111"), 53));
+            return socket.LocalEndPoint is IPEndPoint endpoint
+                && !endpoint.Address.Equals(IPAddress.IPv6Any) && !IPAddress.IsLoopback(endpoint.Address)
+                && !endpoint.Address.IsIPv6LinkLocal && !endpoint.Address.IsIPv6SiteLocal
+                && !endpoint.Address.Equals(IPAddress.Parse("fdfe:dcba:9876::1"));
+        }
+        catch (SocketException) { return false; }
+    }
+
     public static IReadOnlyList<string> Capture()
     {
         IPAddress? preferred = null;

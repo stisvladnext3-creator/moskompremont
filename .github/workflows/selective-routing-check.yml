@@ -28,6 +28,11 @@ jobs:
           $process = Start-Process $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $destination)) -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw 'Fixture installation failed' }
           "MOSKOM_TUN_BIN=$destination\bin" | Out-File $env:GITHUB_ENV -Append
+      - name: Check Yandex baseline without a tunnel
+        shell: pwsh
+        run: |
+          curl.exe -4 -I --noproxy "*" --connect-timeout 8 --max-time 20 https://ya.ru/
+          if ($LASTEXITCODE -ne 0) { throw 'Runner cannot reach Yandex before the tunnel; routing regression would be inconclusive' }
       - name: Check deterministic selection rules
         run: dotnet test desktop-client/tests/Moskom.Launcher.Tests.csproj -c Release
       - name: Exercise the native Windows tunnel and real Yandex direct traffic

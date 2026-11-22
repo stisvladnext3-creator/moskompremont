@@ -44,4 +44,33 @@ public sealed class SelectiveTests {
   Assert.False(result["inbounds"]!.AsArray().OfType<JsonObject>().Single(n=>n["type"]!.GetValue<string>()=="tun")["strict_route"]!.GetValue<bool>());
  }
 
+ [Theory][InlineData(false)][InlineData(true)]
+ public void MissingPhysicalIpv6FiltersOnlyUnselectedDnsNames(bool ipv6Available){
+  var source=Core();source["dns"]=JsonNode.Parse("""{"servers":[{"tag":"direct-dns-1","type":"udp","server":"77.88.8.8"},{"tag":"remote-dns-1","type":"https","server":"1.1.1.1","detour":"proxy"}]}""");
+  var result=MoskomSelectivePolicy.Configure(source,new(){Mode="services",Services=["youtube","telegram"],CustomDomains=["domain:otherside.xyz","full:only.example"]},Catalog,10808,"MoskomVPN",false,["192.168.1.1"],ipv6Available);
+  var filters=result["dns"]!["rules"]!.AsArray().OfType<JsonObject>().Where(r=>r["action"]?.GetValue<string>()=="predefined").ToList();
+  if(ipv6Available){Assert.Empty(filters);return;}
+  var filter=Assert.Single(filters);Assert.Equal("NOERROR",filter["rcode"]!.GetValue<string>());
+  Assert.True(DnsFilterMatches(filter,"ya.ru","AAAA"));Assert.False(DnsFilterMatches(filter,"ya.ru","A"));
+  Assert.False(DnsFilterMatches(filter,"youtube.com","AAAA"));Assert.False(DnsFilterMatches(filter,"i.ytimg.com","AAAA"));
+  Assert.False(DnsFilterMatches(filter,"otherside.xyz","AAAA"));Assert.False(DnsFilterMatches(filter,"www.otherside.xyz","AAAA"));
+  Assert.False(DnsFilterMatches(filter,"only.example","AAAA"));Assert.True(DnsFilterMatches(filter,"sub.only.example","AAAA"));
+  Assert.Equal("direct",result["route"]!["final"]!.GetValue<string>());
+  Assert.Contains("2001:b28:f23c::/48",result["route"]!["rules"]!.ToJsonString());
+ }
+
+ private static bool DnsFilterMatches(JsonObject rule,string domain,string queryType){
+  bool result;
+  if(rule["type"]?.GetValue<string>()=="logical"){
+   var children=rule["rules"]!.AsArray().OfType<JsonObject>();
+   result=rule["mode"]!.GetValue<string>()=="and"?children.All(r=>DnsFilterMatches(r,domain,queryType)):children.Any(r=>DnsFilterMatches(r,domain,queryType));
+  }else{
+   var domains=rule["domain"]?.AsArray().Select(x=>x!.GetValue<string>()).ToList();
+   var suffixes=rule["domain_suffix"]?.AsArray().Select(x=>x!.GetValue<string>()).ToList();
+   result=(rule["query_type"] is not JsonArray types||types.Any(t=>t!.GetValue<string>()==queryType))&&
+    (domains==null&&suffixes==null||domains?.Contains(domain)==true||suffixes?.Any(s=>domain==s||domain.EndsWith("."+s,StringComparison.Ordinal))==true);
+  }
+  return rule["invert"]?.GetValue<bool>()==true?!result:result;
+ }
+
 }

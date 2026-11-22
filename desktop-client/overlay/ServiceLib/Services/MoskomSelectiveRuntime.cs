@@ -47,8 +47,8 @@ public static partial class MoskomLauncherRuntime {
    var result=await CoreConfigHandler.GenerateClientConfig(built.Context with{IsTunEnabled=false,RunCoreType=ECoreType.sing_box},source);if(!result.Success)throw new InvalidOperationException("Не удалось подготовить конфигурацию TUN.");
    JsonObject json;try{json=JsonNode.Parse(await File.ReadAllTextAsync(source,ct)) as JsonObject??throw new InvalidDataException("Не прочитана конфигурация.");}finally{File.Delete(source);}
    var port=AppManager.Instance.GetLocalPort(EInboundProtocol.socks);var tun=OperatingSystem.IsMacOS()?"utun"+System.Security.Cryptography.RandomNumberGenerator.GetInt32(100,200):"MoskomVPN";
-   var networkDns=await Task.Run(MoskomNetworkDns.Capture,ct);
-   var config=MoskomSelectivePolicy.Configure(json,Preferences.Selective,ServiceCatalog,port,tun,OperatingSystem.IsMacOS(),networkDns);
+   var network=await Task.Run(()=>(Dns:MoskomNetworkDns.Capture(),Ipv6:MoskomNetworkDns.HasIpv6Route()),ct);
+   var config=MoskomSelectivePolicy.Configure(json,Preferences.Selective,ServiceCatalog,port,tun,OperatingSystem.IsMacOS(),network.Dns,network.Ipv6);
    _supervisor=await MoskomTunSupervisor.StartAsync(JsonSerializer.SerializeToUtf8Bytes(config),ct);
    for(var attempt=0;attempt<50;attempt++){ct.ThrowIfCancellationRequested();if(HasExited)throw new InvalidOperationException("Ядро TUN завершилось. Проверьте разрешение администратора и выбранный сервер.");if(await HasSocksAsync(port+3,ct)){
     // sing-box's interface/process cache follows utun/Wintun creation asynchronously.
