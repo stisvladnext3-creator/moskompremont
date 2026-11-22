@@ -1,0 +1,44 @@
+name: Check reported Windows service routing
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows10-family:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: 2dust/v2rayN
+          ref: 1883178b5f1e222b6c6db2782e7a3d989b7cc18f
+          path: upstream
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install the exact published Windows 0.3.56 payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'MoskomVPN-Setup-0.3.56.exe'
+          Invoke-WebRequest 'https://github.com/stisvladnext3-creator/moskompremont/releases/download/moskom-vpn-v0.3.56/MoskomVPN-Setup-0.3.56.exe' -OutFile $installer
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'a3e82577f8e7f00f62a707a900f2a43c904e291e36d3fbc7a19fb8e4975246db') { throw 'Published installer hash mismatch' }
+          $destination = Join-Path $env:RUNNER_TEMP 'Moskom-installed'
+          $process = Start-Process $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('"/DIR={0}"' -f $destination)) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Fixture installation failed' }
+          "MOSKOM_TUN_BIN=$destination\bin" | Out-File $env:GITHUB_ENV -Append
+      - name: Check deterministic selection rules
+        run: dotnet test desktop-client/tests/Moskom.Launcher.Tests.csproj -c Release
+      - name: Exercise the native Windows tunnel and real Yandex direct traffic
+        shell: pwsh
+        run: |
+          dotnet publish desktop-client/tun-tests/Moskom.Tun.Tests.csproj -c Release -r win-x64 --self-contained true "-p:UpstreamSource=$env:GITHUB_WORKSPACE/upstream" -o "$env:RUNNER_TEMP/tun-test"
+          if ($LASTEXITCODE -ne 0) { throw 'Routing regression compilation failed' }
+          & "$env:RUNNER_TEMP/tun-test/Moskom.Tun.Tests.exe" "$env:RUNNER_TEMP/tun-results"
+          if ($LASTEXITCODE -ne 0) { throw 'Routing regression failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-0.3.56-routing-diagnostics
+          path: ${{ runner.temp }}/tun-results/**
