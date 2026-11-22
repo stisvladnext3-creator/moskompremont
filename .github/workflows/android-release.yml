@@ -5,7 +5,7 @@ on:
       payload_ref:
         description: Branch containing the verified signed release payload
         required: true
-        default: distribution/android-0.1.17
+        default: distribution/android-0.1.34-repair
   push:
     branches: ['distribution/android-*']
     paths: ['release-payload/**']
@@ -14,7 +14,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,8 +39,48 @@ jobs:
         run: |
           cd "release-payload/android-$MOSKOM_RELEASE_VERSION"
           sha256sum -c SHA256SUMS.txt
-          java -jar apksigner.jar verify --verbose --print-certs "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION.apk" > signature.txt
+          # This is the official Build Tools 37.0.0 JAR from the verified build.
+          printf '%s  %s\n' '2defad215d7ff52968a409cde528cdaef7918b115e276b8e3378ca7a178e4180' apksigner.jar | sha256sum -c -
+          java -jar apksigner.jar verify --verbose --print-certs --min-sdk-version 24 --max-sdk-version 37 "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION.apk" > signature.txt
+          grep -Fx 'Number of signers: 1' signature.txt
           grep -F 'certificate SHA-256 digest: 8309db39687334c10a96d86240bb18d8723832e74d64b33b1033a498a5e39b96' signature.txt
+      - name: Fetch the previous signed production APK for upgrade testing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/previous-android"
+          gh release download moskom-android-v0.1.29 --repo "$GITHUB_REPOSITORY" --pattern MoskomVPN-Android-0.1.29.apk --dir "$RUNNER_TEMP/previous-android"
+          cd "$RUNNER_TEMP/previous-android"
+          printf '%s  %s\n' '89ec4fd0382976eb35eea492493b29c1c7f4172d09b4e0aa74c3b14aee44ff0a' MoskomVPN-Android-0.1.29.apk | sha256sum -c -
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install the signed production APK on Android 7
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 24
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: bash android-client/build/release-install-check.sh
+      - name: Install the signed production APK on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: bash android-client/build/release-install-check.sh
+      - name: Save signed APK installation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-android-installation
+          path: ${{ runner.temp }}/signed-android-installation/**
       - name: Upload the complete release and publish it
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,8 +90,13 @@ jobs:
           if ! gh release view "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --draft --target "$MOSKOM_RELEASE_SOURCE" --title "МосКомпРемонт VPN · Android $MOSKOM_RELEASE_VERSION" --notes-file NOTES.md
           fi
-          gh release upload "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --clobber "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION.apk" "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION-source.zip" moskompremont-app-download-update.zip MoskomVPN-Android-preview.png VALIDATION.md SHA256SUMS.txt
+          gh release upload "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --clobber "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION.apk" "MoskomVPN-Android-$MOSKOM_RELEASE_VERSION-source.zip" VALIDATION.md SHA256SUMS.txt
+          for optional_asset in moskompremont-app-download-update.zip MoskomVPN-Android-preview.png; do
+            if [ -f "$optional_asset" ]; then
+              gh release upload "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --clobber "$optional_asset"
+            fi
+          done
           if [ -f moskompremont-cabinet-v20-update.zip ]; then
             gh release upload "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --clobber moskompremont-cabinet-v20-update.zip
           fi
-          gh release edit "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+          gh release edit "$moskom_release_tag" --repo "$GITHUB_REPOSITORY" --notes-file NOTES.md --draft=false --latest=false
