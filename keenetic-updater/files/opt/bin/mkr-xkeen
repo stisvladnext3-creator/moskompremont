@@ -1,0 +1,283 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+# No downloaded shell/configuration code is executed. Only one VLESS outbound
+# is replaced; routing, inbound sockets and XKeen's sockopt marks are retained.
+set +x
+set -eu
+umask 077
+VERSION=0.1.0
+BASE=${MKR_PREFIX:-/opt}
+PATH="$BASE/bin:$BASE/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH LC_ALL=C
+ETC="$BASE/etc/mkr-xkeen"
+STATE="$BASE/var/lib/mkr-xkeen"
+CONF="$ETC/config.json"
+CONFDIR="$BASE/etc/xray/configs"
+WORK=''; PENDING=0; TTY_STATE=''
+
+say() { printf '%s\n' "$*"; }
+die() { say "$*" >&2; exit 1; }
+size_ok() { [ "$(wc -c < "$1")" -le "${2:-1048576}" ]; }
+hash() { sha256sum "$1" | awk '{print $1}'; }
+atomic() { # source and destination; destination's existing mode is private too
+ cp "$1" "$2.mkr-tmp" && chmod 600 "$2.mkr-tmp" && mv -f "$2.mkr-tmp" "$2"
+}
+save_config() { jq "$@" "$CONF" > "$WORK/config"; atomic "$WORK/config" "$CONF"; }
+local_state() {
+ jq -n --arg state "$1" --arg message "$2" --arg time "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+  '{state:$state,message:$message,checked_at:$time}' > "$WORK/status"
+ atomic "$WORK/status" "$STATE/status.json"
+}
+normalize() {
+ size_ok "$1" && awk -f "$BASE/lib/mkr-xkeen/jsonc.awk" "$1" > "$WORK/clean" && jq -e 'type=="object"' "$WORK/clean" >/dev/null && jq . "$WORK/clean" > "$2"
+}
+dependencies() {
+ for cmd in jq curl sha256sum awk flock timeout crontab; do command -v "$cmd" >/dev/null 2>&1 || die "Нет $cmd. Переустановите пакет с зависимостями Entware."; done
+}
+core_tools() {
+ XRAY=$(command -v xray) || die 'Не найден Xray. Сначала установите и настройте XKeen с Xray.'
+ XKEEN=$(command -v xkeen) || die 'Не найден XKeen. Сначала установите и настройте XKeen.'
+ [ -d "$CONFDIR" ] || die "Не найдена папка $CONFDIR. Нестандартный путь требует ручной настройки."
+}
+initialize() {
+ mkdir -p "$ETC" "$STATE"
+ chmod 700 "$ETC" "$STATE"
+ [ ! -L "$CONF" ] || die 'Символьная ссылка вместо настроек не поддерживается.'
+ if [ ! -f "$CONF" ]; then printf '%s\n' '{"enabled":false,"mode":"auto","endpoint":"https://moskompremont.ru/api/router-agent.php","token":"","file":"","tag":""}' > "$CONF"; fi
+ chmod 600 "$CONF"
+ WORK=$(mktemp -d "$STATE/.work.XXXXXX")
+ exec 9>"$STATE/lock"
+ flock -n 9 || die 'Другая проверка уже выполняется.'
+}
+restart_xkeen() {
+ # New XKeen otherwise detaches in cron and reports success before restarting.
+ # A daemon launched by XKeen must not inherit our flock descriptor.
+ (exec 9>&-; XKEEN_FOREGROUND=1 timeout -k 10 120 "$XKEEN" -restart) > "$WORK/restart.log" 2>&1 || return 1
+ attempt=0
+ while [ "$attempt" -lt 10 ]; do
+  if pidof xray >/dev/null 2>&1; then sleep 1; pidof xray >/dev/null 2>&1 && return 0; fi
+  sleep 1; attempt=$((attempt+1))
+ done
+ return 1
+}
+test_config() {
+ # An outbound-only config validates protocols without a second copy of the
+ # router's large geosite/geoip lists in RAM. Existing routes stay untouched.
+ jq '{log:{loglevel:"none"},outbounds:.outbounds}' "$1" > "$WORK/test.json"
+ (unset XRAY_LOCATION_CONFDIR XRAY_LOCATION_CONFIG; timeout -k 3 20 "$XRAY" run -test -config "$WORK/test.json") > "$WORK/test.log" 2>&1
+}
+target_path_ok() {
+ case "$1" in "$CONFDIR/"*.json) :;; *) return 1;; esac
+ name=${1#"$CONFDIR/"}
+ case "$name" in */*) return 1;; esac
+}
+recover() {
+ [ -f "$STATE/transaction.json" ] || return 0
+ file=$(jq -r .file "$STATE/transaction.json")
+ old=$(jq -r .old_hash "$STATE/transaction.json")
+ new=$(jq -r .new_hash "$STATE/transaction.json")
+ [ -f "$file" ] && [ ! -L "$file" ] && [ -f "$STATE/previous.conf" ] && [ "$(hash "$STATE/previous.conf")" = "$old" ] || return 1
+ current=$(hash "$file")
+ if [ "$current" = "$new" ]; then
+  atomic "$STATE/previous.conf" "$file" || return 1
+ elif [ "$current" != "$old" ]; then return 1
+ fi
+ restart_xkeen || return 1
+ jq '.revision' "$STATE/transaction.json" > "$WORK/failed"
+ atomic "$WORK/failed" "$STATE/failed-revision.json"
+ save_config '.mode="notify"'
+ rm -f "$STATE/transaction.json"
+ PENDING=0
+ local_state failed 'Возвращён предыдущий файл. Включено уведомление без автозамены. Проверьте XKeen.'
+}
+cleanup() {
+ result=$?
+ trap - 0 HUP INT TERM
+ if [ -n "$TTY_STATE" ]; then stty "$TTY_STATE" < /dev/tty 2>/dev/null || :; fi
+ if [ "$PENDING" = 1 ]; then recover || { [ -z "$WORK" ] || local_state failed 'Нужна ручная проверка XKeen: восстановление не завершено.'; }; fi
+ [ -z "$WORK" ] || rm -rf "$WORK"
+ exit "$result"
+}
+trap cleanup 0
+trap 'exit 130' HUP INT TERM
+
+endpoint_ok() {
+ printf '%s' "$1" | jq -eRs 'test("^https://[A-Za-z0-9.\\[\\]:_-]+/[A-Za-z0-9_./~-]+$") and (contains("..")|not)' >/dev/null
+}
+request() { # GET or POST, file destination; no credentials in argv or logs
+ endpoint=$(jq -r .endpoint "$CONF")
+ endpoint_ok "$endpoint" || return 1
+ jq -er '.token|select(test("^mkr1\\.[a-f0-9]{24}\\.[a-f0-9]{64}$"))|"header = \"X-MKR-Router-Token: \(.)\""' "$CONF" > "$WORK/curl.conf" || return 1
+ if [ "$1" = GET ]; then
+  code=$(curl --config "$WORK/curl.conf" --proto '=https' --connect-timeout 10 --max-time 25 --max-filesize 65536 -sS -o "$2" -w '%{http_code}' "$endpoint?format=xray" 2>"$WORK/curl.log") || code=000
+ else
+  code=$(curl --config "$WORK/curl.conf" --proto '=https' --connect-timeout 10 --max-time 25 --max-filesize 65536 -sS -H 'Content-Type: application/json' --data-binary "@$WORK/report.json" -o "$2" -w '%{http_code}' "$endpoint" 2>"$WORK/curl.log") || code=000
+ fi
+ [ "$code" = 200 ] && [ -f "$2" ] && size_ok "$2" 65536
+}
+report() {
+ [ -n "${REVISION:-}" ] || return 0
+ jq -n --arg state "$1" --arg revision "$REVISION" --arg version "$VERSION" '{state:$state,revision:$revision,client_version:$version}' > "$WORK/report.json"
+ request POST "$WORK/report-response.json" || :
+}
+finish() { local_state "$1" "$2"; report "$1"; say "$2"; }
+fetch_snapshot() {
+ if ! request GET "$WORK/snapshot.json"; then
+  case "$code" in
+   401|403) local_state manual 'Код устройства отключён, истёк или изменился пароль. Создайте новый код в кабинете.';;
+   410) local_state manual 'Привязка удалена или подписка истекла. Проверьте личный кабинет.';;
+   *) local_state failed "Не удалось связаться с сайтом (HTTP $code). Файл XKeen не изменён.";;
+  esac
+  say 'Проверка не завершена. Подробности: mkr-xkeen status.' >&2; return 1
+ fi
+ if ! jq -e '.version==1 and (.resource.revision|type=="string" and test("^[a-f0-9]{64}$")) and (.resource.value|type=="string" and length<=8192)' "$WORK/snapshot.json" >/dev/null; then
+  local_state failed 'Неверный ответ сайта. Установите обновление сайта для XKeen.'; return 1
+ fi
+ REVISION=$(jq -r .resource.revision "$WORK/snapshot.json")
+ # Bind the revision to the actual URI too, rather than trusting metadata.
+ jq -jr .resource.value "$WORK/snapshot.json" > "$WORK/uri"
+ [ "$(hash "$WORK/uri")" = "$REVISION" ] || return 1
+ atomic "$WORK/snapshot.json" "$STATE/latest.json"
+}
+find_target() {
+ FILE=$(jq -r '.file // ""' "$CONF"); TAG=$(jq -r '.tag // ""' "$CONF")
+ if [ -n "$FILE" ]; then
+  target_path_ok "$FILE" || return 1
+  [ -f "$FILE" ] && [ ! -L "$FILE" ] && normalize "$FILE" "$WORK/original.json" || return 1
+  jq -e --arg t "$TAG" '[.outbounds[]? | select(.tag==$t and .protocol=="vless")]|length==1' "$WORK/original.json" >/dev/null || return 1
+  return 0
+ fi
+ : > "$WORK/candidates"
+ count=0
+ for file in "$CONFDIR"/*.json; do
+  [ -f "$file" ] && [ ! -L "$file" ] || continue
+  count=$((count+1)); [ "$count" -le 128 ] || return 1
+  normalize "$file" "$WORK/scanned.json" || return 1
+  jq -c --arg f "$file" --slurpfile n "$WORK/outbound.json" \
+   '.outbounds[]? | select(.protocol=="vless" and (.tag|type=="string" and length>0)) | {file:$f,tag:.tag,match:(.settings.vnext[0].users[0].id==$n[0].settings.vnext[0].users[0].id)}' "$WORK/scanned.json" >> "$WORK/candidates"
+ done
+ jq -s 'if length==1 then .[0] else [.[]|select(.match)]|if length==1 then .[0] else null end end' "$WORK/candidates" > "$WORK/choice"
+ jq -e 'type=="object"' "$WORK/choice" >/dev/null || return 1
+ FILE=$(jq -r .file "$WORK/choice"); TAG=$(jq -r .tag "$WORK/choice")
+ normalize "$FILE" "$WORK/original.json" || return 1
+ save_config --arg f "$FILE" --arg t "$TAG" '.file=$f|.tag=$t'
+}
+check() {
+ [ "$(jq -r .enabled "$CONF")" = true ] || die 'Устройство не подключено. Выполните mkr-xkeen setup.'
+ if [ -f "$STATE/transaction.json" ]; then recover || die 'Восстановление не завершено. Проверьте конфигурацию и mkr-xkeen status.'; fi
+ fetch_snapshot || return 1
+ if ! jq -e '.xray_outbound.protocol=="vless" and (.xray_outbound.settings.vnext|length==1)' "$WORK/snapshot.json" >/dev/null; then
+  finish manual 'Ключ требует ручной настройки или на сайте ещё нет обновления для XKeen. Посмотрите ключ в кабинете.'; return 1
+ fi
+ jq '.xray_outbound' "$WORK/snapshot.json" > "$WORK/outbound.json"
+ find_target || { finish manual 'Не удалось однозначно выбрать VLESS-блок. Укажите файл и tag командой mkr-xkeen target.'; return 1; }
+ old_hash=$(hash "$FILE")
+ jq --arg tag "$TAG" --slurpfile n "$WORK/outbound.json" \
+  '.outbounds |= map(if .tag==$tag then . + $n[0] + {tag:.tag,streamSettings:($n[0].streamSettings + (if .streamSettings.sockopt then {sockopt:.streamSettings.sockopt} else {} end))} else . end)' "$WORK/original.json" > "$WORK/candidate.json"
+ jq -Sc . "$WORK/original.json" > "$WORK/a"; jq -Sc . "$WORK/candidate.json" > "$WORK/b"
+ if cmp -s "$WORK/a" "$WORK/b"; then
+  rm -f "$STATE/failed-revision.json"
+  finish current 'Ключ актуален. Перезапуск XKeen не требуется.'; return 0
+ fi
+ if [ "$(jq -r .mode "$CONF")" != auto ]; then finish available 'Доступен новый ключ. Автозамена выключена. Ключ есть в личном кабинете.'; return 0; fi
+ if [ -f "$STATE/failed-revision.json" ] && [ "$(jq -r . "$STATE/failed-revision.json")" = "$REVISION" ]; then
+  local_state failed 'Этот ключ уже не прошёл проверку. После исправления выполните mkr-xkeen retry.'; return 1
+ fi
+ if ! pidof xray >/dev/null 2>&1; then finish manual 'Xray не запущен. Сначала проверьте работу XKeen. Файл не изменён.'; return 1; fi
+ if ! test_config "$WORK/candidate.json"; then
+  printf '"%s"\n' "$REVISION" > "$WORK/failed"; atomic "$WORK/failed" "$STATE/failed-revision.json"
+  finish manual 'Установленный Xray не принял новый ключ. Обновите Xray или настройте его вручную. Файл не изменён.'; return 1
+ fi
+ [ "$(hash "$FILE")" = "$old_hash" ] || { finish manual 'Файл изменился во время проверки. Повторите проверку.'; return 1; }
+ atomic "$FILE" "$STATE/previous.conf"
+ new_hash=$(hash "$WORK/candidate.json")
+ jq -n --arg file "$FILE" --arg old "$old_hash" --arg new "$new_hash" --arg rev "$REVISION" '{file:$file,old_hash:$old,new_hash:$new,revision:$rev}' > "$WORK/transaction"
+ atomic "$WORK/transaction" "$STATE/transaction.json"
+ sync
+ PENDING=1
+ atomic "$WORK/candidate.json" "$FILE" || return 1
+ sync
+ if ! restart_xkeen; then
+  recover || { local_state failed 'Перезапуск и восстановление не завершены. Проверьте XKeen вручную.'; return 1; }
+  report failed; say 'Новый ключ не применён. Возвращён предыдущий файл.' >&2; return 1
+ fi
+ atomic "$STATE/transaction.json" "$STATE/rollback.json"
+ rm -f "$STATE/transaction.json" "$STATE/failed-revision.json"
+ PENDING=0
+ finish applied 'Ключ обновлён. XKeen перезапущен.'
+}
+schedule() {
+ crontab -l > "$WORK/crontab" 2>/dev/null || :
+ awk '!/# mkr-xkeen-updater$/' "$WORK/crontab" > "$WORK/new-crontab"
+ # Entware is mounted at /opt. No key or token is ever included in cron.
+ if [ "$(jq -r .enabled "$CONF")" = true ]; then
+  printf '*/5 * * * * /opt/bin/mkr-xkeen check >/dev/null 2>&1 # mkr-xkeen-updater\n' >> "$WORK/new-crontab"
+ fi
+ crontab "$WORK/new-crontab"
+}
+setup() {
+ endpoint=${1:-https://moskompremont.ru/api/router-agent.php}
+ endpoint_ok "$endpoint" || die 'Нужен HTTPS-адрес API без параметров.'
+ say 'В кабинете Keenetic создайте код для нужного ключа роутера.'
+ if [ -t 0 ]; then
+  printf 'Код устройства (ввод скрыт): '
+  TTY_STATE=$(stty -g < /dev/tty); stty -echo < /dev/tty
+ fi
+ IFS= read -r token || die 'Не получен код устройства.'
+ if [ -n "$TTY_STATE" ]; then stty "$TTY_STATE" < /dev/tty; TTY_STATE=''; say ''; fi
+ printf '%s' "$token" | jq -eRs 'test("^mkr1\\.[a-f0-9]{24}\\.[a-f0-9]{64}$")' >/dev/null || die 'Неверный формат кода устройства.'
+ # Write via stdin, not --arg, keeping the token out of process arguments.
+ printf '%s' "$token" > "$WORK/token"; unset token
+ jq --rawfile token "$WORK/token" --arg endpoint "$endpoint" '.token=$token|.endpoint=$endpoint|.enabled=true' "$CONF" > "$WORK/config"
+ cp "$CONF" "$WORK/before-setup"
+ atomic "$WORK/config" "$CONF"
+ if ! fetch_snapshot; then atomic "$WORK/before-setup" "$CONF"; die 'Привязка не завершена. Проверьте код и выполните setup снова.'; fi
+ schedule
+ say 'Роутер подключён. Проверка каждые пять минут.'
+ check
+}
+rollback() {
+ [ -f "$STATE/rollback.json" ] && [ -f "$STATE/previous.conf" ] || die 'Нет резервной копии последнего обновления.'
+ file=$(jq -r .file "$STATE/rollback.json"); expected=$(jq -r .new_hash "$STATE/rollback.json")
+ [ -f "$file" ] && [ ! -L "$file" ] && [ "$(hash "$file")" = "$expected" ] || die 'Файл менялся вручную. Автоматический откат отменён.'
+ normalize "$STATE/previous.conf" "$WORK/old.json" && test_config "$WORK/old.json" || die 'Резервная копия не прошла проверку Xray.'
+ atomic "$STATE/rollback.json" "$STATE/transaction.json"; PENDING=1
+ recover || die 'Восстановление не завершено. Проверьте XKeen.'
+ say 'Предыдущий ключ восстановлен. Включён режим уведомлений.'
+}
+status() {
+ jq -n --slurpfile config "$CONF" --slurpfile status "$STATE/status.json" \
+  '{version:"0.1.0",enabled:$config[0].enabled,mode:$config[0].mode,file:$config[0].file,tag:$config[0].tag,status:$status[0]}'
+}
+
+action=${1:-status}; [ "$#" -eq 0 ] || shift
+case "$action" in version|--version) say "$VERSION"; exit 0;; esac
+dependencies
+initialize
+[ -f "$STATE/status.json" ] || local_state idle 'Ожидает подключения.'
+case "$action" in setup|check|retry|rollback) core_tools;; esac
+case "$action" in
+ setup) setup "${1:-}";;
+ check) check;;
+ retry) rm -f "$STATE/failed-revision.json"; check;;
+ status) status;;
+ schedule) schedule;;
+ target)
+  [ "$#" -eq 2 ] || die 'mkr-xkeen target /opt/etc/xray/configs/04_outbounds.json proxy'
+  file=$1; tag=$2
+  target_path_ok "$file" || die 'Выберите файл .json непосредственно в папке configs Xray.'
+  [ -f "$file" ] && [ ! -L "$file" ] && normalize "$file" "$WORK/target.json" || die 'Файл не является корректным JSON/JSONC.'
+  jq -e --arg tag "$tag" '[.outbounds[]?|select(.tag==$tag and .protocol=="vless")]|length==1' "$WORK/target.json" >/dev/null || die 'Нужен единственный VLESS-блок с указанным tag.'
+  save_config --arg file "$file" --arg tag "$tag" '.file=$file|.tag=$tag'
+  rm -f "$STATE/failed-revision.json"; say 'Выбран блок. Выполните mkr-xkeen check.';;
+ mode)
+  case "${1:-}" in auto|notify) save_config --arg mode "$1" '.mode=$mode';; *) die 'mkr-xkeen mode auto|notify';; esac
+  say 'Режим сохранён.';;
+ rollback) rollback;;
+ unlink|unschedule)
+  crontab -l > "$WORK/crontab" 2>/dev/null || :
+  awk '!/# mkr-xkeen-updater$/' "$WORK/crontab" > "$WORK/new-crontab"; crontab "$WORK/new-crontab"
+  save_config '.enabled=false|.token=""'; rm -f "$STATE/latest.json"
+  say 'Автообновление отключено. Действующий файл XKeen сохранён. Отключите код также в кабинете.';;
+ *) die 'Команды: setup, check, status, target, mode auto|notify, retry, rollback, unlink, version';;
+esac

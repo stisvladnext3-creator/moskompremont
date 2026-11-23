@@ -24,7 +24,7 @@ function routerDeviceSource(PDO $db,string $type,int $id,int $owner,bool $lock=f
 }
 function routerDeviceSources(PDO $db,int $owner): array {
  $result=[];
- foreach(query($db,"SELECT id,label FROM internet_router_keys WHERE user_id=? AND key_format='connection' ORDER BY label,id",[$owner])->fetchAll() as $row)$result[]=['id'=>(int)$row['id'],'type'=>'router_key','label'=>$row['label'],'group'=>'Ключи роутеров'];
+ foreach(query($db,"SELECT id,label,(LOWER(LEFT(TRIM(key_value),8))='vless://') AS xkeen_compatible FROM internet_router_keys WHERE user_id=? AND key_format='connection' ORDER BY label,id",[$owner])->fetchAll() as $row)$result[]=['id'=>(int)$row['id'],'type'=>'router_key','label'=>$row['label'],'group'=>'Ключи роутеров','xkeen_compatible'=>(int)$row['xkeen_compatible']===1];
  foreach(query($db,'SELECT id,name FROM internet_subscriptions WHERE user_id=? ORDER BY name,id',[$owner])->fetchAll() as $row)$result[]=['id'=>(int)$row['id'],'type'=>'subscription','label'=>$row['name'],'group'=>'Подписки'];
  return $result;
 }
@@ -99,10 +99,11 @@ function reportRouterDevice(PDO $db,array $device,array $body): array {
  $state=field($body,'state',30);$revision=field($body,'revision',64);$version=field($body,'client_version',30);
  if(!in_array($state,['current','available','applied','failed','manual'],true)||!preg_match('/\A[a-f0-9]{64}\z/D',$revision)||!preg_match('/\A[0-9]+\.[0-9]+\.[0-9]+\z/D',$version))problem('Некорректное состояние устройства.');
  $snapshot=routerDeviceSnapshot($db,$device);$resource=$snapshot['resource'];
+ if(!hash_equals($resource['revision'],$revision))problem('Ключ уже изменился. Проверьте его повторно.',409);
  query($db,'UPDATE internet_router_devices SET last_state=?,last_revision=?,client_version=? WHERE id=?',[$state,$revision,$version,$device['id']]);
  if($state!=='current') {
   $titles=['available'=>'Для роутера есть новая ссылка','applied'=>'Ссылка роутера обновлена','failed'=>'Роутер не применил обновление','manual'=>'Роутеру нужна ручная настройка'];
-  $text=match($state){'applied'=>'Роутер применил актуальное подключение.','failed'=>'Автоматическое обновление не завершено. Откройте настройки роутера и проверьте состояние.',default=>'Откройте «Сервисы → МосКомпРемонт» на роутере, чтобы посмотреть ссылку и состояние обновления.'};
+  $text=match($state){'applied'=>'Роутер применил актуальное подключение.','failed'=>'Автоматическое обновление не завершено. Откройте настройки роутера и проверьте состояние.',default=>'Проверьте состояние обновления на роутере: в OpenWrt — «Сервисы → МосКомпРемонт», в XKeen — команда mkr-xkeen status.'};
   notifyClient($db,(int)$device['user_id'],'router-device:'.$device['id'].':'.$revision.':'.$state,'router_device_'.$state,$titles[$state],$device['label'].' · '.$resource['label'].'. '.$text,$resource['type']==='router_key'?'router-keys':'subscriptions');
  }
  return ['ok'=>true];

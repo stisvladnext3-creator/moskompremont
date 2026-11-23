@@ -10,7 +10,14 @@ try {
  $token=$_SERVER['HTTP_X_MKR_ROUTER_TOKEN'] ?? '';if(!is_string($token)||strlen($token)>128)problem('Код устройства недействителен.',401);
  if($token==='')limitRate($db,'router-agent-anonymous',100);
  $device=authenticateRouterDevice($db,$token);
- if($_SERVER['REQUEST_METHOD']==='GET')$result=routerDeviceSnapshot($db,$device);
+ if($_SERVER['REQUEST_METHOD']==='GET'){
+  $result=routerDeviceSnapshot($db,$device);
+  if(($_GET['format'] ?? '')==='xray'){
+   require_once dirname(__DIR__).'/private/xray-outbound.php';
+   try {$result['xray_outbound']=xkeenOutbound($result['resource']['value']);}
+   catch(InvalidArgumentException $e){$result['xray_error']=$e->getMessage();}
+  }
+ }
  else {
   if((int)($_SERVER['CONTENT_LENGTH'] ?? 0)>2048)problem('Слишком большой запрос.',413);
   $raw=file_get_contents('php://input',false,null,0,2049);if($raw===false||strlen($raw)>2048)problem('Слишком большой запрос.',413);

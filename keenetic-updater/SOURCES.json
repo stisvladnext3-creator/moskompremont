@@ -1,0 +1,8 @@
+{
+  "reviewed_at": "2026-11-23",
+  "community_guide": "https://github.com/Corvus-Malus/XKeen",
+  "xkeen_software": "https://github.com/jameszeroX/XKeen",
+  "xkeen_reviewed_commit": "978d3a4b9a30b060f90b7ddec52232978023b723",
+  "implementation": "Independent updater; does not redistribute or modify XKeen or Xray",
+  "integration": ["/opt/etc/xray/configs/*.json", "XKEEN_FOREGROUND=1 xkeen -restart", "Entware cron user crontab"]
+}

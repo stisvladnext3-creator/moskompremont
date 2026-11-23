@@ -85,14 +85,14 @@
   async function selectAdmin(value) { clearRouterDeviceCodes(); adminTab = value; closeConversation(); document.querySelectorAll('[data-admin-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.adminTab === value))); document.querySelectorAll('[data-admin-panel]').forEach(p => p.hidden = p.dataset.adminPanel !== value); await loadAdmin(value); }
   document.querySelectorAll('[data-admin-tab]').forEach(b => b.onclick = () => run(b, () => selectAdmin(b.dataset.adminTab)));
   document.querySelectorAll('[data-admin-refresh]').forEach(b => b.onclick = () => run(b, () => loadAdmin(b.dataset.adminRefresh)));
-  function clearRouterDeviceCodes() { for (const id of ['router-device-code', 'admin-router-device-code']) { $(id).replaceChildren(); $(id).hidden = true; } }
+  function clearRouterDeviceCodes() { for (const id of ['router-device-code', 'admin-router-device-code', 'keenetic-device-code']) { $(id).replaceChildren(); $(id).hidden = true; } }
   function routerDeviceSources(select, sources) { select.replaceChildren(new Option(sources.length ? 'Выберите одну запись' : 'Нет назначенных ключей или подписок', '')); for (const source of sources) select.append(new Option(source.group + ' · ' + source.label, source.type + ':' + source.id)); }
-  function routerDeviceReplacePanel(item, admin, sources) {
+  function routerDeviceReplacePanel(item, admin, sources, reload = () => loadRouterDevices(admin)) {
     let available = sources;
     const panel = el('form', null, 'router-device-replace'); panel.hidden = true;
     const label = el('label', 'Новый ключ или подписка'), select = el('select'); select.name = 'source'; select.required = true; label.append(select);
     const submit = el('button', 'Сохранить новый ключ', 'account-primary'); submit.type = 'submit'; panel.append(label, submit);
-    panel.onsubmit = event => { event.preventDefault(); run(submit, async () => { const [type, id] = select.value.split(':'); if (!id) throw Error('Выберите ключ или подписку.'); await api(admin ? 'admin_router_device_replace' : 'router_device_replace', { id: Number(item.id), resource_type: type, resource_id: Number(id) }); await loadRouterDevices(admin); message('Ключ заменён. Код устройства на роутере менять не нужно.'); }); };
+    panel.onsubmit = event => { event.preventDefault(); run(submit, async () => { const [type, id] = select.value.split(':'); if (!id) throw Error('Выберите ключ или подписку.'); await api(admin ? 'admin_router_device_replace' : 'router_device_replace', { id: Number(item.id), resource_type: type, resource_id: Number(id) }); await reload(); message('Ключ заменён. Код устройства на роутере менять не нужно.'); }); };
     const toggle = button('Заменить ключ', async () => { if (!available) available = (await api('admin_router_device_sources', undefined, { user_id: Number(item.user_id) })).sources; routerDeviceSources(select, available); select.value = item.resource_type + ':' + item.resource_id; panel.hidden = false; toggle.hidden = true; });
     const cancel = button('Отмена', () => { panel.hidden = true; toggle.hidden = false; });
     panel.append(cancel); return { toggle, panel };
@@ -103,20 +103,24 @@
     box.append(button('Скрыть код', () => { box.replaceChildren(); box.hidden = true; })); box.hidden = false;
   }
   async function loadRouterDevices(admin = false) {
-    const data = await api(admin ? 'admin_router_devices' : 'router_devices'), box = $(admin ? 'admin-router-devices-list' : 'router-devices-list'); box.replaceChildren();
+    const data = await api(admin ? 'admin_router_devices' : 'router_devices'), box = $(admin ? 'admin-router-devices-list' : 'router-devices-list');
     if (!admin) routerDeviceSources($('router-device-source'), data.sources);
+    renderRouterDevices(data, box, admin, () => loadRouterDevices(admin));
+  }
+  function renderRouterDevices(data, box, admin, reload) {
+    box.replaceChildren();
     if (!data.devices.length) box.append(el('p', 'Роутеры ещё не подключены.', 'account-muted'));
     const status = { current: 'Актуальная ссылка', available: 'Есть новая ссылка', applied: 'Обновлено', failed: 'Ошибка применения', manual: 'Нужна ручная замена' };
     for (const item of data.devices) { const card = el('article', null, 'subscription-card'); card.append(el('h3', item.label), el('p', item.resource_label)); if (admin) card.append(el('p', item.first_name + ' ' + item.last_name + ' · ' + item.email, 'account-muted'));
       const inactive = !!item.revoked_at || Date.parse(item.expires_at.replace(' ', 'T') + 'Z') <= Date.now();
       card.append(el('p', inactive ? 'Код отключён или истёк' : (status[item.last_state] || 'Ожидает подключения'), 'status-badge'), el('p', 'Последняя связь: ' + (date(item.last_seen_at) || 'ещё не было') + ' · Код до: ' + date(item.expires_at), 'account-muted'));
       if (item.resource_expired) card.append(el('p', 'Срок подписки истёк. Обновление возобновится после продления.', 'account-muted'));
-      if (!inactive) { const actions = el('div', null, 'order-buttons'), replacement = routerDeviceReplacePanel(item, admin, admin ? null : data.sources); actions.append(replacement.toggle, button('Отключить код', async () => { if (!confirm('Отключить обновление для роутера «' + item.label + '»?')) return; await api(admin ? 'admin_router_device_revoke' : 'router_device_revoke', { id: Number(item.id) }); clearRouterDeviceCodes(); await loadRouterDevices(admin); message('Код устройства отключён.'); }, 'account-secondary account-danger')); card.append(actions, replacement.panel); }
+      if (!inactive) { const actions = el('div', null, 'order-buttons'), replacement = routerDeviceReplacePanel(item, admin, admin ? null : data.sources, reload); actions.append(replacement.toggle, button('Отключить код', async () => { if (!confirm('Отключить обновление для роутера «' + item.label + '»?')) return; await api(admin ? 'admin_router_device_revoke' : 'router_device_revoke', { id: Number(item.id) }); clearRouterDeviceCodes(); await reload(); message('Код устройства отключён.'); }, 'account-secondary account-danger')); card.append(actions, replacement.panel); }
       box.append(card);
     }
   }
   async function createRouterDevice(event, admin) { const form = event.target, [type, id] = form.elements.source.value.split(':'); if (!id) throw Error('Выберите ключ или подписку.'); const body = { label: form.elements.label.value, resource_type: type, resource_id: Number(id) }; if (admin) { body.user_id = Number($('admin-device-user').value); if (!body.user_id) throw Error('Выберите клиента.'); }
-    clearRouterDeviceCodes(); const result = await api(admin ? 'admin_router_device_create' : 'router_device_create', body); await loadRouterDevices(admin); showRouterDeviceCode(result, admin); form.elements.label.value = '';
+    const epoch = authEpoch; clearRouterDeviceCodes(); const result = await api(admin ? 'admin_router_device_create' : 'router_device_create', body); await loadRouterDevices(admin); if (epoch !== authEpoch || (admin ? mode !== 'admin' || adminTab !== 'openwrt' : mode !== 'client' || clientTab !== 'openwrt')) return; showRouterDeviceCode(result, admin); form.elements.label.value = '';
   }
   $('router-device-form').onsubmit = e => { e.preventDefault(); run(e.submitter, () => createRouterDevice(e, false)); };
   $('admin-router-device-form').onsubmit = e => { e.preventDefault(); run(e.submitter, () => createRouterDevice(e, true)); };
@@ -339,7 +343,7 @@
   };
   function setKeeneticVisibility(enabled) {
     keeneticEnabled = enabled; $('keenetic-client-tab').hidden = !enabled;
-    if (!enabled) { $('keenetic-files').replaceChildren(); $('cabinet-keenetic').hidden = true; }
+    if (!enabled) { $('keenetic-files').replaceChildren(); $('keenetic-devices-list').replaceChildren(); $('keenetic-device-source').replaceChildren(); clearRouterDeviceCodes(); $('cabinet-keenetic').hidden = true; }
   }
   function keeneticFileCard(file) {
     const card = el('article', null, 'subscription-card keenetic-file-card');
@@ -353,7 +357,26 @@
     if (!data.enabled) { if (clientTab === 'keenetic' && mode === 'client') await selectClient('subscriptions'); return; }
     if (!data.files.length) $('keenetic-files').append(el('p', 'Конфигурации пока не загружены. Администратор добавит их в этот раздел.', 'account-muted'));
     for (const file of data.files) $('keenetic-files').append(keeneticFileCard(file).card);
+    try {
+      const devices = await api('router_devices'); if (user?.id !== owner || !keeneticEnabled) return;
+      const sources = devices.sources.filter(source => source.type === 'router_key' && source.xkeen_compatible);
+      routerDeviceSources($('keenetic-device-source'), sources); $('keenetic-device-submit').disabled = sources.length === 0;
+      $('keenetic-device-form').hidden = false; $('keenetic-agent-error').textContent = '';
+      renderRouterDevices({ ...devices, sources }, $('keenetic-devices-list'), false, loadKeenetic);
+    } catch (e) { if (e.stale) return; $('keenetic-device-form').hidden = true; $('keenetic-agent-error').textContent = e.message; }
   }
+  $('keenetic-device-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => {
+    const epoch = authEpoch, form = e.target, [type, id] = form.elements.source.value.split(':');
+    if (type !== 'router_key' || !id) throw Error('Выберите назначенный вам ключ VLESS.');
+    clearRouterDeviceCodes(); const result = await api('router_device_create', { label: form.elements.label.value, resource_type: type, resource_id: Number(id) });
+    await loadKeenetic(); if (epoch !== authEpoch || mode !== 'client' || clientTab !== 'keenetic' || !keeneticEnabled) return;
+    const box = $('keenetic-device-code'), shellQuote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+    const installer = new URL('downloads/keenetic/install.sh', location.href).href;
+    const command = 'curl --proto \'=https\' --proto-redir \'=https\' -fL --connect-timeout 15 --max-time 90 ' + shellQuote(installer) + ' -o /tmp/mkr-keenetic-install.sh && sh /tmp/mkr-keenetic-install.sh ' + shellQuote(result.endpoint);
+    box.replaceChildren(el('h3', 'Подключите XKeen — один раз'), el('p', 'Подключитесь к Entware по SSH, выполните команду и вставьте код, когда установщик его запросит. Пароль от кабинета не нужен. Код хранится только на вашем роутере; повторно на сайте он не показывается.'));
+    for (const [label, value] of [['Команда установки', command], ['Код устройства', result.token]]) { const row = el('label', label), input = el('textarea'); input.value = value; input.readOnly = true; input.rows = 3; input.setAttribute('autocomplete', 'off'); input.style.overflowWrap = 'anywhere'; row.append(input, button('Копировать', async () => { try { await navigator.clipboard.writeText(value); message('Скопировано.'); } catch { input.focus(); input.select(); message('Скопируйте выделенный текст.'); } })); box.append(row); }
+    box.append(button('Скрыть код', () => { box.replaceChildren(); box.hidden = true; })); box.hidden = false; form.elements.label.value = '';
+  }); };
   $('refresh-keenetic').onclick = e => run(e.target, loadKeenetic);
   function clearKeeneticManagement() {
     keeneticRequest++; keeneticUser = null; $('keenetic-management').hidden = true; $('admin-keenetic-files').replaceChildren(); $('keenetic-upload-form').reset(); $('keenetic-enabled').checked = false;
