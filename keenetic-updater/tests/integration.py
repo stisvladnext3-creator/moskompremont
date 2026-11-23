@@ -73,11 +73,11 @@ try:
  plan=admin.call('admin_router_host_preview',{'new_host':'rotated.example','old_host':'old.example'})
  assert plan['changed']>=2  # Includes matching records left by the base fixture.
  admin.call('admin_router_host_apply',{'preview_token':plan['preview_token']})
- agent(token,expected=409,body={'state':'applied','revision':snapshot['resource']['revision'],'client_version':'0.1.0'})
+ agent(token,expected=409,body={'state':'applied','revision':snapshot['resource']['revision'],'client_version':'0.1.1'})
  f.call('check');assert f.state()=='applied' and f.host()=='rotated.example' and f.count('restart')==1
  data=agent(token,'?format=xray');assert data['xray_outbound']['settings']['vnext'][0]['address']=='rotated.example'
  f.call('check');assert f.state()=='current' and f.count('restart')==1
- metadata=client.call('router_devices');row=next(x for x in metadata['devices'] if x['id']==created['id']);assert row['last_state']=='current' and row['last_seen_at'] and row['client_version']=='0.1.0'
+ metadata=client.call('router_devices');row=next(x for x in metadata['devices'] if x['id']==created['id']);assert row['last_state']=='current' and row['last_seen_at'] and row['client_version']=='0.1.1'
  assert token not in json.dumps(metadata) and 'vless://' not in json.dumps(metadata)
  # Real HTTP authorization refusal leaves the applied file in place.
  before=f.file.read_bytes();client.call('router_device_revoke',{'id':created['id']});f.call('check',code=1);assert f.file.read_bytes()==before and f.state()=='manual'

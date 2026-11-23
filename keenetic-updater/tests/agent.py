@@ -60,6 +60,7 @@ class Fixture:
    f=self.p/'bin'/name;f.write_text(STUB);f.chmod(0o755)
   if os.environ.get('MKR_BUSYBOX'):
    for name in ['awk','cp','mv','cmp','wc','date','mktemp','chmod','mkdir','rm','sleep','sync']:(self.p/'bin'/name).symlink_to(os.environ['MKR_BUSYBOX'])
+  if os.environ.get('MKR_TEST_JQ'):(self.p/'bin/jq').symlink_to(os.environ['MKR_TEST_JQ'])
   (self.p/'bin/mkr-xkeen').chmod(0o755)
   self.file=self.cfg/'04_inbound.json'
   self.old={'outbounds':[{'tag':'proxy','protocol':'vless','settings':{'vnext':[{'address':'old.example','port':443,'users':[{'id':UUID,'encryption':'none'}]}]},'streamSettings':{'network':'tcp','security':'none','sockopt':{'mark':255,'tcpFastOpen':True}},'mux':{'enabled':False}}, {'tag':'direct','protocol':'freedom'}, {'tag':'block','protocol':'blackhole'}]}
@@ -155,8 +156,55 @@ def lock(f):
  with (f.p/'var/lib/mkr-xkeen/lock').open('w') as h:
   fcntl.flock(h,fcntl.LOCK_EX|fcntl.LOCK_NB);f.call('check',code=1)
 
+def validation(f):
+ f.call('mode','notify');before=f.file.read_bytes()
+ valid=['https://moskompremont.ru/api/router-agent.php','https://example.test/internet/api/router-agent.php','https://192.0.2.1:8443/api/router-agent.php','https://[2001:db8::1]:8443/api/router-agent.php']
+ for endpoint in valid:f.call('setup',endpoint,input=TOKEN+'\n')
+ saved=(f.p/'etc/mkr-xkeen/config.json').read_bytes()
+ for endpoint in ['http://example.test/api/router-agent.php','https:///api/router-agent.php','https://example.test/','https://user:pass@example.test/api/router-agent.php','https://example.test/api/router-agent.php?token=invalid','https://example.test/api/router-agent.php#fragment','https://example.test/../api/router-agent.php','https://example.test/api/%0Arouter-agent.php','https://example.test/api/router-agent.php\n','https://example.test/$(command)']:
+  f.call('setup',endpoint,input=TOKEN+'\n',code=1);assert (f.p/'etc/mkr-xkeen/config.json').read_bytes()==saved
+ for token in [TOKEN[:-1],TOKEN+'0',TOKEN.replace('mkr1.','mkr2.',1),TOKEN.replace('1'*24,'A'*24),TOKEN+'\r',TOKEN+'.extra','mkr1.'+'1'*23+'.'+'2'*64,'mkr1.'+'1'*24+'.'+'2'*63+'z']:
+  r=f.call('setup',input=token+'\n',code=1);assert token not in r.stdout+r.stderr and (f.p/'etc/mkr-xkeen/config.json').read_bytes()==saved
+ assert f.file.read_bytes()==before and f.count('restart')==0
+
+def stored_bad_token(f):
+ f.setup();before=f.file.read_bytes();conf=f.p/'etc/mkr-xkeen/config.json';data=json.loads(conf.read_text())
+ for value in ['not-a-token',None,123,[],TOKEN+'\r\nX-Injected: secret']:
+  conf.write_text(json.dumps({**data,'token':value}));r=f.call('check',code=1)
+  assert 'ONIGURUMA' not in r.stderr and 'unbound' not in r.stderr and f.file.read_bytes()==before and f.state()=='failed'
+
+def invalid_revision(f):
+ f.setup();before=f.file.read_bytes()
+ for revision in ['a'*63,'A'*64,'a'*63+'z',None,123]:
+  response=copy.deepcopy(f.payload);response['resource']['revision']=revision;(f.p/'response.json').write_text(json.dumps(response))
+  f.call('check',code=1);assert f.file.read_bytes()==before and f.state()=='failed'
+
+def tty_prompt(f):
+ import pty,select,time
+ pid,master=pty.fork()
+ if pid==0:
+  args=[*shlex.split(os.environ.get('MKR_TEST_SHELL','')),str(f.p/'bin/mkr-xkeen'),'setup']
+  os.execvpe(args[0],args,{**os.environ,'MKR_PREFIX':str(f.p)})
+ output=b'';sent=False;deadline=time.monotonic()+20;finished=False
+ try:
+  while time.monotonic()<deadline:
+   if select.select([master],[],[],.2)[0]:
+    try:chunk=os.read(master,65536)
+    except OSError:break
+    if not chunk:break
+    output+=chunk
+    if not sent and 'Код устройства (ввод скрыт): '.encode() in output:
+     os.write(master,(TOKEN+'\n').encode());sent=True
+   if os.waitpid(pid,os.WNOHANG)[0]:finished=True;break
+  if not finished:
+   done,status=os.waitpid(pid,os.WNOHANG)
+   if not done:os.kill(pid,9);os.waitpid(pid,0);raise AssertionError('Setup did not finish after its TTY prompt')
+   assert os.waitstatus_to_exitcode(status)==0
+  assert sent and TOKEN.encode() not in output and f.state()=='applied'
+ finally:os.close(master)
+
 if __name__=='__main__':
- for test in [basic,invalid_native,failed_restart,concurrent_edit,multiple,uuid_match,revoked,malformed,cron,recovery,unsupported,lock]:
+ for test in [basic,invalid_native,failed_restart,concurrent_edit,multiple,uuid_match,revoked,malformed,cron,recovery,unsupported,lock,validation,stored_bad_token,invalid_revision,tty_prompt]:
   f=Fixture()
   try:test(f);print('PASS',test.__name__,flush=True)
   finally:f.close()

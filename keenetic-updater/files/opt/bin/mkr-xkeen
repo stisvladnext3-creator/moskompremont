@@ -5,7 +5,7 @@
 set +x
 set -eu
 umask 077
-VERSION=0.1.0
+VERSION=0.1.1
 BASE=${MKR_PREFIX:-/opt}
 PATH="$BASE/bin:$BASE/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
 export PATH LC_ALL=C
@@ -14,6 +14,21 @@ STATE="$BASE/var/lib/mkr-xkeen"
 CONF="$ETC/config.json"
 CONFDIR="$BASE/etc/xray/configs"
 WORK=''; PENDING=0; TTY_STATE=''
+# Entware jq can be built without Oniguruma. These validators intentionally
+# use only basic JSON/string/array operations, never test/match/sub/capture.
+MKR_JQ_VALIDATORS='
+def mkr_chars($allowed):
+ ($allowed|explode) as $codes | explode | all(. as $c | ($codes|index($c)) != null);
+def mkr_hex($n):
+ type=="string" and length==$n and mkr_chars("0123456789abcdef");
+def mkr_token:
+ type=="string" and (split(".") as $p | ($p|length)==3 and $p[0]=="mkr1" and ($p[1]|mkr_hex(24)) and ($p[2]|mkr_hex(64)));
+def mkr_endpoint:
+ startswith("https://") and (contains("..")|not) and
+ (.[8:]|split("/") as $p | ($p|length)>1 and
+  ($p[0]|length>0 and mkr_chars("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.[]:_-")) and
+  ($p[1:]|join("/")|length>0 and mkr_chars("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./~-")));
+'
 
 say() { printf '%s\n' "$*"; }
 die() { say "$*" >&2; exit 1; }
@@ -102,12 +117,13 @@ trap cleanup 0
 trap 'exit 130' HUP INT TERM
 
 endpoint_ok() {
- printf '%s' "$1" | jq -eRs 'test("^https://[A-Za-z0-9.\\[\\]:_-]+/[A-Za-z0-9_./~-]+$") and (contains("..")|not)' >/dev/null
+ printf '%s' "$1" | jq -eRs "$MKR_JQ_VALIDATORS"' mkr_endpoint' >/dev/null
 }
 request() { # GET or POST, file destination; no credentials in argv or logs
+ code=000
  endpoint=$(jq -r .endpoint "$CONF")
  endpoint_ok "$endpoint" || return 1
- jq -er '.token|select(test("^mkr1\\.[a-f0-9]{24}\\.[a-f0-9]{64}$"))|"header = \"X-MKR-Router-Token: \(.)\""' "$CONF" > "$WORK/curl.conf" || return 1
+ jq -er "$MKR_JQ_VALIDATORS"' .token|select(mkr_token)|"header = \"X-MKR-Router-Token: \(.)\""' "$CONF" > "$WORK/curl.conf" || return 1
  if [ "$1" = GET ]; then
   code=$(curl --config "$WORK/curl.conf" --proto '=https' --connect-timeout 10 --max-time 25 --max-filesize 65536 -sS -o "$2" -w '%{http_code}' "$endpoint?format=xray" 2>"$WORK/curl.log") || code=000
  else
@@ -130,7 +146,7 @@ fetch_snapshot() {
   esac
   say 'Проверка не завершена. Подробности: mkr-xkeen status.' >&2; return 1
  fi
- if ! jq -e '.version==1 and (.resource.revision|type=="string" and test("^[a-f0-9]{64}$")) and (.resource.value|type=="string" and length<=8192)' "$WORK/snapshot.json" >/dev/null; then
+ if ! jq -e "$MKR_JQ_VALIDATORS"' .version==1 and (.resource.revision|mkr_hex(64)) and (.resource.value|type=="string" and length<=8192)' "$WORK/snapshot.json" >/dev/null; then
   local_state failed 'Неверный ответ сайта. Установите обновление сайта для XKeen.'; return 1
  fi
  REVISION=$(jq -r .resource.revision "$WORK/snapshot.json")
@@ -219,13 +235,16 @@ setup() {
  endpoint=${1:-https://moskompremont.ru/api/router-agent.php}
  endpoint_ok "$endpoint" || die 'Нужен HTTPS-адрес API без параметров.'
  say 'В кабинете Keenetic создайте код для нужного ключа роутера.'
+ say 'Дождитесь строки «Код устройства», вставьте код и нажмите Enter.'
  if [ -t 0 ]; then
-  printf 'Код устройства (ввод скрыт): '
   TTY_STATE=$(stty -g < /dev/tty); stty -echo < /dev/tty
+  printf 'Код устройства (ввод скрыт): '
+ else
+  printf 'Код устройства: '
  fi
  IFS= read -r token || die 'Не получен код устройства.'
  if [ -n "$TTY_STATE" ]; then stty "$TTY_STATE" < /dev/tty; TTY_STATE=''; say ''; fi
- printf '%s' "$token" | jq -eRs 'test("^mkr1\\.[a-f0-9]{24}\\.[a-f0-9]{64}$")' >/dev/null || die 'Неверный формат кода устройства.'
+ printf '%s' "$token" | jq -eRs "$MKR_JQ_VALIDATORS"' mkr_token' >/dev/null || die 'Неверный формат кода устройства.'
  # Write via stdin, not --arg, keeping the token out of process arguments.
  printf '%s' "$token" > "$WORK/token"; unset token
  jq --rawfile token "$WORK/token" --arg endpoint "$endpoint" '.token=$token|.endpoint=$endpoint|.enabled=true' "$CONF" > "$WORK/config"
@@ -246,8 +265,8 @@ rollback() {
  say 'Предыдущий ключ восстановлен. Включён режим уведомлений.'
 }
 status() {
- jq -n --slurpfile config "$CONF" --slurpfile status "$STATE/status.json" \
-  '{version:"0.1.0",enabled:$config[0].enabled,mode:$config[0].mode,file:$config[0].file,tag:$config[0].tag,status:$status[0]}'
+ jq -n --arg version "$VERSION" --slurpfile config "$CONF" --slurpfile status "$STATE/status.json" \
+  '{version:$version,enabled:$config[0].enabled,mode:$config[0].mode,file:$config[0].file,tag:$config[0].tag,status:$status[0]}'
 }
 
 action=${1:-status}; [ "$#" -eq 0 ] || shift
