@@ -1,0 +1,23 @@
+{
+  "service": "Мировой интернет",
+  "trim_mm": [
+    90,
+    50
+  ],
+  "bleed_mm": 3,
+  "pages": [
+    "Лицевая сторона",
+    "Оборотная сторона"
+  ],
+  "qr": {
+    "type": "placeholder",
+    "future_target": "https://moskompremont.ru/account.html"
+  },
+  "colors": {
+    "background": "#090D1C",
+    "cyan": "#55D8F1",
+    "violet": "#7C8EFA",
+    "text": "#ECF3FF"
+  },
+  "footer": "сервис не является ВПН, прокси или средством обхода"
+}
