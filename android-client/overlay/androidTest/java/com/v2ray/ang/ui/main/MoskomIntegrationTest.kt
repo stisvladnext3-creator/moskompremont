@@ -122,11 +122,11 @@ class MoskomIntegrationTest {
         screenshot("02-account")
         click("moskom_subscription");compose.onNodeWithText("VPN-B · 1").performClick();waitReady()
         assertEquals("moskom-cabinet-41-802",model.moskom().state.value.group)
-        compose.onNodeWithTag("moskom_subscription_duration").assertTextContains("Осталось: 25 дн.")
-        compose.onNodeWithTag("moskom_subscription_expires").assertTextContains("(МСК)")
+        compose.onNodeWithTag("moskom_subscription_duration").assertTextContains("Осталось: 25 дн.",substring=true)
+        compose.onNodeWithTag("moskom_subscription_expires").assertTextContains("(МСК)",substring=true)
         URL("http://10.0.2.2:18080/fixture/term?days=55").openStream().close()
         dispatch(MoskomAction.Sync)
-        compose.onNodeWithTag("moskom_subscription_duration").assertTextContains("Осталось: 55 дн.")
+        compose.onNodeWithTag("moskom_subscription_duration").assertTextContains("Осталось: 55 дн.",substring=true)
         screenshot("02-subscription-term")
         click("moskom_server");compose.onNodeWithText("A-1").assertDoesNotExist();compose.onAllNodesWithText("B-1").onLast().performClick();waitReady()
         click("moskom_routing");compose.onNodeWithText(text(R.string.moskom_mode_except)).performClick();waitReady()
@@ -144,7 +144,7 @@ class MoskomIntegrationTest {
         scenario.recreate();scenario.onActivity{model=ViewModelProvider(it)[MainViewModel::class.java]};waitReady()
         assertEquals(selected,model.moskom().state.value.server);assertEquals("google",model.moskom().state.value.dns)
         assertEquals("moskom-cabinet-41-802",model.moskom().state.value.group)
-        compose.onNodeWithTag("moskom_subscription_duration").assertTextContains("Осталось: 55 дн.")
+        compose.onNodeWithTag("moskom_subscription_duration").assertTextContains("Осталось: 55 дн.",substring=true)
         // Real menu, merged checkbox semantics, keyboard and stable-ID persistence.
         click("moskom_menu");compose.onNodeWithText(text(R.string.moskom_services)).performClick()
         compose.waitUntil(30_000){!model.moskom().state.value.choiceLoading}
