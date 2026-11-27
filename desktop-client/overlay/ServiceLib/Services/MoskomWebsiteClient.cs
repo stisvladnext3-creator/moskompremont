@@ -118,6 +118,8 @@ public sealed class WebsiteSubscription
     public string Name { get; set; } = "";
     public string? Url { get; set; }
     public bool IsExpired { get; set; }
+    public string TermKind { get; set; } = "unspecified";
+    public long? RemainingSeconds { get; set; }
     public string? ExpiresAt { get; set; }
     public string? ContentUpdatedAt { get; set; }
     public bool Usable(DateTimeOffset now) => !IsExpired && !string.IsNullOrWhiteSpace(Url) && (WebsiteTime.Parse(ExpiresAt) is not { } end || end > now);

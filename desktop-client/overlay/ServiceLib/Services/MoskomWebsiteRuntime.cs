@@ -16,6 +16,44 @@ public static partial class MoskomLauncherRuntime
     private static int _websiteStarted;
     private static bool _restorePending = true;
     private static readonly Dictionary<string, string?> CabinetRevisions = [];
+    private static volatile IReadOnlyDictionary<string, MoskomSubscriptionTerm> CabinetTerms = new Dictionary<string, MoskomSubscriptionTerm>();
+    private static volatile IReadOnlyDictionary<string, MoskomSubscriptionTerm> CabinetLinkTerms = new Dictionary<string, MoskomSubscriptionTerm>();
+    private static int CabinetLinkOwner;
+
+    private static void LoadCachedSubscriptionTerms()
+    {
+        Preferences.SubscriptionTerms ??= [];
+        var now = DateTimeOffset.UtcNow; var tick = Environment.TickCount64;
+        CabinetTerms = Preferences.SubscriptionTerms.Where(p => p.Key.StartsWith(CabinetPrefix, StringComparison.Ordinal) && p.Value != null)
+            .Take(1000).ToDictionary(p => p.Key, p => MoskomSubscriptionTerm.FromCache(p.Value, now, tick));
+    }
+    private static void RememberSubscriptionTerms(WebsiteUser user, IReadOnlyList<WebsiteSubscription> snapshot)
+    {
+        var now = DateTimeOffset.UtcNow; var tick = Environment.TickCount64;
+        string Tag(WebsiteSubscription sub) => CabinetPrefix + user.Id + ":" + sub.Id;
+        var next = snapshot.ToDictionary(Tag, s => MoskomSubscriptionTerm.From(s, now, tick));
+        CabinetTerms = next;
+        // An exact, unique owned URL also identifies an already imported manual link.
+        // These URLs remain in memory only; the cache stores term data by account/id.
+        CabinetLinkTerms = snapshot.Where(s => !string.IsNullOrEmpty(s.Url)).GroupBy(s => s.Url!, StringComparer.Ordinal)
+            .Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => next[Tag(g.Single())], StringComparer.Ordinal);
+        CabinetLinkOwner = user.Id;
+        var data = next.ToDictionary(p => p.Key, p => p.Value.Data);
+        if (Preferences.SubscriptionTerms.Count == data.Count && data.All(p => Preferences.SubscriptionTerms.TryGetValue(p.Key, out var old) && old == p.Value)) return;
+        Preferences.SubscriptionTerms = data;
+        try { SavePreferences(); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+    private static void ForgetSubscriptionTerms()
+    {
+        CabinetTerms = new Dictionary<string, MoskomSubscriptionTerm>(); CabinetLinkTerms = new Dictionary<string, MoskomSubscriptionTerm>(); CabinetLinkOwner = 0;
+        Preferences.SubscriptionTerms.Clear();
+        try { SavePreferences(); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+    public static MoskomSubscriptionTerm? SubscriptionTerm(MoskomSubscriptionGroup? group)
+    {
+        if (group?.CabinetTag is { } tag && (CabinetUser == null || tag.StartsWith(CabinetPrefix + CabinetUser.Id + ":", StringComparison.Ordinal)) && CabinetTerms.TryGetValue(tag, out var term)) return term;
+        return CabinetUser != null && CabinetUser.Id == CabinetLinkOwner && group?.Url is { } url && CabinetLinkTerms.TryGetValue(url, out var linked) ? linked : null;
+    }
 
     public static async Task StartWebsiteAsync()
     {
@@ -53,7 +91,7 @@ public static partial class MoskomLauncherRuntime
             var session = await Website.MeAsync(Lifetime.Token);
             CabinetUser = session.User; _restorePending = false;
             if (CabinetUser != null) { MoskomSessionVault.Save(Website); await SyncCabinetCoreAsync(false); }
-            else { await ClearCabinetGroupsCoreAsync(); MoskomSessionVault.Delete(); CabinetMessage = "Войдите, чтобы получить свои подписки с сайта."; }
+            else { await ClearCabinetGroupsCoreAsync(); ForgetSubscriptionTerms(); MoskomSessionVault.Delete(); CabinetMessage = "Войдите, чтобы получить свои подписки с сайта."; }
         }
         finally { Operations.Release(); WebsiteChanged?.Invoke(); }
     }
@@ -77,7 +115,7 @@ public static partial class MoskomLauncherRuntime
         {
             try { await Website.LogoutAsync(Lifetime.Token); } catch { /* Local sign-out also works offline. */ }
             await ClearCabinetGroupsCoreAsync();
-            CabinetUser = null; CabinetRevisions.Clear(); MoskomSessionVault.Delete();
+            CabinetUser = null; CabinetRevisions.Clear(); ForgetSubscriptionTerms(); MoskomSessionVault.Delete();
             Website.Dispose(); Website = new(); _restorePending = false;
             CabinetMessage = "Вы вышли из кабинета. Добавленные через «+» ссылки сохранены.";
         }
@@ -107,6 +145,7 @@ public static partial class MoskomLauncherRuntime
         var user = CabinetUser ?? throw new InvalidOperationException("Сначала войдите в кабинет.");
         // Only a complete, authenticated response is authoritative; HTTP/parse errors never clear data.
         var snapshot = await Website.SubscriptionsAsync(Lifetime.Token);
+        RememberSubscriptionTerms(user, snapshot);
         var active = snapshot.Where(s => s.Usable(DateTimeOffset.UtcNow)).ToList();
         var all = await AppManager.Instance.SubItems() ?? [];
         string Tag(WebsiteSubscription s) => CabinetPrefix + user.Id + ":" + s.Id;

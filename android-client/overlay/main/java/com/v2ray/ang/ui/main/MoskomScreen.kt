@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui.main
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -46,6 +47,8 @@ import coil3.compose.AsyncImage
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.moskom.MoskomPolicy
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 private val Ink=Color(0xFF090D1C)
 private val CardInk=Color(0xFF151725)
@@ -64,6 +67,8 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
     var menu by rememberSaveable{mutableStateOf(false)}
     var dialog by rememberSaveable{mutableStateOf("")}
     val group=state.groups.firstOrNull{it.id==state.group}
+    var termElapsed by remember{mutableLongStateOf(SystemClock.elapsedRealtime())}
+    LaunchedEffect(group?.id,group?.term) {while(isActive){termElapsed=SystemClock.elapsedRealtime();delay(15000)}}
     val server=group?.servers?.firstOrNull{it.id==state.server}
     val latency=servers.firstOrNull{it.guid==state.server}?.testDelayMillis
     val busy=state.busy||state.connecting||native.isTesting
@@ -123,6 +128,15 @@ fun MoskomScreen(mainViewModel:MainViewModel,onAction:(MainAction)->Unit,onNavig
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
                         Picker(stringResource(R.string.moskom_subscription),group?.let{stringResource(R.string.moskom_group_count,it.name,it.servers.size)}?:stringResource(R.string.moskom_choose_subscription),state.groups.map{it.id to stringResource(R.string.moskom_group_count,it.name,it.servers.size)},!busy&&state.groups.isNotEmpty(),{action(MoskomAction.Group(it))},Modifier.weight(1f),tag="moskom_subscription",selectedId=state.group)
                         OutlinedButton(onClick={onAction(MainAction.ImportClipboard)},enabled=state.loaded&&!busy,shape=RoundedCornerShape(10.dp),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp).testTag("moskom_add").semantics{contentDescription=addLabel}){Canvas(Modifier.size(20.dp)){drawLine(Cyan,Offset(size.width/2,0f),Offset(size.width/2,size.height),2.dp.toPx());drawLine(Cyan,Offset(0f,size.height/2),Offset(size.width,size.height/2),2.dp.toPx())}}
+                    }
+                    if(group?.isSubscription==true) {
+                        val term=group.term
+                        Surface(color=Color(0xFF121F30),shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(horizontal=12.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                Text(term?.text(termElapsed)?:"Срок не указан",fontSize=13.sp,fontWeight=FontWeight.SemiBold,color=when(term?.state(termElapsed)){"lifetime"->Color(0xFF55D6AC);"fixed"->Cyan;"expired"->Color(0xFFF49A9A);else->Muted},modifier=Modifier.testTag("moskom_subscription_duration"))
+                                term?.endText?.let{Text(it,fontSize=11.sp,color=Muted,modifier=Modifier.testTag("moskom_subscription_expires"))}
+                            }
+                        }
                     }
                     if(group!=null&&group.servers.isEmpty())Text(stringResource(R.string.moskom_no_servers),color=Muted,fontSize=12.sp)
                     Caption(R.string.moskom_server)

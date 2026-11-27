@@ -9,9 +9,9 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 data class MoskomUser(val id: Long, val name: String, val email: String)
-data class MoskomSubscription(val id: Long, val name: String, val url: String, val revision: String, val expired: Boolean)
+data class MoskomSubscription(val id: Long, val name: String, val url: String, val revision: String, val expired: Boolean,val term:MoskomSubscriptionTerm?=null)
 data class MoskomServer(val id: String, val name: String)
-data class MoskomGroup(val id: String, val name: String, val servers: List<MoskomServer>)
+data class MoskomGroup(val id: String, val name: String, val servers: List<MoskomServer>,val term:MoskomSubscriptionTerm?=null,val isSubscription:Boolean=true)
 data class MoskomNotice(val enabled: Boolean = false, val level: String = "warning", val message: String = "")
 data class MoskomNode(val name: String, val status: String, val ms: Long?, val checked: String)
 data class MoskomRelease(val version: String, val code: Long, val url: String, val filename: String, val checksumUrl: String, val changes: String)
@@ -37,13 +37,15 @@ object MoskomPolicy {
     fun validSubscriptionUrl(value: String): Boolean = runCatching {
         val u = URI(value); u.scheme in listOf("http", "https") && !u.host.isNullOrEmpty() && u.userInfo == null && value.length <= 8192
     }.getOrDefault(false)
-    fun subscriptions(json: JsonArray, now: Instant = Instant.now()): List<MoskomSubscription> {
+    fun subscriptions(json: JsonArray, now: Instant = Instant.now(),elapsedMillis:Long=0): List<MoskomSubscription> {
         require(json.size() <= 1000)
         val result = json.map { item ->
             val row = item.asJsonObject; val id = row.text("id").toLong(); require(id > 0)
-            val expired = row.text("is_expired") == "true" || row.text("is_expired") == "1" || time(row.text("expires_at"))?.isBefore(now)?.let { it } == true
+            val remoteExpired=row.text("is_expired") == "true" || row.text("is_expired") == "1"
+            val expired = remoteExpired || time(row.text("expires_at"))?.isBefore(now)?.let { it } == true
             val url = row.text("url"); require(expired || url.isBlank() || validSubscriptionUrl(url))
-            MoskomSubscription(id, row.text("name").take(200), url, row.text("content_updated_at"), expired || url.isBlank())
+            val term=MoskomSubscriptionTerm.create(MoskomTermData(row.text("term_kind","unspecified"),row.text("expires_at").takeIf{it.isNotBlank()},remoteExpired),row.text("remaining_seconds").toLongOrNull(),now,elapsedMillis)
+            MoskomSubscription(id, row.text("name").take(200), url, row.text("content_updated_at"), expired || url.isBlank(),term)
         }
         require(result.distinctBy { it.id }.size == result.size); return result
     }

@@ -18,6 +18,10 @@ public sealed class MoskomLauncherView : UserControl
     private readonly Window _owner;
     private readonly ComboBox _subscriptions = new() { Name = "MoskomSubscriptions", HorizontalAlignment = HorizontalAlignment.Stretch, MinHeight = 48, MaxDropDownHeight = 280 };
     private readonly TextBlock _subscriptionInfo = new() { Name = "MoskomSubscriptionInfo", FontSize = 12, Foreground = Brush.Parse("#A7B7D0"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly TextBlock _subscriptionDuration = new() { Name = "MoskomSubscriptionDuration", FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _subscriptionExpires = new() { Name = "MoskomSubscriptionExpires", FontSize = 11, Foreground = Brush.Parse("#A7B7D0"), TextWrapping = TextWrapping.Wrap };
+    private readonly Border _subscriptionTerm = new() { Name = "MoskomSubscriptionTerm", CornerRadius = new(10), Padding = new(12, 9), Background = Brush.Parse("#121F30"), IsVisible = false };
+    private readonly DispatcherTimer _termTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly ComboBox _servers = new() { Name = "MoskomServers", HorizontalAlignment = HorizontalAlignment.Stretch, MinHeight = 48 };
     private readonly ComboBox _routing = new() { Name = "MoskomRouting", HorizontalAlignment = HorizontalAlignment.Stretch, MinHeight = 48 };
     private readonly Button _power = new() { Name = "MoskomPower", Width = 154, Height = 154, CornerRadius = new(77), HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
@@ -78,7 +82,8 @@ public sealed class MoskomLauncherView : UserControl
         shell.Children.Add(_status); shell.Children.Add(_hint);
         var subscriptionPanel = new StackPanel(); subscriptionPanel.Children.Add(Label("Подписка"));
         var subscriptionRow = new Grid { ColumnDefinitions = new("*,46"), ColumnSpacing = 8 };
-        subscriptionRow.Children.Add(_subscriptions); Grid.SetColumn(_plus, 1); subscriptionRow.Children.Add(_plus); subscriptionPanel.Children.Add(subscriptionRow); shell.Children.Add(subscriptionPanel); shell.Children.Add(_subscriptionInfo);
+        subscriptionRow.Children.Add(_subscriptions); Grid.SetColumn(_plus, 1); subscriptionRow.Children.Add(_plus); subscriptionPanel.Children.Add(subscriptionRow); shell.Children.Add(subscriptionPanel);
+        var termContent = new StackPanel { Spacing = 4 }; termContent.Children.Add(_subscriptionDuration); termContent.Children.Add(_subscriptionExpires); _subscriptionTerm.Child = termContent; shell.Children.Add(_subscriptionTerm); shell.Children.Add(_subscriptionInfo);
         AutomationProperties.SetName(_subscriptions, "Выберите подписку");
         var serverPanel = new StackPanel(); serverPanel.Children.Add(Label("Сервер")); serverPanel.Children.Add(_servers); shell.Children.Add(serverPanel);
         ToolTip.SetTip(_plus, "Добавить скопированную ссылку или ключ"); AutomationProperties.SetName(_plus, "Добавить ссылку из буфера обмена");
@@ -139,6 +144,9 @@ public sealed class MoskomLauncherView : UserControl
         ((INotifyCollectionChanged)vm.StatusBarViewModel.RoutingItems).CollectionChanged += (_, _) => Dispatcher.UIThread.Post(async () => await RefreshAsync());
         RenderState(MoskomConnectionState.Disconnected);
         RenderWebsite();
+        _termTimer.Tick += (_, _) => RenderSubscriptionTerm();
+        AttachedToVisualTree += (_, _) => _termTimer.Start();
+        DetachedFromVisualTree += (_, _) => _termTimer.Stop();
         AttachedToVisualTree += async (_, _) => { await vm.RefreshForLauncherAsync(); await vm.StatusBarViewModel.RefreshRoutingsMenu(); await MoskomLauncherRuntime.InitializeSubscriptionSelectionAsync(); await RefreshAsync(); await MoskomLauncherRuntime.StartWebsiteAsync(); };
     }
     private async Task RefreshAsync()
@@ -153,6 +161,7 @@ public sealed class MoskomLauncherView : UserControl
                 var groups = await MoskomLauncherRuntime.SubscriptionGroupsAsync();
                 var selected = MoskomLauncherRuntime.SelectedSubscription(groups);
                 _subscriptions.ItemsSource = groups; _subscriptions.SelectedItem = selected;
+                RenderSubscriptionTerm();
                 _servers.ItemsSource = selected?.Servers ?? [];
                 _servers.SelectedItem = selected?.Servers.FirstOrDefault(x => x.ID == AppManager.Instance.Config.IndexId);
                 _subscriptionInfo.IsVisible = selected != null && selected.Servers.Count == 0;
@@ -168,6 +177,16 @@ public sealed class MoskomLauncherView : UserControl
     private void ResetAvailability()
     {
         _checkedServer = null; _availabilityResult.Text = "Проверка выбранного сервера ещё не выполнялась."; _availabilityResult.Foreground = Brush.Parse("#A7B7D0");
+    }
+    private void RenderSubscriptionTerm()
+    {
+        var group = _subscriptions.SelectedItem as MoskomSubscriptionGroup;
+        _subscriptionTerm.IsVisible = group?.IsSubscription == true;
+        if (!_subscriptionTerm.IsVisible) return;
+        var term = MoskomLauncherRuntime.SubscriptionTerm(group); var tick = Environment.TickCount64;
+        _subscriptionDuration.Text = term?.Text(tick) ?? "Срок не указан";
+        _subscriptionDuration.Foreground = Brush.Parse(term?.State(tick) switch { "lifetime" => "#55D6AC", "fixed" => "#55D8F1", "expired" => "#F49A9A", _ => "#A7B7D0" });
+        _subscriptionExpires.Text = term?.EndText; _subscriptionExpires.IsVisible = term?.EndText != null;
     }
     private async Task RunAsync(Func<Task> action)
     {
@@ -212,5 +231,6 @@ public sealed class MoskomLauncherView : UserControl
         _account.Content = MoskomLauncherRuntime.CabinetUser == null ? "Войти в кабинет" : "Мой кабинет";
         var user = MoskomLauncherRuntime.CabinetUser;
         _accountInfo.Text = (user == null ? "" : user.FullName + "\n") + MoskomLauncherRuntime.CabinetMessage;
+        RenderSubscriptionTerm();
     }
 }

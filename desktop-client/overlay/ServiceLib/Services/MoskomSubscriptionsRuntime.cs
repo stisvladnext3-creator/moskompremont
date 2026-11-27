@@ -3,6 +3,9 @@ namespace ServiceLib.Services;
 public sealed record MoskomSubscriptionGroup(string Id, string Name, IReadOnlyList<ComboItem> Servers)
 {
     public string DisplayName => $"{Name} · {Servers.Count}";
+    public string? CabinetTag { get; init; }
+    internal string? Url { get; init; }
+    public bool IsSubscription => !string.IsNullOrEmpty(CabinetTag) || !string.IsNullOrEmpty(Url);
 }
 
 public static partial class MoskomLauncherRuntime
@@ -46,7 +49,7 @@ public static partial class MoskomLauncherRuntime
             var name = subscription.Remarks ?? "";
             if (name.StartsWith("Кабинет · ", StringComparison.Ordinal)) name = name[10..];
             if (string.IsNullOrWhiteSpace(name)) name = "Добавленная подписка";
-            result.Add(new(subscription.Id, name, grouped.GetValueOrDefault(subscription.Id) ?? []));
+            result.Add(new(subscription.Id, name, grouped.GetValueOrDefault(subscription.Id) ?? []) { CabinetTag = subscription.Memo?.StartsWith(CabinetPrefix, StringComparison.Ordinal) == true ? subscription.Memo : null, Url = subscription.Url });
         }
         foreach (var group in grouped.Where(g => result.All(s => s.Id != g.Key)))
             result.Add(new(group.Key, string.IsNullOrEmpty(group.Key) ? "Отдельные ключи" : "Добавлено вручную", group.Value));

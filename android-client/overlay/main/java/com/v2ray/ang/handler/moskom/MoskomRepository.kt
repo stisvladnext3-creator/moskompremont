@@ -1,6 +1,7 @@
 package com.v2ray.ang.handler.moskom
 
 import android.content.Context
+import android.os.SystemClock
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -14,6 +15,7 @@ import com.v2ray.ang.ui.compose.ThemeManager
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.time.Instant
 
 /** Service account orchestration. Actual profile records remain owned by MmkvManager. Call on IO. */
 class MoskomRepository(private val context: Context) {
@@ -24,6 +26,10 @@ class MoskomRepository(private val context: Context) {
     private val gson = Gson()
     private val userKey = "moskom_user"
     private val groupKey = "moskom_group"
+    private val termKey = "moskom_subscription_terms"
+    @Volatile private var terms:Map<String,MoskomSubscriptionTerm> = readTermCache()
+    @Volatile private var linkedTerms:Map<String,MoskomSubscriptionTerm> = emptyMap()
+    @Volatile private var linkedOwner:Long? = null
     var user: MoskomUser? = runCatching { gson.fromJson(MmkvManager.decodeSettingsString(userKey),MoskomUser::class.java) }.getOrNull()
         private set
 
@@ -40,7 +46,9 @@ class MoskomRepository(private val context: Context) {
     }
     fun groups(): List<MoskomGroup> = MmkvManager.decodeSubscriptions().mapNotNull { sub ->
         val servers=MmkvManager.decodeServerList(sub.guid).mapNotNull { id -> MmkvManager.decodeServerConfig(id)?.let { MoskomServer(id,it.remarks) } }
-        if (sub.guid == AppConfig.DEFAULT_SUBSCRIPTION_ID && servers.isEmpty()) null else MoskomGroup(sub.guid,sub.subscription.remarks,servers)
+        val own=user==null||sub.guid.startsWith("${MoskomPolicy.CABINET}${user?.id}-")
+        val term=(if(own)terms[sub.guid]else null)?:if(user?.id==linkedOwner)linkedTerms[sub.subscription.url]else null
+        if (sub.guid == AppConfig.DEFAULT_SUBSCRIPTION_ID && servers.isEmpty()) null else MoskomGroup(sub.guid,sub.subscription.remarks,servers,term,sub.guid.startsWith(MoskomPolicy.CABINET)||sub.subscription.url.isNotBlank())
     }.sortedBy { if(it.id.startsWith(MoskomPolicy.CABINET))0 else 1 }
     fun selectedGroup(): String = MmkvManager.decodeSettingsString(groupKey).orEmpty()
     fun selectedServer(): String = MmkvManager.getSelectServer().orEmpty()
@@ -70,7 +78,7 @@ class MoskomRepository(private val context: Context) {
         if(row==null || row.isJsonNull){user=null;http.clear();require(MmkvManager.encodeSettings(userKey,""));return null}
         setUser(row.asJsonObject);http.save()
         val response=http.api("subscriptions")
-        return MoskomPolicy.subscriptions(response.getAsJsonArray("subscriptions")?:throw IOException("Invalid subscription snapshot"))
+        return MoskomPolicy.subscriptions(response.getAsJsonArray("subscriptions")?:throw IOException("Invalid subscription snapshot"),elapsedMillis=SystemClock.elapsedRealtime())
     }
     private fun setUser(row: JsonObject) {
         val next=MoskomUser(row.text("id").toLong(),(row.text("first_name")+" "+row.text("last_name")).trim(),row.text("email"))
@@ -84,6 +92,7 @@ class MoskomRepository(private val context: Context) {
     fun applySnapshot(snapshot: List<MoskomSubscription>?,force: Boolean=false,preferCabinet: Boolean=false): Int {
         changed=false
         val user=user
+        rememberTerms(if(user!=null)snapshot else null)
         val active=if(user!=null)snapshot.orEmpty().filterNot { it.expired } else emptyList()
         val desired=active.map { MoskomPolicy.groupId(user!!.id,it.id) }.toSet()
         MmkvManager.decodeSubscriptions().filter { it.guid.startsWith(MoskomPolicy.CABINET) && it.guid !in desired }.forEach { MmkvManager.removeSubscription(it.guid);changed=true }
@@ -139,11 +148,27 @@ class MoskomRepository(private val context: Context) {
     fun logout() {
         runCatching { http.api("logout",JsonObject()) }
         MmkvManager.decodeSubscriptions().filter { it.guid.startsWith(MoskomPolicy.CABINET) }.forEach { MmkvManager.removeSubscription(it.guid) }
-        http.clear();user=null;MmkvManager.encodeSettings(userKey,"");ensureSelection()
+        http.clear();user=null;rememberTerms(null);MmkvManager.encodeSettings(userKey,"");ensureSelection()
     }
     fun forgetAccount() {
         MmkvManager.decodeSubscriptions().filter { it.guid.startsWith(MoskomPolicy.CABINET) }.forEach { MmkvManager.removeSubscription(it.guid) }
-        http.clear();user=null;MmkvManager.encodeSettings(userKey,"");ensureSelection()
+        http.clear();user=null;rememberTerms(null);MmkvManager.encodeSettings(userKey,"");ensureSelection()
+    }
+    private fun readTermCache():Map<String,MoskomSubscriptionTerm> = runCatching {
+        val text=MmkvManager.decodeSettingsString(termKey).orEmpty();if(text.isBlank())return@runCatching emptyMap()
+        val now=Instant.now();val tick=SystemClock.elapsedRealtime()
+        JsonParser.parseString(text).asJsonObject.entrySet().take(1000).filter{it.key.startsWith(MoskomPolicy.CABINET)}.associate { (key,value)->
+            val row=value.asJsonObject
+            key to MoskomSubscriptionTerm.create(MoskomTermData(row.text("kind","unspecified"),row.text("expiresAt").takeIf{it.isNotBlank()},row.text("expired")=="true"),null,now,tick)
+        }
+    }.getOrDefault(emptyMap())
+    private fun rememberTerms(snapshot:List<MoskomSubscription>?) {
+        val owner=user
+        val next=if(owner==null)emptyMap() else snapshot.orEmpty().mapNotNull { sub->sub.term?.let{MoskomPolicy.groupId(owner.id,sub.id) to it} }.toMap()
+        val previousData=terms.mapValues{it.value.data};val data=next.mapValues{it.value.data};terms=next
+        linkedTerms=snapshot.orEmpty().filter{it.url.isNotBlank()}.groupBy{it.url}.filterValues{it.size==1}.mapNotNull{(url,rows)->rows.single().term?.let{url to it}}.toMap()
+        linkedOwner=owner?.id
+        if(previousData!=data)MmkvManager.encodeSettings(termKey,gson.toJson(data))
     }
     fun service(): Pair<MoskomNotice,List<MoskomNode>> {
         val notice=http.siteJson("api/service-notice.php");val monitor=http.siteJson("api/server-status.php")

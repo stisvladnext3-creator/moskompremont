@@ -1,11 +1,12 @@
 """Local-only integration fixture; no customer data or production credentials."""
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import base64, json, socketserver, socket, threading, select, os, re, hashlib
 from pathlib import Path
 
 PHASE=0
+TERM_DAYS=25
 USER={'id':41,'first_name':'Тестовый','last_name':'Клиент','email':'client@example.test'}
 UUID='33333333-3333-4333-8333-333333333333'
 class Handler(BaseHTTPRequestHandler):
@@ -17,7 +18,7 @@ class Handler(BaseHTTPRequestHandler):
   self.end_headers();self.wfile.write(data)
  def do_POST(self):self.do_GET()
  def do_GET(self):
-  global PHASE
+  global PHASE,TERM_DAYS
   url=urlsplit(self.path);query=parse_qs(url.query);action=query.get('action',[''])[0]
   if url.path=='/fixture/screenshot' and self.command=='POST':
    name=query.get('name',[''])[0];size=int(self.headers.get('Content-Length',0));assert re.fullmatch(r'[a-z0-9-]+\.png',name) and 0<size<=4*1024*1024
@@ -38,7 +39,11 @@ class Handler(BaseHTTPRequestHandler):
     if name in mapping:return self.answer((rules/mapping[name]).read_bytes())
    if remote.hostname=='github.com' and remote.path.startswith('/runetfreedom/russia-v2ray-rules-dat/releases/download/'+release+'/') and name in ['geoip.dat','geosite.dat']:return self.answer((assets/name).read_bytes())
    return self.answer({'error':'Unknown fixture asset'},404)
-  if url.path=='/fixture/phase':PHASE=int(query.get('value',['0'])[0]);return self.answer({'phase':PHASE})
+  if url.path=='/fixture/phase':
+   PHASE=int(query.get('value',['0'])[0])
+   if PHASE==0:TERM_DAYS=25
+   return self.answer({'phase':PHASE})
+  if url.path=='/fixture/term':TERM_DAYS=int(query.get('days',['55'])[0]);return self.answer({'days':TERM_DAYS})
   if url.path=='/ping':return self.answer(b'',204)
   if action=='me':return self.answer({'user':USER if authenticated else None,'csrf':'fixture-csrf'})
   if action=='login':
@@ -50,9 +55,9 @@ class Handler(BaseHTTPRequestHandler):
   if action=='subscriptions':
    if not authenticated:return self.answer({'error':'Authentication required'},401)
    base='http://10.0.2.2:18080/sub/'
-   rows=[{'id':801,'name':'VPN-A','url':base+('a2' if PHASE==1 else 'missing' if PHASE==3 else 'a'),'content_updated_at':str(PHASE)},
-         {'id':803,'name':'Expired','is_expired':True,'expires_at':'2020-01-01 00:00:00'}]
-   if PHASE!=1:rows.insert(1,{'id':802,'name':'VPN-B','url':base+'b','content_updated_at':'0'})
+   rows=[{'id':801,'name':'VPN-A','url':base+('a2' if PHASE==1 else 'missing' if PHASE==3 else 'a'),'content_updated_at':str(PHASE),'term_kind':'lifetime','remaining_seconds':None},
+         {'id':803,'name':'Expired','is_expired':True,'expires_at':'2020-01-01 00:00:00','term_kind':'fixed','remaining_seconds':0}]
+   if PHASE!=1:rows.insert(1,{'id':802,'name':'VPN-B','url':base+'b','content_updated_at':'0','term_kind':'fixed','expires_at':(datetime.now(timezone.utc)+timedelta(days=TERM_DAYS,hours=2)).strftime('%Y-%m-%d %H:%M:%S'),'remaining_seconds':TERM_DAYS*86400+7200})
    if PHASE==2:rows=[]
    return self.answer({'subscriptions':rows})
   if url.path.startswith('/sub/'):

@@ -21,7 +21,7 @@ internal static class MoskomWebsiteSmoke
         using var stop = new CancellationTokenSource();
         var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port; var root = new Uri($"http://127.0.0.1:{port}/");
-        var revision = 0; var loggedIn = false; var failB = false;
+        var revision = 0; var termRevision = 0; var loggedIn = false; var failB = false;
         var worker = Task.Run(async () =>
         {
             while (!stop.IsCancellationRequested)
@@ -58,8 +58,8 @@ internal static class MoskomWebsiteSmoke
                             var rows = new List<object>();
                             if (revision < 3)
                             {
-                                rows.Add(new { id = 801, name = "VPN-A", url = new Uri(root, revision == 0 ? "sub/a" : "sub/a2").AbsoluteUri, content_updated_at = revision == 0 ? "2026-11-13 20:00:00" : "2026-11-13 20:01:00" });
-                                rows.Add(new { id = 802, name = "VPN-B", url = new Uri(root, "sub/b").AbsoluteUri, content_updated_at = revision >= 2 ? "2026-11-13 20:02:00" : "2026-11-13 20:00:00" });
+                                rows.Add(new { id = 801, name = "VPN-A", url = new Uri(root, revision == 0 ? "sub/a" : "sub/a2").AbsoluteUri, content_updated_at = revision == 0 ? "2026-11-13 20:00:00" : "2026-11-13 20:01:00", term_kind = "lifetime" });
+                                rows.Add(new { id = 802, name = "VPN-B", url = new Uri(root, "sub/b").AbsoluteUri, content_updated_at = revision >= 2 ? "2026-11-13 20:02:00" : "2026-11-13 20:00:00", term_kind = "fixed", expires_at = DateTime.UtcNow.AddDays(25 + termRevision * 30).AddHours(2).ToString("yyyy-MM-dd HH:mm:ss"), remaining_seconds = (25 + termRevision * 30) * 86400 + 7200 });
                                 rows.Add(new { id = 803, name = "Expired", is_expired = true, expires_at = "2020-01-01 00:00:00" });
                                 rows.Add(new { id = 804, name = "VPN-EMPTY", url = new Uri(root, "sub/empty").AbsoluteUri, content_updated_at = "2026-11-13 20:00:00" });
                             }
@@ -127,8 +127,10 @@ internal static class MoskomWebsiteSmoke
                 File.AppendAllText(Path.Combine(folder, "picker-trace.txt"), DateTimeOffset.UtcNow.ToString("O")+" after "+PickerState(id,count)+Environment.NewLine);
             }
             await Pick(aId, 2);
+            if (Main<TextBlock>("MoskomSubscriptionDuration").Text != "Бессрочная подписка") throw new InvalidOperationException("Lifetime subscription badge is missing.");
             var picker = subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Name == "VPN-A") && subscriptionPicker.Items.OfType<MoskomSubscriptionGroup>().Any(g => g.Name == "VPN-B");
             await Pick(bId, 3);
+            if (Main<TextBlock>("MoskomSubscriptionDuration").Text?.StartsWith("Осталось: 25 дн.", StringComparison.Ordinal) != true || Main<TextBlock>("MoskomSubscriptionExpires").Text?.Contains("(МСК)", StringComparison.Ordinal) != true) throw new InvalidOperationException("Selected monthly subscription term is missing or belongs to a different group.");
             var bServers = (await AppManager.Instance.ProfileItems(bId))!.Select(p => p.IndexId).ToHashSet();
             var isolation = serverPicker.Items.OfType<ComboItem>().Select(p => p.ID).ToHashSet().SetEquals(bServers);
             var chosenB = serverPicker.Items.OfType<ComboItem>().ElementAt(1).ID;
@@ -171,6 +173,9 @@ internal static class MoskomWebsiteSmoke
             starts = core.Starts; stops = core.Stops;
             for (var i = 0; i < 4; i++) await MoskomLauncherRuntime.SyncCabinetAsync(false);
             var backgroundConnected = connection.IsConnected && core.Starts == starts && core.Stops == stops;
+            termRevision = 1; await MoskomLauncherRuntime.SyncCabinetAsync(false);
+            await WaitFor(() => Main<TextBlock>("MoskomSubscriptionDuration").Text?.StartsWith("Осталось: 55 дн.", StringComparison.Ordinal) == true);
+            if (!connection.IsConnected || core.Starts != starts || core.Stops != stops) throw new InvalidOperationException("A term-only renewal restarted the VPN connection.");
             starts = core.Starts; stops = core.Stops;
             revision = 1; await MoskomLauncherRuntime.SyncCabinetAsync(false);
             var otherConnected = connection.IsConnected && core.Starts == starts && core.Stops == stops;
